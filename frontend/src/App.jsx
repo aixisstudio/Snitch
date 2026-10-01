@@ -198,7 +198,7 @@ export default function App() {
             <CaptureToggle capturing={capturing} onToggle={toggleCapture} />
             <AlertBell unread={unread} onClick={handleBell} />
             <SettingsButton onClick={() => setShowSettings(v => !v)} />
-            <StatusBadge status={status} lanCount={Object.keys(lanDevices).length} />
+            <StatusBadge status={status} />
           </div>
 
           {showAlerts && (
@@ -750,9 +750,9 @@ function ViewToggle({ view, onChange }) {
   )
 }
 
-/** EN: WebSocket status badge + LAN device count.
- *  FR: Badge de statut WebSocket + compteur d'appareils LAN. */
-function StatusBadge({ status, lanCount }) {
+/** EN: WebSocket status badge.
+ *  FR: Badge de statut WebSocket. */
+function StatusBadge({ status }) {
   const { t } = useT()
   const colors = { connected: '#22c55e', connecting: '#f59e0b', disconnected: '#ef4444', error: '#ef4444' }
   const labels = {
@@ -769,11 +769,6 @@ function StatusBadge({ status, lanCount }) {
     }}>
       <div style={{ width: 7, height: 7, borderRadius: '50%', background: colors[status] || '#94a3b8' }} />
       <span style={{ fontSize: 11, color: '#e2e8f0' }}>{labels[status] || status}</span>
-      {lanCount > 0 && (
-        <span style={{ fontSize: 11, color: '#f97316', borderLeft: '1px solid #2a2a2a', paddingLeft: 8 }}>
-          {t('lan_devices', lanCount)}
-        </span>
-      )}
     </div>
   )
 }
