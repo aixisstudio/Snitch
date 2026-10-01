@@ -105,6 +105,11 @@ export default function ForceGraph({ nodes, edges, lanDevices, alertedNodes = ne
       g.attr('transform', e.transform)
     })
     svg.call(zoom)
+    // EN: Kill the default double-click→zoom-in — during a busy graph a
+    //     stray dblclick feels like the app zooming by itself.
+    // FR: Désactiver le double-clic→zoom par défaut — sur un graphe actif
+    //     un dblclick perdu donne l'impression d'un zoom automatique.
+    svg.on('dblclick.zoom', null)
 
     const g = svg.append('g')
     // EN: Reapply the saved transform — fires the handler, so it must run
@@ -133,15 +138,6 @@ export default function ForceGraph({ nodes, edges, lanDevices, alertedNodes = ne
       return nodeIds.has(src) && nodeIds.has(tgt)
     })
 
-    // EN: Restore cached positions — pinned nodes won't move at all.
-    // FR: Restaurer les positions en cache — les nœuds épinglés ne bougent pas.
-    let hasNew = false
-    allNodes.forEach(n => {
-      const c = posCache.current[n.id]
-      if (c) { n.x = c.x; n.y = c.y; n.fx = c.fx; n.fy = c.fy }
-      else    { hasNew = true }
-    })
-
     // EN: Concentric-ring layout — the mental model IS a star: "me" at the
     //     center, my LAN devices on an inner orbit, internet hosts on an
     //     outer orbit. forceRadial does the heavy lifting; charge spreads
@@ -158,9 +154,31 @@ export default function ForceGraph({ nodes, edges, lanDevices, alertedNodes = ne
       : d.category === 'lan_device' ? ringInner
       : ringOuter
 
+    // EN: Restore cached positions — pinned nodes won't move at all.
+    //     NEW nodes spawn ON their ring (random angle) instead of exploding
+    //     out from the center — a center-burst + reheat reads as a "zoom".
+    // FR: Restaurer les positions en cache — les nœuds épinglés ne bougent
+    //     pas. Les NOUVEAUX nœuds apparaissent SUR leur anneau (angle
+    //     aléatoire) au lieu d'exploser depuis le centre — un départ du
+    //     centre + réchauffe se lit comme un « zoom ».
+    let hasNew = false
+    allNodes.forEach(n => {
+      const c = posCache.current[n.id]
+      if (c) { n.x = c.x; n.y = c.y; n.fx = c.fx; n.fy = c.fy }
+      else {
+        hasNew = true
+        const a = Math.random() * Math.PI * 2
+        const r = ringOf(n)
+        n.x = width / 2 + Math.cos(a) * r
+        n.y = height / 2 + Math.sin(a) * r
+      }
+    })
+
     const sim = d3.forceSimulation(allNodes)
-      .alpha(hasNew ? 0.8 : 0.05)    // EN: barely reheat if nothing new
-                                     // FR: réchauffer à peine si rien de nouveau
+      .alpha(hasNew ? 0.4 : 0.05)    // EN: gentle reheat — new nodes already
+                                     // sit near their target, no big shuffle
+                                     // FR: réchauffe douce — les nouveaux sont
+                                     // déjà près de leur cible, pas de brassage
       .alphaDecay(0.04)              // EN: settle ~2× faster / FR: stabilisation ~2× plus rapide
       .velocityDecay(0.55)           // EN: more friction, less overshoot / FR: plus de friction, moins de dépassement
       .force('link', d3.forceLink(allEdges).id(d => d.id).distance(d => d.dashed ? 130 : 200).strength(0.25))
