@@ -2,7 +2,7 @@
 
 # Snitch
 
-**Know who's talking. / Sache qui parle.**
+**Track every hidden flow. / Traquez chaque flux masqué.**
 
 [English](#english) | [Français](#français)
 

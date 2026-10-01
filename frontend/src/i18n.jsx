@@ -39,7 +39,7 @@ const en = {
 
   // Sidebar header + stats / En-tête de barre latérale + stats
   app_name: 'SNITCH',
-  tagline: "Know who's talking.",
+  tagline: "Track every hidden flow.",
   stat_lan: 'LAN Devices',
   stat_ext: 'Ext. hosts',
   stat_traffic: 'Traffic',
@@ -275,7 +275,7 @@ const fr = {
 
   // En-tête de barre latérale + stats / Sidebar header + stats
   app_name: 'SNITCH',
-  tagline: 'Sache qui parle.',
+  tagline: 'Traquez chaque flux masqué.',
   stat_lan: 'Appareils LAN',
   stat_ext: 'Hôtes ext.',
   stat_traffic: 'Trafic',
