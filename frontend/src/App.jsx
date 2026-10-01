@@ -45,12 +45,23 @@ export default function App() {
   const [filter, setFilter] = useState({ text: '', category: 'all' })
   const { lang, setLang } = useT()
 
-  // EN: Node ids that currently have at least one alert — drives the red glow.
-  // FR: Ids des nœuds ayant au moins une alerte — pilote le halo rouge.
-  const alertedNodes = useMemo(() =>
-    new Set(alerts.map(a => a.node_id).filter(Boolean)),
-    [alerts]
-  )
+  // EN: Node ids → worst alert severity, info alerts EXCLUDED — a "new
+  //     device seen" notice is informational, not a red alarm. The map
+  //     drives ring color (critical → red, warning → amber).
+  // FR: Ids de nœuds → pire sévérité d'alerte, alertes info EXCLUES — une
+  //     notification « nouvel appareil vu » est informative, pas une alarme
+  //     rouge. La map pilote la couleur de l'anneau (critique → rouge,
+  //     warning → orange).
+  const alertedNodes = useMemo(() => {
+    const m = new Map()
+    for (const a of alerts) {
+      if (!a.node_id || a.severity === 'info') continue
+      if (a.severity === 'critical' || m.get(a.node_id) !== 'critical') {
+        m.set(a.node_id, a.severity)
+      }
+    }
+    return m
+  }, [alerts])
 
   // EN: When processes are excluded, hide nodes whose traffic comes ONLY from
   //     excluded apps — keeps the graph honest about what's filtered.

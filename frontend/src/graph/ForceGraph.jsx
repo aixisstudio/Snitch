@@ -324,26 +324,47 @@ export default function ForceGraph({ nodes, edges, lanDevices, alertedNodes = ne
  *     coûte rien quand rien n'a changé.
  */
 function paintAlertRings(nodeSel, alertedNodes) {
+  // EN: Ring semantics — critical pulses red, warning pulses amber, and an
+  //     identified/online LAN device with NO alert gets a static green
+  //     "safe" ring (the user asked to SEE trusted devices, not just
+  //     flagged ones). Info alerts paint nothing.
+  // FR: Sémantique des anneaux — critique pulse en rouge, warning en
+  //     orange, et un appareil LAN identifié/en ligne SANS alerte reçoit
+  //     un anneau vert « sûr » fixe (l'utilisateur veut VOIR les appareils
+  //     de confiance, pas seulement les suspects). Les alertes info ne
+  //     peignent rien.
+  const RING_COLORS = { critical: '#ef4444', warning: '#f59e0b' }
   nodeSel.each(function (d) {
     const g = d3.select(this)
-    const shouldAlert = alertedNodes.has(d.id) || d.alerted
-    const ring = g.select('circle.alert-ring')
-    if (shouldAlert && ring.empty()) {
-      // EN: Insert BEFORE the body circle so the ring sits behind the node.
-      // FR: Insérer AVANT le cercle du corps pour que l'anneau soit derrière.
-      g.insert('circle', ':first-child')
-        .attr('class', 'alert-ring')
-        .attr('r', radius(d) + 9)
-        .attr('fill', 'none')
-        .attr('stroke', '#ef4444')
-        .attr('stroke-width', 1.5)
+    const sev = alertedNodes.get?.(d.id)
+      || (d.alerted ? (d.alert_severity || 'warning') : null)
+    const safe = !sev && d.category === 'lan_device'
+      && (d.hostname || d.vendor) && d.online !== false
+    const want = sev ? `alert:${sev}` : (safe ? 'safe' : null)
+
+    const ring = g.select('circle.status-ring')
+    const have = ring.empty() ? null : ring.attr('data-kind')
+    if (have === want) return
+    ring.remove()
+    if (!want) return
+
+    // EN: Insert BEFORE the body circle so the ring sits behind the node.
+    // FR: Insérer AVANT le cercle du corps pour que l'anneau soit derrière.
+    const c = g.insert('circle', ':first-child')
+      .attr('class', 'status-ring')
+      .attr('data-kind', want)
+      .attr('r', radius(d) + 9)
+      .attr('fill', 'none')
+      .attr('stroke-width', want === 'safe' ? 1.2 : 1.5)
+    if (want === 'safe') {
+      c.attr('stroke', '#22c55e').attr('stroke-opacity', 0.5)
+    } else {
+      c.attr('stroke', RING_COLORS[sev] || '#f59e0b')
         .attr('stroke-opacity', 0.7)
         .append('animate')
         .attr('attributeName', 'stroke-opacity')
         .attr('values', '0.7;0.1;0.7')
         .attr('dur', '1.5s').attr('repeatCount', 'indefinite')
-    } else if (!shouldAlert && !ring.empty()) {
-      ring.remove()
     }
   })
 }

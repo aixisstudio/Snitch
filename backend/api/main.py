@@ -412,6 +412,29 @@ def _learn_dhcp_name(hostname: str, req_ip: Optional[str], mac: str,
 
 # ── Packet handling / Traitement des paquets ─────────────────────────────────
 
+def _flag_alert(alert, mapping: dict) -> None:
+    """
+    EN: Mark a node/device as alerted — but ONLY for warning/critical
+        severity. Info alerts (NEW_HOST, NEW_LAN_DEVICE, DEVICE_OFFLINE)
+        are informational: ringing every new neighbour in red cries wolf.
+        `alert_severity` keeps the worst level seen so the UI can pick the
+        ring color.
+    FR: Marquer un nœud/appareil en alerte — mais SEULEMENT pour les
+        sévérités warning/critical. Les alertes info (NEW_HOST,
+        NEW_LAN_DEVICE, DEVICE_OFFLINE) sont informatives : entourer de
+        rouge chaque nouveau voisin crie au loup. `alert_severity` garde le
+        pire niveau vu pour la couleur de l'anneau.
+    """
+    if not alert.node_id or alert.node_id not in mapping:
+        return
+    if alert.severity == "info":
+        return
+    node = mapping[alert.node_id]
+    node["alerted"] = True
+    if alert.severity == "critical" or node.get("alert_severity") != "critical":
+        node["alert_severity"] = alert.severity
+
+
 def on_packet(pkt: Packet) -> None:
     """
     EN: Called from the capture THREAD — drop into the bounded queue. The
@@ -646,8 +669,7 @@ def _process_batch(packets: list[Packet]) -> None:
         # FR: La détection tourne dans la boucle — analyze_packet est
         #     protégée par verrou, pas besoin de saut d'executor.
         for alert in detector.analyze_packet(pkt, geo):
-            if alert.node_id and alert.node_id in nodes:
-                nodes[alert.node_id]["alerted"] = True
+            _flag_alert(alert, nodes)
             alert_dict = alert.to_dict()
             db.log_alert(alert_dict)
             out_alerts.append(alert_dict)
@@ -801,8 +823,7 @@ async def _handle_device(device: Device, is_new: bool) -> None:
     loop = asyncio.get_running_loop()
     alerts = await loop.run_in_executor(None, detector.analyze_device, device, is_new)
     for alert in alerts:
-        if alert.node_id and alert.node_id in lan_devices:
-            lan_devices[alert.node_id]["alerted"] = True
+        _flag_alert(alert, lan_devices)
         alert_dict = alert.to_dict()
         db.log_alert(alert_dict)
         await broadcast({"type": "alert", "alert": alert_dict})
