@@ -236,6 +236,10 @@ const compileShader = (gl, type, source) => {
   gl.shaderSource(shader, source);
   gl.compileShader(shader);
   if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+    // EN: Surface the compiler's words — silent failure is how we ended up
+    //     debugging a blurry fallback. / FR: Remonter les mots du
+    //     compilateur — l'échec silencieux est la cause du flouté à déboguer.
+    console.warn("aurora shader compile failed:", gl.getShaderInfoLog(shader));
     gl.deleteShader(shader);
     return null;
   }
@@ -252,7 +256,10 @@ const createAuroraController = (canvas) => {
     antialias: false,
     premultipliedAlpha: true,
   });
-  if (!gl) return null;
+  if (!gl) {
+    console.warn("aurora: no webgl2 context");
+    return null;
+  }
 
   const vertex = compileShader(gl, gl.VERTEX_SHADER, VERTEX_SHADER);
   const fragment = compileShader(gl, gl.FRAGMENT_SHADER, FRAGMENT_SHADER);
@@ -265,6 +272,7 @@ const createAuroraController = (canvas) => {
   gl.deleteShader(vertex);
   gl.deleteShader(fragment);
   if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+    console.warn("aurora program link failed:", gl.getProgramInfoLog(program));
     gl.deleteProgram(program);
     return null;
   }
@@ -370,7 +378,21 @@ const createAuroraController = (canvas) => {
       cancelAnimationFrame(frame);
       if (buffer) gl.deleteBuffer(buffer);
       gl.deleteProgram(program);
-      gl.getExtension("WEBGL_lose_context")?.loseContext();
+      // EN: Do NOT loseContext() here — React StrictMode replays mount →
+      //     cleanup → mount on the SAME canvas element, and a canvas's GL
+      //     context, once lost, can never be re-created. The cleanup that
+      //     "releases the context" permanently killed the second mount and
+      //     silently dropped us to the blurry CSS fallback. GPU memory is
+      //     still freed: deleting the program/buffer is enough, and the
+      //     context dies with the canvas element on real unmount.
+      // FR: Ne PAS appeler loseContext() ici — React StrictMode rejoue
+      //     mount → cleanup → mount sur le MÊME canvas, et un contexte GL
+      //     de canvas, une fois perdu, ne peut jamais être recréé. Le
+      //     nettoyage qui « libérait le contexte » tuait définitivement le
+      //     second montage et nous faisait basculer silencieusement vers
+      //     le repli CSS flouté. La mémoire GPU reste libérée : supprimer
+      //     programme/buffer suffit, et le contexte meurt avec l'élément
+      //     canvas au vrai démontage.
     },
     render: () => {
       resize();
