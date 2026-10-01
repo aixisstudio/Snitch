@@ -3,10 +3,10 @@
   Snitch — splash screen.
 
   EN: Frameless startup screen shown while the backend boots. Pure SVG + CSS,
-      no external requests (the @import is progressive enhancement only).
+      ZERO external requests — works fully offline (system font fallbacks).
   FR: Écran de démarrage sans cadre affiché pendant le boot du backend.
-      SVG + CSS uniquement, aucune requête externe obligatoire (l'@import est
-      un bonus progressif).
+      SVG + CSS uniquement, AUCUNE requête externe — fonctionne 100 % hors
+      ligne (polices système de repli).
 -->
 <html lang="en">
 <head>
@@ -60,7 +60,6 @@
          FR: Logo globe + nœuds connectés avec le mot-signature SNITCH. -->
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 520">
       <defs>
-        <style>@import url('https://fonts.googleapis.com/css2?family=Syne:wght@800&family=Space+Mono&family=Outfit:wght@300&display=swap');</style>
         <filter id="glow-sm" x="-50%" y="-50%" width="200%" height="200%">
           <feGaussianBlur stdDeviation="2.5" result="blur"/>
           <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
@@ -131,13 +130,13 @@
 
       <!-- EN: wordmark / FR: mot-signature -->
       <text x="240" y="374" text-anchor="middle" fill="#f7b016"
-            font-family="'Space Mono', monospace" font-size="10" letter-spacing="8">REAL-TIME NETWORK</text>
+            font-family="'Courier New', ui-monospace, monospace" font-size="10" letter-spacing="8">REAL-TIME NETWORK</text>
       <text x="240" y="434" text-anchor="middle" fill="#ffffff"
-            font-family="'Syne', sans-serif" font-size="56" font-weight="800" letter-spacing="10"
+            font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif" font-size="56" font-weight="800" letter-spacing="10"
             filter="url(#glow-sm)">SNITCH</text>
       <line x1="148" y1="447" x2="332" y2="447" stroke="#f7b016" stroke-width="0.8" opacity="0.5"/>
       <text x="240" y="470" text-anchor="middle" fill="#ffffff" fill-opacity="0.4"
-            font-family="'Outfit', sans-serif" font-size="12" letter-spacing="3" font-weight="300">Know who's talking.</text>
+            font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif" font-size="12" letter-spacing="3" font-weight="300">Know who's talking.</text>
     </svg>
   </div>
   <div class="bar-wrap"><div class="bar"></div></div>

@@ -2,10 +2,25 @@
 # EN: Runs the full Snitch stack (backend + compiled frontend) with host networking.
 #     Host networking is required so Scapy can capture traffic on real host interfaces.
 #     Linux only — Docker Desktop (Mac/Windows) uses a VM and cannot capture host traffic.
+#
+#     SECURITY: SNITCH_BIND defaults to 127.0.0.1 — the API exposes your full
+#     traffic graph, process names and alerts. Every request needs the API
+#     token (printed once in `docker logs`, persisted in data/api_token.txt).
+#     Open the UI with:  http://localhost:8000/?token=<TOKEN>
+#     Only set SNITCH_BIND=0.0.0.0 if you explicitly want LAN access —
+#     token auth still applies on every endpoint.
+#
 # FR: Lance toute la stack Snitch (backend + frontend compilé) en réseau hôte.
 #     Le réseau hôte est requis pour que Scapy capture le trafic des vraies interfaces.
 #     Linux uniquement — Docker Desktop (Mac/Windows) utilise une VM et ne peut pas
 #     capturer le trafic de l'hôte.
+#
+#     SÉCURITÉ : SNITCH_BIND vaut 127.0.0.1 par défaut — l'API expose tout votre
+#     graphe de trafic, vos noms de processus et vos alertes. Chaque requête
+#     exige le jeton API (affiché une fois dans `docker logs`, persisté dans
+#     data/api_token.txt). Ouvrez l'UI avec :  http://localhost:8000/?token=<JETON>
+#     Ne mettez SNITCH_BIND=0.0.0.0 que pour un accès LAN explicite —
+#     le jeton reste exigé sur tous les endpoints.
 
 services:
   snitch:
@@ -15,14 +30,24 @@ services:
       - NET_ADMIN   # EN: promiscuous mode / FR: mode promiscuité
       - NET_RAW     # EN: raw socket / packet capture / FR: socket brut / capture de paquets
     environment:
-      # EN: Bind address for the API (0.0.0.0 = all interfaces inside the container)
-      # FR: Adresse d'écoute de l'API (0.0.0.0 = toutes les interfaces du conteneur)
-      - SNITCH_BIND=0.0.0.0
-      - SNITCH_PORT=8000
+      # EN: Loopback by default — see SECURITY note above.
+      # FR: Loopback par défaut — voir la note SÉCURITÉ ci-dessus.
+      - SNITCH_BIND=${SNITCH_BIND:-127.0.0.1}
+      - SNITCH_PORT=${SNITCH_PORT:-8000}
+      # EN: Uncomment to pin a fixed token instead of an auto-generated one.
+      # FR: Décommenter pour imposer un jeton fixe plutôt qu'un jeton généré.
+      # - SNITCH_TOKEN=change-me
+      # EN: Opt-in ONLY — sends contacted IPs to ip-api.com over HTTP.
+      #     Offline GeoLite2 (data/GeoLite2-City.mmdb) needs nothing external.
+      # FR: OPT-IN SEULEMENT — envoie les IP contactées à ip-api.com en HTTP.
+      #     GeoLite2 hors ligne (data/GeoLite2-City.mmdb) ne requiert rien d'externe.
+      # - SNITCH_ONLINE_GEO=1
     volumes:
       # EN: data/GeoLite2-City.mmdb — optional, for offline geolocation
       #     data/snitch.db         — created automatically at runtime
+      #     data/api_token.txt     — generated API token (0600)
       # FR: data/GeoLite2-City.mmdb — optionnel, pour la géolocalisation hors ligne
       #     data/snitch.db         — créé automatiquement au démarrage
+      #     data/api_token.txt     — jeton API généré (0600)
       - ./data:/app/data
     restart: unless-stopped

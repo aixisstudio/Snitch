@@ -110,6 +110,22 @@ export function AlertPanel({ alerts, onClose }) {
   )
 }
 
+/**
+ * EN: Translated alert message — the backend ships a code (alert.type) plus
+ *     structured params (alert.details); the `alertmsg_*` i18n functions
+ *     build the prose locally. Falls back to the backend's English `message`
+ *     if no key exists.
+ * FR: Message d'alerte traduit — le backend envoie un code (alert.type) plus
+ *     des paramètres structurés (alert.details) ; les fonctions i18n
+ *     `alertmsg_*` construisent le texte localement. Retombe sur le `message`
+ *     anglais du backend si aucune clé n'existe.
+ */
+function alertMessage(t, alert) {
+  const key = `alertmsg_${alert.type}`
+  const translated = t(key, alert.details || {})
+  return translated !== key ? translated : alert.message
+}
+
 function AlertRow({ alert }) {
   const { t } = useT()
   const sev      = SEVERITY_STYLES[alert.severity] || SEVERITY_STYLES.info
@@ -134,7 +150,7 @@ function AlertRow({ alert }) {
                 {typeLabel}
               </span>
             </div>
-            <div style={{ fontSize: 11, color: '#e2e8f0', lineHeight: 1.4 }}>{alert.message}</div>
+            <div style={{ fontSize: 11, color: '#e2e8f0', lineHeight: 1.4 }}>{alertMessage(t, alert)}</div>
             {alert.details && Object.keys(alert.details).length > 0 && (
               <div style={{ marginTop: 3, fontSize: 9, color: '#64748b', fontFamily: 'monospace' }}>
                 {Object.entries(alert.details).filter(([, v]) => v).map(([k, v]) => `${k}: ${v}`).join(' · ')}
@@ -246,7 +262,7 @@ function Toast({ alert, index, dying }) {
       <TypeIcon size={12} color={sev.color} style={{ flexShrink: 0 }} />
       <div style={{ minWidth: 0 }}>
         <div style={{ fontSize: 9, color: sev.color, fontWeight: 700, textTransform: 'uppercase' }}>{typeLabel}</div>
-        <div style={{ fontSize: 10, color: '#94a3b8', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{alert.message}</div>
+        <div style={{ fontSize: 10, color: '#94a3b8', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{alertMessage(t, alert)}</div>
       </div>
     </div>
   )

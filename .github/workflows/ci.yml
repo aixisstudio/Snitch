@@ -1,0 +1,41 @@
+# Snitch — continuous integration.
+# EN: Python lint (ruff, critical rules only) + pytest, and the frontend
+#     vitest suite + production build on every push/PR.
+# FR: Lint Python (ruff, règles critiques seulement) + pytest, et la suite
+#     vitest frontend + build de production à chaque push/PR.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install -r backend/requirements.txt -r backend/requirements-dev.txt
+      - name: Ruff (syntax/critical rules)
+        run: ruff check backend --select E9,F
+      - name: Pytest
+        run: cd backend && python -m pytest tests/ -v
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install + test + build
+        run: |
+          cd frontend
+          npm install
+          npm test
+          npm run build

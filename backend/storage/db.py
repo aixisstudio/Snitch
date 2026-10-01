@@ -5,37 +5,51 @@ EN: Two tables:
       - traffic    : per-minute aggregates (packets + bytes by category)
       - alerts_log : every emitted alert, serialized as JSON details
     Writes are cheap: packets only feed an in-memory accumulator that a
-    background thread flushes every 10 s. A nightly-style cleanup keeps the
-    DB to a 24-hour sliding window.
+    background thread flushes every 10 s. Hourly cleanup keeps the DB to a
+    24-hour sliding window.
+
+    DB location resolution order:
+      1. SNITCH_DATA_DIR env var (tests, custom deployments)
+      2. LOCALAPPDATA\\Snitch      (frozen/Electron builds on Windows)
+      3. <repo>/data               (dev / Docker)
 
 FR: Deux tables :
       - traffic    : agrégats par minute (paquets + octets par catégorie)
       - alerts_log : chaque alerte émise, détails sérialisés en JSON
     Les écritures sont légères : les paquets ne font qu'alimenter un
     accumulateur en mémoire qu'un thread d'arrière-plan vide toutes les 10 s.
-    Un nettoyage régulier limite la base à une fenêtre glissante de 24 h.
+    Un nettoyage horaire limite la base à une fenêtre glissante de 24 h.
+
+    Ordre de résolution de l'emplacement de la base :
+      1. variable SNITCH_DATA_DIR (tests, déploiements personnalisés)
+      2. LOCALAPPDATA\\Snitch       (builds figés/Electron sous Windows)
+      3. <dépôt>/data               (dev / Docker)
 """
 
 import json
+import logging
 import os
 import sqlite3
 import sys
 import threading
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
+logger = logging.getLogger("snitch.storage")
 
 
 def _get_db_path() -> Path:
     """
-    EN: Database location. Frozen (Electron) builds write to the user's
-        LOCALAPPDATA dir; dev/Docker builds write into ./data/.
-    FR: Emplacement de la base. Les builds figés (Electron) écrivent dans le
-        dossier LOCALAPPDATA de l'utilisateur ; dev/Docker écrivent dans ./data/.
+    EN: Resolve the DB path — see module docstring for the precedence order.
+    FR: Résoudre le chemin de la base — voir le docstring du module pour
+        l'ordre de priorité.
     """
-    if getattr(sys, 'frozen', False):
-        appdata = Path(os.environ.get('LOCALAPPDATA', Path.home()))
-        db_dir = appdata / 'Snitch'
+    env_dir = os.environ.get("SNITCH_DATA_DIR")
+    if env_dir:
+        db_dir = Path(env_dir)
+    elif getattr(sys, 'frozen', False):
+        db_dir = Path(os.environ.get('LOCALAPPDATA', Path.home())) / 'Snitch'
     else:
         db_dir = Path(__file__).parent.parent.parent / 'data'
     db_dir.mkdir(parents=True, exist_ok=True)
@@ -55,6 +69,18 @@ _conn_lock = threading.Lock()
 # FR: Accumulateur d'écriture en mémoire — (minute, catégorie) -> [paquets, octets].
 _pending: dict[tuple, list] = defaultdict(lambda: [0, 0])
 _pending_lock = threading.Lock()
+
+
+def _utcnow_minute() -> str:
+    """EN: Current UTC minute as 'YYYY-MM-DDTHH:MM' (timezone-aware; utcnow()
+    is deprecated since Python 3.12). / FR: Minute UTC courante au format
+    'YYYY-MM-DDTHH:MM' (conscient du fuseau ; utcnow() est déprécié depuis 3.12)."""
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M")
+
+
+def _utcnow_iso() -> str:
+    """EN: Current UTC instant as ISO string. / FR: Instant UTC courant en ISO."""
+    return datetime.now(timezone.utc).isoformat()
 
 
 # ── Connection & schema / Connexion & schéma ─────────────────────────────────
@@ -131,16 +157,19 @@ def flush() -> None:
         _pending.clear()
 
     rows = [(m, c, v[0], v[1]) for (m, c), v in batch.items()]
-    with _conn_lock:
-        conn = get_conn()
-        conn.executemany("""
-            INSERT INTO traffic (minute, category, packets, bytes)
-            VALUES (?, ?, ?, ?)
-            ON CONFLICT(minute, category) DO UPDATE SET
-                packets = packets + excluded.packets,
-                bytes   = bytes   + excluded.bytes
-        """, rows)
-        conn.commit()
+    try:
+        with _conn_lock:
+            conn = get_conn()
+            conn.executemany("""
+                INSERT INTO traffic (minute, category, packets, bytes)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(minute, category) DO UPDATE SET
+                    packets = packets + excluded.packets,
+                    bytes   = bytes   + excluded.bytes
+            """, rows)
+            conn.commit()
+    except sqlite3.Error as exc:
+        logger.error("flush failed: %s", exc)
 
 
 def log_alert(alert: dict) -> None:
@@ -150,17 +179,20 @@ def log_alert(alert: dict) -> None:
     FR: Persister une alerte. INSERT OR IGNORE rend les réessais idempotents
         grâce à la clé primaire UUID.
     """
-    with _conn_lock:
-        conn = get_conn()
-        conn.execute("""
-            INSERT OR IGNORE INTO alerts_log (id, ts, type, severity, message, node_id, details)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (
-            alert["id"], alert["timestamp"], alert["type"],
-            alert["severity"], alert["message"],
-            alert.get("node_id"), json.dumps(alert.get("details", {})),
-        ))
-        conn.commit()
+    try:
+        with _conn_lock:
+            conn = get_conn()
+            conn.execute("""
+                INSERT OR IGNORE INTO alerts_log (id, ts, type, severity, message, node_id, details)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (
+                alert["id"], alert["timestamp"], alert["type"],
+                alert["severity"], alert["message"],
+                alert.get("node_id"), json.dumps(alert.get("details", {})),
+            ))
+            conn.commit()
+    except sqlite3.Error as exc:
+        logger.error("log_alert failed: %s", exc)
 
 
 # ── Read helpers / Aides de lecture ──────────────────────────────────────────
@@ -172,7 +204,7 @@ def get_timeline(minutes: int = 60) -> list[dict]:
     FR: Totaux de paquets/octets par minute plus le nombre d'alertes par
         minute — exactement ce que dessine le graphique timeline du frontend.
     """
-    cutoff = (datetime.utcnow() - timedelta(minutes=minutes)).strftime("%Y-%m-%dT%H:%M")
+    cutoff = (datetime.now(timezone.utc) - timedelta(minutes=minutes)).strftime("%Y-%m-%dT%H:%M")
 
     with _conn_lock:
         conn = get_conn()
@@ -211,9 +243,12 @@ def cleanup_old_data(hours: int = 24) -> None:
     FR: Supprimer les lignes de plus de `hours` heures — borne la taille de la
         base puisque l'UI n'affiche qu'une fenêtre glissante.
     """
-    cutoff = (datetime.utcnow() - timedelta(hours=hours)).strftime("%Y-%m-%dT%H:%M")
-    with _conn_lock:
-        conn = get_conn()
-        conn.execute("DELETE FROM traffic WHERE minute < ?", (cutoff,))
-        conn.execute("DELETE FROM alerts_log WHERE ts < ?", (cutoff,))
-        conn.commit()
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours)).strftime("%Y-%m-%dT%H:%M")
+    try:
+        with _conn_lock:
+            conn = get_conn()
+            conn.execute("DELETE FROM traffic WHERE minute < ?", (cutoff,))
+            conn.execute("DELETE FROM alerts_log WHERE ts < ?", (cutoff,))
+            conn.commit()
+    except sqlite3.Error as exc:
+        logger.error("cleanup failed: %s", exc)

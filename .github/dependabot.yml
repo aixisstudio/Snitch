@@ -1,0 +1,26 @@
+# Snitch — Dependabot configuration.
+# EN: Weekly update PRs for Python deps, npm deps and GitHub Actions.
+# FR: PRs de mise à jour hebdomadaires pour les deps Python, npm et les
+#     GitHub Actions.
+
+version: 2
+updates:
+  - package-ecosystem: "pip"
+    directory: "/backend"
+    schedule:
+      interval: "weekly"
+
+  - package-ecosystem: "npm"
+    directory: "/frontend"
+    schedule:
+      interval: "weekly"
+
+  - package-ecosystem: "npm"
+    directory: "/electron"
+    schedule:
+      interval: "weekly"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"

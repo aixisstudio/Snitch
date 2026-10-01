@@ -3,20 +3,25 @@
  *
  * EN: Single source of truth for realtime state. Maintains the node/edge/LAN
  *     device maps, the recent-packet list, alerts, capture status and the
- *     per-second bandwidth buckets that feed the sparkline. Automatically
- *     reconnects every 2 s after a disconnect.
- *     Also exposes the REST-backed control actions (start/stop capture,
- *     filters, whitelist).
+ *     per-second bandwidth buckets that feed the sparkline.
+ *
+ *     Reconnection: exponential backoff (1 s → 2 s → 4 s … capped at 30 s)
+ *     instead of a fixed 2 s — a dead backend no longer gets hammered. The
+ *     pending retry timer IS cleared on unmount (the old version leaked it).
+ *     The connection is opened with the API token via wsUrlWithToken().
  *
  * FR: Source de vérité unique pour l'état temps réel. Maintient les tables de
  *     nœuds/arêtes/appareils LAN, la liste des paquets récents, les alertes,
  *     le statut de capture et les seaux de débit par seconde qui alimentent la
- *     sparkline. Reconnexion automatique toutes les 2 s après une déconnexion.
- *     Expose aussi les actions de contrôle REST (start/stop capture, filtres,
- *     whitelist).
+ *     sparkline.
+ *
+ *     Reconnexion : backoff exponentiel (1 s → 2 s → 4 s … plafonné à 30 s)
+ *     au lieu de 2 s fixes — un backend mort n'est plus martelé. Le timer de
+ *     réessai EST nettoyé au démontage (l'ancienne version le fuyait).
+ *     La connexion s'ouvre avec le jeton API via wsUrlWithToken().
  */
 import { useEffect, useRef, useState } from 'react'
-import { API_BASE } from '../api'
+import { API_BASE, authHeaders, wsUrlWithToken } from '../api'
 
 export function useWebSocket(url) {
   const ws = useRef(null)
@@ -57,13 +62,30 @@ export function useWebSocket(url) {
   }, [])
 
   useEffect(() => {
-    function connect() {
-      ws.current = new WebSocket(url)
+    let stopped = false
+    let attempts = 0
+    let timer = null
 
-      ws.current.onopen = () => setStatus('connected')
+    async function connect() {
+      // EN: Resolve the token BEFORE opening the socket.
+      // FR: Résoudre le jeton AVANT d'ouvrir le socket.
+      const wsUrl = await wsUrlWithToken(url)
+      if (stopped) return
+
+      ws.current = new WebSocket(wsUrl)
+
+      ws.current.onopen = () => {
+        attempts = 0
+        setStatus('connected')
+      }
       ws.current.onclose = () => {
+        if (stopped) return
         setStatus('disconnected')
-        setTimeout(connect, 2000)  // EN: auto-reconnect / FR: reconnexion auto
+        // EN: Exponential backoff — 1s, 2s, 4s … max 30s.
+        // FR: Backoff exponentiel — 1s, 2s, 4s … max 30s.
+        const delay = Math.min(30000, 1000 * 2 ** attempts)
+        attempts += 1
+        timer = setTimeout(connect, delay)
       }
       ws.current.onerror = () => setStatus('error')
 
@@ -106,7 +128,7 @@ export function useWebSocket(url) {
         // FR: Appareil LAN apparu / modifié / passé hors ligne.
         if (msg.type === 'device_update') {
           setLanDevices(prev => ({ ...prev, [msg.device.id]: msg.device }))
-          setEdges(prev => ({ ...prev, [msg.edge.id]: msg.edge }))
+          if (msg.edge) setEdges(prev => ({ ...prev, [msg.edge.id]: msg.edge }))
         }
 
         if (msg.type === 'alert') {
@@ -164,7 +186,13 @@ export function useWebSocket(url) {
     }
 
     connect()
-    return () => ws.current?.close()
+    return () => {
+      // EN: Stop reconnecting and free the pending timer on unmount.
+      // FR: Arrêter les reconnexions et libérer le timer en attente au démontage.
+      stopped = true
+      if (timer) clearTimeout(timer)
+      ws.current?.close()
+    }
   }, [url])
 
   const clearUnread = () => setUnread(0)
@@ -173,7 +201,10 @@ export function useWebSocket(url) {
 
   async function toggleCapture() {
     const endpoint = capturing ? '/capture/stop' : '/capture/start'
-    const res = await fetch(`${API_BASE}${endpoint}`, { method: 'POST' })
+    const res = await fetch(`${API_BASE}${endpoint}`, {
+      method: 'POST',
+      headers: await authHeaders(),
+    })
     const data = await res.json()
     setCapturing(data.capturing)
   }
@@ -181,7 +212,7 @@ export function useWebSocket(url) {
   async function updatePortFilter(ports) {
     const res = await fetch(`${API_BASE}/capture/ports`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: await authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ ports }),
     })
     const data = await res.json()
@@ -191,7 +222,7 @@ export function useWebSocket(url) {
   async function updateProcessFilter(excluded) {
     const res = await fetch(`${API_BASE}/capture/processes`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: await authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ excluded }),
     })
     const data = await res.json()
@@ -201,7 +232,7 @@ export function useWebSocket(url) {
   async function updateIpWhitelist(ips) {
     const res = await fetch(`${API_BASE}/capture/whitelist`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: await authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ ips }),
     })
     const data = await res.json()

@@ -12,13 +12,14 @@
  *     réel vient de `useWebSocket` ; l'état purement UI (nœud sélectionné,
  *     vue, panneaux) vit ici.
  */
-import { useState, useMemo, useRef, useEffect } from 'react'
+import { useState, useMemo } from 'react'
 import { Hexagon, Globe, Wifi, Smartphone, Monitor, Cpu, ShieldCheck, Radio, Zap, HelpCircle, AlertTriangle, Square, Play, Filter, Mic, Camera, Download, ShieldOff } from 'lucide-react'
 import ForceGraph from './graph/ForceGraph'
 import MapView from './map/MapView'
 import Sidebar from './components/Sidebar'
 import { AlertBell, AlertPanel, AlertToasts } from './components/AlertPanel'
 import Timeline from './components/Timeline'
+import Dropdown from './components/Dropdown'
 import { useWebSocket } from './hooks/useWebSocket'
 import { computePrivacyScore } from './scoring/privacy'
 import { WS_URL } from './api'
@@ -175,21 +176,12 @@ function toCSV(rows, cols) {
   return [header, ...lines].join('\n')
 }
 
-/** EN: Dropdown offering graph/alerts export in JSON and CSV.
- *  FR: Menu déroulant d'export du graphe/des alertes en JSON et CSV. */
+/** EN: Dropdown offering graph/alerts export in JSON and CSV — built on the
+ *      shared `Dropdown` component (outside-click handling included).
+ *  FR: Menu déroulant d'export du graphe/des alertes en JSON et CSV — basé
+ *      sur le composant `Dropdown` partagé (clic extérieur inclus). */
 function ExportButton({ nodes, edges, lanDevices, alerts }) {
   const { t } = useT()
-  const [open, setOpen] = useState(false)
-  const ref = useRef(null)
-
-  // EN: Close the dropdown on outside click. / FR: Fermer le menu au clic extérieur.
-  useEffect(() => {
-    function onClickOutside(e) {
-      if (ref.current && !ref.current.contains(e.target)) setOpen(false)
-    }
-    document.addEventListener('mousedown', onClickOutside)
-    return () => document.removeEventListener('mousedown', onClickOutside)
-  }, [])
 
   const stamp = () => new Date().toISOString().slice(0, 16).replace(':', '-')
 
@@ -200,25 +192,21 @@ function ExportButton({ nodes, edges, lanDevices, alerts }) {
       edges: Object.values(edges),
     }
     downloadFile(JSON.stringify(data, null, 2), `snitch-graph-${stamp()}.json`)
-    setOpen(false)
   }
 
   function exportGraphCSV() {
     const allNodes = [...Object.values(nodes), ...Object.values(lanDevices)]
     const cols = ['id', 'label', 'ip', 'category', 'country', 'city', 'org', 'bytes', 'packets']
     downloadFile(toCSV(allNodes, cols), `snitch-graph-${stamp()}.csv`)
-    setOpen(false)
   }
 
   function exportAlertsJSON() {
     downloadFile(JSON.stringify(alerts, null, 2), `snitch-alerts-${stamp()}.json`)
-    setOpen(false)
   }
 
   function exportAlertsCSV() {
     const cols = ['id', 'type', 'severity', 'message', 'node_id', 'timestamp']
     downloadFile(toCSV(alerts, cols), `snitch-alerts-${stamp()}.csv`)
-    setOpen(false)
   }
 
   const items = [
@@ -229,40 +217,34 @@ function ExportButton({ nodes, edges, lanDevices, alerts }) {
   ]
 
   return (
-    <div ref={ref} style={{ position: 'relative' }}>
-      <button onClick={() => setOpen(v => !v)} style={{
-        display: 'flex', alignItems: 'center', gap: 6,
-        background: '#1e293b', border: '1px solid #334155',
-        borderRadius: 20, padding: '5px 14px',
-        cursor: 'pointer', color: '#64748b',
-        fontSize: 11, fontWeight: 600, transition: 'all 0.15s',
-      }}>
-        <Download size={11} />
-        {t('export_btn')}
-      </button>
-
-      {open && (
-        <div style={{
-          position: 'absolute', top: '110%', right: 0, zIndex: 100,
+    <Dropdown
+      panelStyle={{ overflow: 'hidden' }}
+      button={
+        <button style={{
+          display: 'flex', alignItems: 'center', gap: 6,
           background: '#1e293b', border: '1px solid #334155',
-          borderRadius: 10, overflow: 'hidden',
-          boxShadow: '0 8px 24px rgba(0,0,0,0.4)', minWidth: 180,
+          borderRadius: 20, padding: '5px 14px',
+          cursor: 'pointer', color: '#64748b',
+          fontSize: 11, fontWeight: 600, transition: 'all 0.15s',
         }}>
-          {items.map(({ label, action }) => (
-            <button key={label} onClick={action} style={{
-              display: 'block', width: '100%', textAlign: 'left',
-              background: 'none', border: 'none', borderBottom: '1px solid #0f172a',
-              padding: '9px 14px', color: '#e2e8f0',
-              fontSize: 11, cursor: 'pointer',
-            }}
-            onMouseEnter={e => e.target.style.background = '#334155'}
-            onMouseLeave={e => e.target.style.background = 'none'}>
-              {label}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
+          <Download size={11} />
+          {t('export_btn')}
+        </button>
+      }
+    >
+      {(close) => items.map(({ label, action }) => (
+        <button key={label} onClick={() => { action(); close() }} style={{
+          display: 'block', width: '100%', textAlign: 'left',
+          background: 'none', border: 'none', borderBottom: '1px solid #0f172a',
+          padding: '9px 14px', color: '#e2e8f0',
+          fontSize: 11, cursor: 'pointer',
+        }}
+        onMouseEnter={e => e.target.style.background = '#334155'}
+        onMouseLeave={e => e.target.style.background = 'none'}>
+          {label}
+        </button>
+      ))}
+    </Dropdown>
   )
 }
 
@@ -302,16 +284,6 @@ function MediaBadge({ media }) {
  *      de la capture (côté serveur) et du graphe (côté client). */
 function ProcessFilter({ excluded, onChange, nodes }) {
   const { t } = useT()
-  const [open, setOpen] = useState(false)
-  const ref = useRef(null)
-
-  useEffect(() => {
-    function onClickOutside(e) {
-      if (ref.current && !ref.current.contains(e.target)) setOpen(false)
-    }
-    document.addEventListener('mousedown', onClickOutside)
-    return () => document.removeEventListener('mousedown', onClickOutside)
-  }, [])
 
   // EN: Union of every process name seen on any node.
   // FR: Union de tous les noms de processus vus sur les nœuds.
@@ -333,76 +305,70 @@ function ProcessFilter({ excluded, onChange, nodes }) {
   const active = excluded.length > 0
 
   return (
-    <div ref={ref} style={{ position: 'relative' }}>
-      <button onClick={() => setOpen(v => !v)} style={{
-        display: 'flex', alignItems: 'center', gap: 6,
-        background: active ? '#3b1f2b' : '#1e293b',
-        border: `1px solid ${active ? '#f87171' : '#334155'}`,
-        borderRadius: 20, padding: '5px 14px',
-        cursor: 'pointer', color: active ? '#fca5a5' : '#64748b',
-        fontSize: 11, fontWeight: 600, transition: 'all 0.15s',
-      }}>
-        {t('process_filter')}
-        {active && (
-          <span style={{
-            background: '#ef4444', color: '#fff',
-            borderRadius: 10, padding: '0 6px', fontSize: 10,
-          }}>{excluded.length}</span>
-        )}
-      </button>
-
-      {open && (
-        <div style={{
-          position: 'absolute', top: '110%', right: 0, zIndex: 100,
-          background: '#1e293b', border: '1px solid #334155',
-          borderRadius: 10, padding: 12, minWidth: 220, maxHeight: 300,
-          overflowY: 'auto', boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+    <Dropdown
+      panelStyle={{ padding: 12, minWidth: 220, maxHeight: 300, overflowY: 'auto' }}
+      button={
+        <button style={{
+          display: 'flex', alignItems: 'center', gap: 6,
+          background: active ? '#3b1f2b' : '#1e293b',
+          border: `1px solid ${active ? '#f87171' : '#334155'}`,
+          borderRadius: 20, padding: '5px 14px',
+          cursor: 'pointer', color: active ? '#fca5a5' : '#64748b',
+          fontSize: 11, fontWeight: 600, transition: 'all 0.15s',
         }}>
-          <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 8 }}>
-            {t('process_filter_hint')}
-          </div>
-
-          {allProcesses.length === 0 && (
-            <div style={{ fontSize: 11, color: '#475569' }}>{t('process_none')}</div>
-          )}
-
-          {allProcesses.map(proc => {
-            const isExcluded = excluded.includes(proc)
-            return (
-              <div key={proc} onClick={() => toggle(proc)} style={{
-                display: 'flex', alignItems: 'center', gap: 8,
-                padding: '5px 6px', borderRadius: 6, cursor: 'pointer',
-                background: isExcluded ? '#2d1b1b' : 'transparent',
-                marginBottom: 2,
-              }}>
-                <div style={{
-                  width: 12, height: 12, borderRadius: 3, flexShrink: 0,
-                  border: `1px solid ${isExcluded ? '#ef4444' : '#475569'}`,
-                  background: isExcluded ? '#ef4444' : 'transparent',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                }}>
-                  {isExcluded && <span style={{ color: '#fff', fontSize: 9, lineHeight: 1 }}>✕</span>}
-                </div>
-                <span style={{ fontSize: 11, color: isExcluded ? '#fca5a5' : '#e2e8f0' }}>
-                  {proc}
-                </span>
-              </div>
-            )
-          })}
-
+          {t('process_filter')}
           {active && (
-            <button onClick={() => onChange([])} style={{
-              marginTop: 8, width: '100%', background: 'none',
-              border: '1px solid #334155', borderRadius: 6,
-              padding: '4px 0', color: '#64748b', fontSize: 10,
-              cursor: 'pointer',
-            }}>
-              {t('process_clear')}
-            </button>
+            <span style={{
+              background: '#ef4444', color: '#fff',
+              borderRadius: 10, padding: '0 6px', fontSize: 10,
+            }}>{excluded.length}</span>
           )}
-        </div>
+        </button>
+      }
+    >
+      <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 8 }}>
+        {t('process_filter_hint')}
+      </div>
+
+      {allProcesses.length === 0 && (
+        <div style={{ fontSize: 11, color: '#475569' }}>{t('process_none')}</div>
       )}
-    </div>
+
+      {allProcesses.map(proc => {
+        const isExcluded = excluded.includes(proc)
+        return (
+          <div key={proc} onClick={() => toggle(proc)} style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            padding: '5px 6px', borderRadius: 6, cursor: 'pointer',
+            background: isExcluded ? '#2d1b1b' : 'transparent',
+            marginBottom: 2,
+          }}>
+            <div style={{
+              width: 12, height: 12, borderRadius: 3, flexShrink: 0,
+              border: `1px solid ${isExcluded ? '#ef4444' : '#475569'}`,
+              background: isExcluded ? '#ef4444' : 'transparent',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              {isExcluded && <span style={{ color: '#fff', fontSize: 9, lineHeight: 1 }}>✕</span>}
+            </div>
+            <span style={{ fontSize: 11, color: isExcluded ? '#fca5a5' : '#e2e8f0' }}>
+              {proc}
+            </span>
+          </div>
+        )
+      })}
+
+      {active && (
+        <button onClick={() => onChange([])} style={{
+          marginTop: 8, width: '100%', background: 'none',
+          border: '1px solid #334155', borderRadius: 6,
+          padding: '4px 0', color: '#64748b', fontSize: 10,
+          cursor: 'pointer',
+        }}>
+          {t('process_clear')}
+        </button>
+      )}
+    </Dropdown>
   )
 }
 
@@ -410,18 +376,8 @@ function ProcessFilter({ excluded, onChange, nodes }) {
  *  FR: Puce de filtre de ports — restreint la capture aux ports listés. */
 function PortFilter({ ports, onUpdate }) {
   const { t } = useT()
-  const [open, setOpen] = useState(false)
   const [input, setInput] = useState('')
   const [error, setError] = useState(false)
-  const ref = useRef(null)
-
-  useEffect(() => {
-    function onClickOutside(e) {
-      if (ref.current && !ref.current.contains(e.target)) setOpen(false)
-    }
-    document.addEventListener('mousedown', onClickOutside)
-    return () => document.removeEventListener('mousedown', onClickOutside)
-  }, [])
 
   function addPort(e) {
     e.preventDefault()
@@ -440,87 +396,81 @@ function PortFilter({ ports, onUpdate }) {
   const active = ports.length > 0
 
   return (
-    <div ref={ref} style={{ position: 'relative' }}>
-      <button onClick={() => setOpen(v => !v)} style={{
-        display: 'flex', alignItems: 'center', gap: 6,
-        background: active ? '#1e3a5f' : '#1e293b',
-        border: `1px solid ${active ? '#3b82f6' : '#334155'}`,
-        borderRadius: 20, padding: '5px 14px',
-        cursor: 'pointer', color: active ? '#93c5fd' : '#64748b',
-        fontSize: 11, fontWeight: 600, transition: 'all 0.15s',
-      }}>
-        <Filter size={11} />
-        {t('port_filter')}
-        {active && (
-          <span style={{
-            background: '#3b82f6', color: '#fff',
-            borderRadius: 10, padding: '0 6px', fontSize: 10,
-          }}>{ports.length}</span>
-        )}
-      </button>
-
-      {open && (
-        <div style={{
-          position: 'absolute', top: '110%', right: 0, zIndex: 100,
-          background: '#1e293b', border: '1px solid #334155',
-          borderRadius: 10, padding: 12, minWidth: 220,
-          boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+    <Dropdown
+      panelStyle={{ padding: 12, minWidth: 220 }}
+      button={
+        <button style={{
+          display: 'flex', alignItems: 'center', gap: 6,
+          background: active ? '#1e3a5f' : '#1e293b',
+          border: `1px solid ${active ? '#3b82f6' : '#334155'}`,
+          borderRadius: 20, padding: '5px 14px',
+          cursor: 'pointer', color: active ? '#93c5fd' : '#64748b',
+          fontSize: 11, fontWeight: 600, transition: 'all 0.15s',
         }}>
-          <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 8 }}>
-            {active ? `${ports.length} port${ports.length > 1 ? 's' : ''}` : t('port_all')}
-          </div>
-
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: ports.length ? 10 : 0 }}>
-            {ports.map(p => (
-              <span key={p} style={{
-                display: 'flex', alignItems: 'center', gap: 4,
-                background: '#0f172a', border: '1px solid #3b82f6',
-                borderRadius: 12, padding: '2px 8px',
-                fontSize: 11, color: '#93c5fd',
-              }}>
-                {p}
-                <button onClick={() => removePort(p)} style={{
-                  background: 'none', border: 'none', cursor: 'pointer',
-                  color: '#64748b', padding: 0, lineHeight: 1, fontSize: 13,
-                }}>×</button>
-              </span>
-            ))}
-          </div>
-
-          <form onSubmit={addPort} style={{ display: 'flex', gap: 6 }}>
-            <input
-              autoFocus
-              value={input}
-              onChange={e => { setInput(e.target.value); setError(false) }}
-              placeholder={t('port_placeholder')}
-              style={{
-                flex: 1, background: '#0f172a',
-                border: `1px solid ${error ? '#ef4444' : '#334155'}`,
-                borderRadius: 6, padding: '5px 8px',
-                color: '#e2e8f0', fontSize: 11, outline: 'none',
-              }}
-            />
-            <button type="submit" style={{
-              background: '#3b82f6', border: 'none', borderRadius: 6,
-              padding: '5px 10px', color: '#fff', fontSize: 11,
-              cursor: 'pointer', fontWeight: 600,
-            }}>+</button>
-          </form>
-          {error && <div style={{ fontSize: 10, color: '#ef4444', marginTop: 4 }}>{t('port_invalid')}</div>}
-
+          <Filter size={11} />
+          {t('port_filter')}
           {active && (
-            <button onClick={() => onUpdate([])} style={{
-              marginTop: 10, width: '100%', background: 'none',
-              border: '1px solid #334155', borderRadius: 6,
-              padding: '4px 0', color: '#64748b', fontSize: 10,
-              cursor: 'pointer',
-            }}>
-              {t('port_all')}
-            </button>
+            <span style={{
+              background: '#3b82f6', color: '#fff',
+              borderRadius: 10, padding: '0 6px', fontSize: 10,
+            }}>{ports.length}</span>
           )}
-        </div>
+        </button>
+      }
+    >
+      <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 8 }}>
+        {active ? `${ports.length} port${ports.length > 1 ? 's' : ''}` : t('port_all')}
+      </div>
+
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: ports.length ? 10 : 0 }}>
+        {ports.map(p => (
+          <span key={p} style={{
+            display: 'flex', alignItems: 'center', gap: 4,
+            background: '#0f172a', border: '1px solid #3b82f6',
+            borderRadius: 12, padding: '2px 8px',
+            fontSize: 11, color: '#93c5fd',
+          }}>
+            {p}
+            <button onClick={() => removePort(p)} style={{
+              background: 'none', border: 'none', cursor: 'pointer',
+              color: '#64748b', padding: 0, lineHeight: 1, fontSize: 13,
+            }}>×</button>
+          </span>
+        ))}
+      </div>
+
+      <form onSubmit={addPort} style={{ display: 'flex', gap: 6 }}>
+        <input
+          autoFocus
+          value={input}
+          onChange={e => { setInput(e.target.value); setError(false) }}
+          placeholder={t('port_placeholder')}
+          style={{
+            flex: 1, background: '#0f172a',
+            border: `1px solid ${error ? '#ef4444' : '#334155'}`,
+            borderRadius: 6, padding: '5px 8px',
+            color: '#e2e8f0', fontSize: 11, outline: 'none',
+          }}
+        />
+        <button type="submit" style={{
+          background: '#3b82f6', border: 'none', borderRadius: 6,
+          padding: '5px 10px', color: '#fff', fontSize: 11,
+          cursor: 'pointer', fontWeight: 600,
+        }}>+</button>
+      </form>
+      {error && <div style={{ fontSize: 10, color: '#ef4444', marginTop: 4 }}>{t('port_invalid')}</div>}
+
+      {active && (
+        <button onClick={() => onUpdate([])} style={{
+          marginTop: 10, width: '100%', background: 'none',
+          border: '1px solid #334155', borderRadius: 6,
+          padding: '4px 0', color: '#64748b', fontSize: 10,
+          cursor: 'pointer',
+        }}>
+          {t('port_all')}
+        </button>
       )}
-    </div>
+    </Dropdown>
   )
 }
 
@@ -536,18 +486,8 @@ function isValidIp(ip) {
  *  FR: Puce de liste blanche d'IP — les IP listées sont ignorées côté serveur. */
 function IPWhitelist({ ips, onUpdate }) {
   const { t } = useT()
-  const [open, setOpen] = useState(false)
   const [input, setInput] = useState('')
   const [error, setError] = useState(false)
-  const ref = useRef(null)
-
-  useEffect(() => {
-    function onClickOutside(e) {
-      if (ref.current && !ref.current.contains(e.target)) setOpen(false)
-    }
-    document.addEventListener('mousedown', onClickOutside)
-    return () => document.removeEventListener('mousedown', onClickOutside)
-  }, [])
 
   function addIp(e) {
     e.preventDefault()
@@ -566,87 +506,81 @@ function IPWhitelist({ ips, onUpdate }) {
   const active = ips.length > 0
 
   return (
-    <div ref={ref} style={{ position: 'relative' }}>
-      <button onClick={() => setOpen(v => !v)} style={{
-        display: 'flex', alignItems: 'center', gap: 6,
-        background: active ? '#153824' : '#1e293b',
-        border: `1px solid ${active ? '#22c55e' : '#334155'}`,
-        borderRadius: 20, padding: '5px 14px',
-        cursor: 'pointer', color: active ? '#86efac' : '#64748b',
-        fontSize: 11, fontWeight: 600, transition: 'all 0.15s',
-      }}>
-        <ShieldOff size={11} />
-        {t('ip_whitelist')}
-        {active && (
-          <span style={{
-            background: '#22c55e', color: '#052e16',
-            borderRadius: 10, padding: '0 6px', fontSize: 10,
-          }}>{ips.length}</span>
-        )}
-      </button>
-
-      {open && (
-        <div style={{
-          position: 'absolute', top: '110%', right: 0, zIndex: 100,
-          background: '#1e293b', border: '1px solid #334155',
-          borderRadius: 10, padding: 12, minWidth: 220,
-          boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+    <Dropdown
+      panelStyle={{ padding: 12, minWidth: 220 }}
+      button={
+        <button style={{
+          display: 'flex', alignItems: 'center', gap: 6,
+          background: active ? '#153824' : '#1e293b',
+          border: `1px solid ${active ? '#22c55e' : '#334155'}`,
+          borderRadius: 20, padding: '5px 14px',
+          cursor: 'pointer', color: active ? '#86efac' : '#64748b',
+          fontSize: 11, fontWeight: 600, transition: 'all 0.15s',
         }}>
-          <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 8 }}>
-            {t('ip_whitelist_hint')}
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: ips.length ? 10 : 0 }}>
-            {ips.map(ip => (
-              <span key={ip} style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                background: '#0f172a', border: '1px solid #22c55e',
-                borderRadius: 6, padding: '3px 8px',
-                fontSize: 11, color: '#86efac', fontFamily: 'monospace',
-              }}>
-                {ip}
-                <button onClick={() => removeIp(ip)} style={{
-                  background: 'none', border: 'none', cursor: 'pointer',
-                  color: '#64748b', padding: 0, lineHeight: 1, fontSize: 13,
-                }}>×</button>
-              </span>
-            ))}
-          </div>
-
-          <form onSubmit={addIp} style={{ display: 'flex', gap: 6 }}>
-            <input
-              autoFocus
-              value={input}
-              onChange={e => { setInput(e.target.value); setError(false) }}
-              placeholder={t('ip_placeholder')}
-              style={{
-                flex: 1, background: '#0f172a',
-                border: `1px solid ${error ? '#ef4444' : '#334155'}`,
-                borderRadius: 6, padding: '5px 8px',
-                color: '#e2e8f0', fontSize: 11, outline: 'none',
-              }}
-            />
-            <button type="submit" style={{
-              background: '#22c55e', border: 'none', borderRadius: 6,
-              padding: '5px 10px', color: '#052e16', fontSize: 11,
-              cursor: 'pointer', fontWeight: 600,
-            }}>+</button>
-          </form>
-          {error && <div style={{ fontSize: 10, color: '#ef4444', marginTop: 4 }}>{t('ip_invalid')}</div>}
-
+          <ShieldOff size={11} />
+          {t('ip_whitelist')}
           {active && (
-            <button onClick={() => onUpdate([])} style={{
-              marginTop: 10, width: '100%', background: 'none',
-              border: '1px solid #334155', borderRadius: 6,
-              padding: '4px 0', color: '#64748b', fontSize: 10,
-              cursor: 'pointer',
-            }}>
-              {t('ip_clear')}
-            </button>
+            <span style={{
+              background: '#22c55e', color: '#052e16',
+              borderRadius: 10, padding: '0 6px', fontSize: 10,
+            }}>{ips.length}</span>
           )}
-        </div>
+        </button>
+      }
+    >
+      <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 8 }}>
+        {t('ip_whitelist_hint')}
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: ips.length ? 10 : 0 }}>
+        {ips.map(ip => (
+          <span key={ip} style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            background: '#0f172a', border: '1px solid #22c55e',
+            borderRadius: 6, padding: '3px 8px',
+            fontSize: 11, color: '#86efac', fontFamily: 'monospace',
+          }}>
+            {ip}
+            <button onClick={() => removeIp(ip)} style={{
+              background: 'none', border: 'none', cursor: 'pointer',
+              color: '#64748b', padding: 0, lineHeight: 1, fontSize: 13,
+            }}>×</button>
+          </span>
+        ))}
+      </div>
+
+      <form onSubmit={addIp} style={{ display: 'flex', gap: 6 }}>
+        <input
+          autoFocus
+          value={input}
+          onChange={e => { setInput(e.target.value); setError(false) }}
+          placeholder={t('ip_placeholder')}
+          style={{
+            flex: 1, background: '#0f172a',
+            border: `1px solid ${error ? '#ef4444' : '#334155'}`,
+            borderRadius: 6, padding: '5px 8px',
+            color: '#e2e8f0', fontSize: 11, outline: 'none',
+          }}
+        />
+        <button type="submit" style={{
+          background: '#22c55e', border: 'none', borderRadius: 6,
+          padding: '5px 10px', color: '#052e16', fontSize: 11,
+          cursor: 'pointer', fontWeight: 600,
+        }}>+</button>
+      </form>
+      {error && <div style={{ fontSize: 10, color: '#ef4444', marginTop: 4 }}>{t('ip_invalid')}</div>}
+
+      {active && (
+        <button onClick={() => onUpdate([])} style={{
+          marginTop: 10, width: '100%', background: 'none',
+          border: '1px solid #334155', borderRadius: 6,
+          padding: '4px 0', color: '#64748b', fontSize: 10,
+          cursor: 'pointer',
+        }}>
+          {t('ip_clear')}
+        </button>
       )}
-    </div>
+    </Dropdown>
   )
 }
 
@@ -771,14 +705,14 @@ function StatusBadge({ status, lanCount }) {
 function Legend() {
   const { t } = useT()
   const items = [
-    { Icon: Wifi,          color: '#f97316', label: 'Router'          },
-    { Icon: Smartphone,    color: '#a855f7', label: 'Phone'           },
-    { Icon: Monitor,       color: '#06b6d4', label: 'PC'              },
-    { Icon: Cpu,           color: '#84cc16', label: 'IoT'             },
-    { Icon: ShieldCheck,   color: '#22c55e', label: 'HTTPS'           },
-    { Icon: Radio,         color: '#f59e0b', label: 'Tracking'        },
-    { Icon: Zap,           color: '#6366f1', label: 'CDN'             },
-    { Icon: Globe,         color: '#38bdf8', label: 'DNS'             },
+    { Icon: Wifi,          color: '#f97316', label: t('legend_router')   },
+    { Icon: Smartphone,    color: '#a855f7', label: t('legend_phone')    },
+    { Icon: Monitor,       color: '#06b6d4', label: t('legend_pc')       },
+    { Icon: Cpu,           color: '#84cc16', label: t('legend_iot')      },
+    { Icon: ShieldCheck,   color: '#22c55e', label: t('legend_https')    },
+    { Icon: Radio,         color: '#f59e0b', label: t('legend_tracking') },
+    { Icon: Zap,           color: '#6366f1', label: t('legend_cdn')      },
+    { Icon: Globe,         color: '#38bdf8', label: t('legend_dns')      },
     { Icon: AlertTriangle, color: '#ef4444', label: t('legend_alert') },
     { Icon: HelpCircle,    color: '#94a3b8', label: t('legend_unknown') },
   ]

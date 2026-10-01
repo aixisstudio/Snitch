@@ -2,38 +2,80 @@
  * Snitch — D3 force-directed graph view.
  *
  * EN: The main visualization. Every remote host and LAN device is a node,
- *     every connection an edge anchored on the central "local" node. The
- *     simulation is rebuilt whenever the data changes, but node positions
- *     are cached in `posCache` so the layout stays stable across updates —
- *     the sim only reheats when new nodes appear. Once cooled, every node is
- *     pinned (fx/fy) so the graph never drifts.
- *     A second lightweight effect dims non-matching nodes/links when the
- *     search filter is active, without restarting the simulation.
+ *     every connection an edge anchored on the central "local" node.
+ *
+ *     PERFORMANCE (the big fix): the simulation is ONLY rebuilt when the
+ *     graph *structure* changes — i.e. the SET of node ids or edge ids. On a
+ *     busy link the old code rebuilt the whole sim once per WebSocket packet
+ *     because `nodes`/`edges` were new objects every render. Now a
+ *     `structKey` string (sorted ids) gates the rebuild effect, and a second
+ *     lightweight effect updates the volatile visuals — edge width, tooltips,
+ *     alert rings — by mutating the existing D3 selections in place.
+ *     Node positions live in `posCache`, so rebuilds keep the layout stable.
  *
  * FR: La visualisation principale. Chaque hôte distant et appareil LAN est un
  *     nœud, chaque connexion une arête ancrée sur le nœud central « local ».
- *     La simulation est reconstruite à chaque changement de données, mais les
- *     positions des nœuds sont mises en cache dans `posCache` pour garder une
- *     mise en page stable — la sim ne se réchauffe que quand de nouveaux nœuds
- *     apparaissent. Une fois refroidie, chaque nœud est épinglé (fx/fy) pour
- *     que le graphe ne dérive jamais.
- *     Un second effet léger estompe les nœuds/liens non correspondants quand
- *     le filtre de recherche est actif, sans relancer la simulation.
+ *
+ *     PERFORMANCE (la grosse correction) : la simulation n'est reconstruite
+ *     QUE quand la *structure* du graphe change — c.-à-d. l'ENSEMBLE des ids
+ *     de nœuds ou d'arêtes. Sur un lien actif, l'ancien code reconstruisait
+ *     toute la sim à chaque paquet WebSocket car `nodes`/`edges` étaient de
+ *     nouveaux objets à chaque rendu. Désormais une `structKey` (ids triés)
+ *     pilote l'effet de reconstruction, et un second effet léger met à jour
+ *     les visuels volatils — largeur des arêtes, infobulles, anneaux d'alerte
+ *     — en mutant les sélections D3 existantes sur place.
+ *     Les positions des nœuds vivent dans `posCache` : les reconstructions
+ *     gardent une mise en page stable.
  */
-import { useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import * as d3 from 'd3'
 import { nodeIconURI } from './icons'
 
+/** EN: Edge stroke width scales with logged traffic volume.
+ *  FR: La largeur d'arête suit le volume de trafic en échelle log. */
+const edgeWidth = d => d.dashed ? 1 : Math.min(1 + Math.log1p((d.bytes || 0) / 1024), 6)
+
+/** EN: Native tooltip text for a node datum. / FR: Texte d'infobulle native d'un nœud. */
+const nodeTitle = d =>
+  [d.label || d.ip, d.vendor, d.mac, d.country, d.org, `${d.packets || 0} pkts`]
+    .filter(Boolean).join('\n')
+
+/** EN: Truncated label under a node. / FR: Étiquette tronquée sous un nœud. */
+const nodeLabel = d => {
+  const label = d.label || d.ip || ''
+  return label.length > 20 ? label.slice(0, 18) + '…' : label
+}
+
+const radius = d => d.id === 'local' ? 22 : d.category === 'lan_device' ? 18 : 13
+
 export default function ForceGraph({ nodes, edges, lanDevices, alertedNodes = new Set(), onNodeClick, filter }) {
   const svgRef   = useRef(null)
-  const nodeRef  = useRef(null)
-  const linkRef  = useRef(null)
-  // EN: { nodeId: {x, y, fx, fy} } — persists positions across re-renders.
-  // FR: { nodeId: {x, y, fx, fy} } — conserve les positions entre les rendus.
-  const posCache = useRef({})
+  const nodeSel  = useRef(null)   // EN: d3 selection of node <g>s / FR: sélection d3 des <g> nœuds
+  const linkSel  = useRef(null)   // EN: d3 selection of edge <line>s / FR: sélection d3 des <line> arêtes
+  const labelSel = useRef(null)   // EN: d3 selection of edge <text>s / FR: sélection d3 des <text> arêtes
+  const posCache = useRef({})     // EN: { id: {x,y,fx,fy} } / FR: positions persistées
+  const dataRef  = useRef({ nodes: {}, edges: {}, lanDevices: {} })
 
-  // ── Full simulation — reruns when data changes ────────────────────────────
-  // ── Simulation complète — relancée à chaque changement de données ─────────
+  // EN: Always-latest data for effects that don't rebuild the sim.
+  // FR: Données toujours à jour pour les effets qui ne reconstruisent pas la sim.
+  dataRef.current = { nodes, edges, lanDevices }
+
+  /**
+   * EN: Structure signature — sorted node ids + sorted edge ids. The sim is
+   *     rebuilt only when THIS string changes, no matter how often the
+   *     byte/packet counters churn.
+   * FR: Signature de structure — ids de nœuds triés + ids d'arêtes triés. La
+   *     sim n'est reconstruite que quand CETTE chaîne change, peu importe la
+   *     fréquence des changements de compteurs d'octets/paquets.
+   */
+  const structKey = useMemo(() => {
+    const nids = [...Object.keys(nodes), ...Object.keys(lanDevices)].sort()
+    const eids = Object.keys(edges).sort()
+    return nids.join(',') + '|' + eids.join(',')
+  }, [nodes, edges, lanDevices])
+
+  // ── Full simulation — rebuilds ONLY on structural change ─────────────────
+  // ── Simulation complète — reconstruite SEULEMENT sur changement structurel ─
   useEffect(() => {
     const svg = d3.select(svgRef.current)
     svg.selectAll('*').remove()
@@ -95,11 +137,11 @@ export default function ForceGraph({ nodes, edges, lanDevices, alertedNodes = ne
       .join('line')
       .attr('stroke', d => d.color || '#475569')
       .attr('stroke-opacity', d => d.dashed ? 0.35 : 0.55)
-      .attr('stroke-width', d => d.dashed ? 1 : Math.min(1 + Math.log1p((d.bytes || 0) / 1024), 6))
+      .attr('stroke-width', edgeWidth)
       .attr('stroke-dasharray', d => d.dashed ? '5,4' : null)
       .attr('marker-end', d => d.dashed ? null : 'url(#arrow)')
 
-    linkRef.current = link
+    linkSel.current = link
 
     const linkLabel = g.append('g').selectAll('text')
       .data(allEdges.filter(e => !e.dashed))
@@ -108,6 +150,8 @@ export default function ForceGraph({ nodes, edges, lanDevices, alertedNodes = ne
       .attr('font-size', 9)
       .attr('text-anchor', 'middle')
       .text(d => d.label)
+
+    labelSel.current = linkLabel
 
     const node = g.append('g').selectAll('g')
       .data(allNodes)
@@ -125,25 +169,13 @@ export default function ForceGraph({ nodes, edges, lanDevices, alertedNodes = ne
         })
       )
 
-    nodeRef.current = node
+    nodeSel.current = node
 
-    const radius = d => d.id === 'local' ? 22 : d.category === 'lan_device' ? 18 : 13
-
-    // EN: Pulsing red ring on alerted nodes.
-    // FR: Anneau rouge pulsant sur les nœuds en alerte.
-    node.filter(d => alertedNodes.has(d.id) || d.alerted)
-      .append('circle')
-      .attr('r', d => radius(d) + 9)
-      .attr('fill', 'none')
-      .attr('stroke', '#ef4444')
-      .attr('stroke-width', 1.5)
-      .attr('stroke-opacity', 0.7)
-      .each(function () {
-        d3.select(this).append('animate')
-          .attr('attributeName', 'stroke-opacity')
-          .attr('values', '0.7;0.1;0.7')
-          .attr('dur', '1.5s').attr('repeatCount', 'indefinite')
-      })
+    // EN: Alert rings are added/removed by the lightweight metrics effect —
+    //     painted here too for freshly-built nodes.
+    // FR: Les anneaux d'alerte sont gérés par l'effet métriques léger —
+    //     peints ici aussi pour les nœuds fraîchement créés.
+    paintAlertRings(node, alertedNodes)
 
     // EN: Soft halo behind local/LAN nodes. / FR: Halo doux derrière les nœuds locaux/LAN.
     node.filter(d => d.id === 'local' || d.category === 'lan_device')
@@ -178,17 +210,13 @@ export default function ForceGraph({ nodes, edges, lanDevices, alertedNodes = ne
       .attr('fill', d => d.category === 'lan_device' ? '#e2e8f0' : '#94a3b8')
       .attr('font-size', d => d.category === 'lan_device' ? 10 : 9)
       .attr('font-weight', d => d.category === 'lan_device' ? '600' : '400')
-      .text(d => {
-        const label = d.label || d.ip || ''
-        return label.length > 20 ? label.slice(0, 18) + '…' : label
-      })
+      .text(nodeLabel)
 
-    // EN: Native tooltip with full detail on hover.
-    // FR: Infobulle native avec le détail complet au survol.
-    node.append('title').text(d =>
-      [d.label || d.ip, d.vendor, d.mac, d.country, d.org, `${d.packets || 0} pkts`]
-        .filter(Boolean).join('\n')
-    )
+    // EN: Native tooltip with full detail on hover — kept fresh by the
+    //     metrics effect below.
+    // FR: Infobulle native avec le détail complet au survol — maintenue à jour
+    //     par l'effet métriques ci-dessous.
+    node.append('title').text(nodeTitle)
 
     sim.on('tick', () => {
       link
@@ -210,12 +238,37 @@ export default function ForceGraph({ nodes, edges, lanDevices, alertedNodes = ne
     })
 
     return () => sim.stop()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [structKey])
+
+  // ── Metrics refresh — NO simulation restart ──────────────────────────────
+  // ── Rafraîchissement des métriques — SANS relancer la simulation ──────────
+  useEffect(() => {
+    const link = linkSel.current
+    const node = nodeSel.current
+    if (!link || !node) return
+
+    const { nodes, edges, lanDevices } = dataRef.current
+    // EN: Look up the LATEST datum by id — the objects bound in the sim are
+    //     stale copies from the last structural rebuild.
+    // FR: Chercher la donnée LA PLUS RÉCENTE par id — les objets liés dans la
+    //     sim sont des copies périmées de la dernière reconstruction.
+    const edgeById = new Map(Object.values(edges).map(e => [e.id, e]))
+    const nodeById = new Map(
+      [...Object.values(nodes), ...Object.values(lanDevices)].map(n => [n.id, n])
+    )
+
+    link.attr('stroke-width', d => edgeWidth(edgeById.get(d.id) || d))
+    node.select('title').text(d => nodeTitle(nodeById.get(d.id) || d))
+    node.select('text').text(d => nodeLabel(nodeById.get(d.id) || d))
+
+    paintAlertRings(node, alertedNodes)
   }, [nodes, edges, lanDevices, alertedNodes])
 
-  // ── Filter dimming — no simulation restart ────────────────────────────────
+  // ── Filter dimming — no simulation restart ───────────────────────────────
   // ── Estompage par filtre — sans relancer la simulation ────────────────────
   useEffect(() => {
-    if (!nodeRef.current || !linkRef.current) return
+    if (!nodeSel.current || !linkSel.current) return
 
     function matches(d) {
       if (!filter || (filter.category === 'all' && !filter.text)) return true
@@ -233,9 +286,9 @@ export default function ForceGraph({ nodes, edges, lanDevices, alertedNodes = ne
       return true
     }
 
-    nodeRef.current.attr('opacity', d => matches(d) ? 1 : 0.1)
+    nodeSel.current.attr('opacity', d => matches(d) ? 1 : 0.1)
 
-    linkRef.current.attr('stroke-opacity', d => {
+    linkSel.current.attr('stroke-opacity', d => {
       const src = typeof d.source === 'object' ? d.source : { id: d.source, category: '' }
       const tgt = typeof d.target === 'object' ? d.target : { id: d.target, category: '' }
       return (matches(src) || matches(tgt)) ? (d.dashed ? 0.35 : 0.55) : 0.04
@@ -243,4 +296,38 @@ export default function ForceGraph({ nodes, edges, lanDevices, alertedNodes = ne
   }, [filter])
 
   return <svg ref={svgRef} style={{ width: '100%', height: '100%', background: '#0f172a' }} />
+}
+
+/**
+ * EN: Sync pulsing red alert rings with the current alerted-node set —
+ *     adds rings to newly-alerted nodes, removes them elsewhere. Works on
+ *     live selections, so it costs nothing when nothing changed.
+ * FR: Synchroniser les anneaux rouges pulsants avec l'ensemble actuel des
+ *     nœuds en alerte — ajoute des anneaux aux nœuds nouvellement alertés,
+ *     les retire ailleurs. Travaille sur les sélections vivantes, donc ne
+ *     coûte rien quand rien n'a changé.
+ */
+function paintAlertRings(nodeSel, alertedNodes) {
+  nodeSel.each(function (d) {
+    const g = d3.select(this)
+    const shouldAlert = alertedNodes.has(d.id) || d.alerted
+    const ring = g.select('circle.alert-ring')
+    if (shouldAlert && ring.empty()) {
+      // EN: Insert BEFORE the body circle so the ring sits behind the node.
+      // FR: Insérer AVANT le cercle du corps pour que l'anneau soit derrière.
+      g.insert('circle', ':first-child')
+        .attr('class', 'alert-ring')
+        .attr('r', radius(d) + 9)
+        .attr('fill', 'none')
+        .attr('stroke', '#ef4444')
+        .attr('stroke-width', 1.5)
+        .attr('stroke-opacity', 0.7)
+        .append('animate')
+        .attr('attributeName', 'stroke-opacity')
+        .attr('values', '0.7;0.1;0.7')
+        .attr('dur', '1.5s').attr('repeatCount', 'indefinite')
+    } else if (!shouldAlert && !ring.empty()) {
+      ring.remove()
+    }
+  })
 }

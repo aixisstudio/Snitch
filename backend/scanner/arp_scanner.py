@@ -13,6 +13,7 @@ FR: Scanne périodiquement en ARP chaque sous-réseau IPv4 auquel l'hôte est
 """
 
 import ipaddress
+import logging
 import socket
 import threading
 import time
@@ -22,6 +23,8 @@ from typing import Callable, Optional
 import psutil
 
 from scanner.oui import lookup, DEVICE_TYPE_COLORS
+
+logger = logging.getLogger("snitch.scanner")
 
 try:
     from scapy.all import ARP, Ether, srp
@@ -125,7 +128,8 @@ def _scan_subnet(subnet: str, timeout: int = 2) -> list[Device]:
             verbose=False,
             retry=1,
         )
-    except Exception:
+    except Exception as exc:
+        logger.debug("ARP scan of %s failed: %s", subnet, exc)
         return []
 
     devices = []

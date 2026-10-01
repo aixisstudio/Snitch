@@ -28,6 +28,14 @@ const en = {
   // Legend / Légende
   legend_alert: 'Alert',
   legend_unknown: 'Unknown',
+  legend_router: 'Router',
+  legend_phone: 'Phone',
+  legend_pc: 'PC',
+  legend_iot: 'IoT',
+  legend_https: 'HTTPS',
+  legend_tracking: 'Tracking',
+  legend_cdn: 'CDN',
+  legend_dns: 'DNS',
 
   // Sidebar header + stats / En-tête de barre latérale + stats
   app_name: 'SNITCH',
@@ -74,6 +82,18 @@ const en = {
   alert_NEW_LAN_DEVICE: 'New device',
   alert_DEVICE_OFFLINE: 'Device offline',
   alert_MEDIA_EXFIL: 'Media exfiltration',
+  // EN: Full alert messages built from backend codes + details — the backend
+  //     only sends type + params, never prose.
+  // FR: Messages d'alerte complets construits depuis les codes + détails du
+  //     backend — le backend n'envoie que type + paramètres, jamais de prose.
+  alertmsg_NEW_HOST: d => `New host contacted: ${d.host || d.ip}`,
+  alertmsg_SUSPICIOUS_PROCESS: d => `Suspicious process: ${d.process} → ${d.host || d.ip}`,
+  alertmsg_SUSPICIOUS_PORT: d => `Suspicious port ${d.port} (${d.reason}) → ${d.host || d.ip}`,
+  alertmsg_BEACON: d => `Beacon-like regularity: ~${d.interval_s}s interval to ${d.host || d.ip}`,
+  alertmsg_VOLUME_SPIKE: d => `Traffic spike to ${d.host || d.ip} (${d.kb} KB in one packet)`,
+  alertmsg_MEDIA_EXFIL: d => `Suspected ${d.device} exfiltration: ${d.process} → ${d.host || d.ip}`,
+  alertmsg_NEW_LAN_DEVICE: d => `New device on the network: ${d.host || d.ip}`,
+  alertmsg_DEVICE_OFFLINE: d => `Device went offline: ${d.host || d.ip}`,
   time_just_now: 'just now',
   time_seconds: n => `${n}s ago`,
   time_minutes: n => `${n}min ago`,
@@ -94,6 +114,7 @@ const en = {
   // Timeline
   timeline_packets: n => `${n.toLocaleString()} packets`,
   timeline_alerts: n => `${n} alert${n > 1 ? 's' : ''}`,
+  timeline_live: 'Live',
 
   // Capture toggle / Bascule de capture
   capture_stop: 'Stop',
@@ -162,6 +183,14 @@ const fr = {
   // Légende / Legend
   legend_alert: 'Alerte',
   legend_unknown: 'Inconnu',
+  legend_router: 'Routeur',
+  legend_phone: 'Téléphone',
+  legend_pc: 'PC',
+  legend_iot: 'IoT',
+  legend_https: 'HTTPS',
+  legend_tracking: 'Tracking',
+  legend_cdn: 'CDN',
+  legend_dns: 'DNS',
 
   // En-tête de barre latérale + stats / Sidebar header + stats
   app_name: 'SNITCH',
@@ -208,6 +237,14 @@ const fr = {
   alert_NEW_LAN_DEVICE: 'Nouvel appareil',
   alert_DEVICE_OFFLINE: 'Appareil hors ligne',
   alert_MEDIA_EXFIL: 'Exfiltration média',
+  alertmsg_NEW_HOST: d => `Nouvel hôte contacté : ${d.host || d.ip}`,
+  alertmsg_SUSPICIOUS_PROCESS: d => `Processus suspect : ${d.process} → ${d.host || d.ip}`,
+  alertmsg_SUSPICIOUS_PORT: d => `Port suspect ${d.port} (${d.reason}) → ${d.host || d.ip}`,
+  alertmsg_BEACON: d => `Régularité type beacon : intervalle ~${d.interval_s}s vers ${d.host || d.ip}`,
+  alertmsg_VOLUME_SPIKE: d => `Pic de trafic vers ${d.host || d.ip} (${d.kb} Ko en un paquet)`,
+  alertmsg_MEDIA_EXFIL: d => `Exfiltration ${d.device === 'camera' ? 'caméra' : 'micro'} suspectée : ${d.process} → ${d.host || d.ip}`,
+  alertmsg_NEW_LAN_DEVICE: d => `Nouvel appareil sur le réseau : ${d.host || d.ip}`,
+  alertmsg_DEVICE_OFFLINE: d => `Appareil hors ligne : ${d.host || d.ip}`,
   time_just_now: "à l'instant",
   time_seconds: n => `il y a ${n}s`,
   time_minutes: n => `il y a ${n}min`,
@@ -228,6 +265,7 @@ const fr = {
   // Timeline
   timeline_packets: n => `${n.toLocaleString('fr-FR')} paquets`,
   timeline_alerts: n => `${n} alerte${n > 1 ? 's' : ''}`,
+  timeline_live: 'Direct',
 
   // Bascule de capture / Capture toggle
   capture_stop: 'Stop',

@@ -10,7 +10,7 @@
  */
 import { useEffect, useRef, useState, useCallback } from 'react'
 import * as d3 from 'd3'
-import { API_BASE } from '../api'
+import { API_BASE, authHeaders } from '../api'
 import { useT } from '../i18n'
 
 const EXPANDED_H  = 110
@@ -41,7 +41,10 @@ export default function Timeline() {
   }
 
   const fetchTimeline = useCallback(() => {
-    fetch(`${API_BASE}/timeline?minutes=${range}`)
+    // EN: Auth header required — the API token protects every endpoint.
+    // FR: En-tête d'auth requis — le jeton API protège tous les endpoints.
+    authHeaders()
+      .then(headers => fetch(`${API_BASE}/timeline?minutes=${range}`, { headers }))
       .then(r => r.json())
       .then(d => setData(d.timeline || []))
       .catch(() => {})
@@ -190,7 +193,7 @@ export default function Timeline() {
             fontSize: 9, color: '#22c55e', marginLeft: 8,
           }}>
             <div style={{ width: 5, height: 5, borderRadius: '50%', background: '#22c55e' }} />
-            Live
+            {t('timeline_live')}
           </div>
         </div>
       </div>

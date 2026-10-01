@@ -14,6 +14,11 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   base: './',
+  // EN: Vitest reads this — plain Node environment is enough for our pure
+  //     logic tests (privacy scoring).
+  // FR: Vitest lit cette clé — l'environnement Node suffit pour nos tests de
+  //     logique pure (score de confidentialité).
+  test: { environment: 'node' },
   server: {
     port: 5173,
     proxy: {
