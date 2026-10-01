@@ -122,17 +122,6 @@ export default function Sidebar({ nodes, lanDevices, packets, selected, onClose,
         <span style={{ fontSize: 10, color: '#475569', letterSpacing: 1 }}>{t('tagline')}</span>
       </div>
 
-      {/* EN: Quick counters + live bandwidth sparkline.
-          FR: Compteurs rapides + sparkline de débit en direct. */}
-      <div style={{ ...CARD, padding: '10px 16px' }}>
-        <BandwidthChart data={bandwidth || []} />
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8 }}>
-          <Stat label={t('stat_lan')}     value={devList.length}      color="#f97316" />
-          <Stat label={t('stat_ext')}     value={extNodes.length} />
-          <Stat label={t('stat_traffic')} value={fmt(totalBytes)} />
-        </div>
-      </div>
-
       {privacyScore && (
         <div style={CARD}>
           <PrivacyScore
@@ -144,6 +133,17 @@ export default function Sidebar({ nodes, lanDevices, packets, selected, onClose,
           />
         </div>
       )}
+
+      {/* EN: Quick counters + live bandwidth sparkline — under the score card.
+          FR: Compteurs rapides + sparkline de débit — sous la carte du score. */}
+      <div style={{ ...CARD, padding: '10px 16px' }}>
+        <BandwidthChart data={bandwidth || []} />
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8 }}>
+          <Stat label={t('stat_lan')}     value={devList.length}      color="#f97316" />
+          <Stat label={t('stat_ext')}     value={extNodes.length} />
+          <Stat label={t('stat_traffic')} value={fmt(totalBytes)} />
+        </div>
+      </div>
 
       {/* EN: Detail card for the clicked node. / FR: Fiche détail du nœud cliqué. */}
       {selected && (
