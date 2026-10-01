@@ -98,6 +98,9 @@ const en = {
   ext_empty: "No external connections yet — anything your machine talks to will appear here.",
   legend_edge_solid: 'solid line = traffic',
   legend_edge_dashed: 'dashed = seen, no data',
+  legend_ring_safe: 'green ring = identified, safe',
+  legend_ring_warn: 'amber ring = suspicious',
+  legend_ring_crit: 'red ring = alert',
 
   // Alert panel / Panneau d'alertes
   alerts_title: 'Alerts',
@@ -330,6 +333,9 @@ const fr = {
   ext_empty: "Aucune connexion externe pour l'instant — tout hôte contacté par votre machine apparaîtra ici.",
   legend_edge_solid: 'trait plein = trafic',
   legend_edge_dashed: 'pointillés = vu, sans données',
+  legend_ring_safe: 'anneau vert = identifié, sûr',
+  legend_ring_warn: 'anneau orange = suspect',
+  legend_ring_crit: 'anneau rouge = alerte',
 
   // Panneau d'alertes / Alert panel
   alerts_title: 'Alertes',

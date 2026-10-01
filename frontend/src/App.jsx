@@ -791,6 +791,28 @@ function Legend() {
           <span style={{ fontSize: 9, color: '#64748b' }}>{t('legend_edge_dashed')}</span>
         </div>
       </div>
+      {/* EN: Ring semantics — the colored halo around a node is the safety
+              verdict at a glance: green = known & quiet, amber/red pulsing
+              = something to look at. Matches paintAlertRings in ForceGraph.
+          FR: Sémantique des anneaux — le halo coloré autour d'un nœud est
+              le verdict de sûreté d'un coup d'œil : vert = connu et calme,
+              orange/rouge pulsant = à regarder. Correspond à
+              paintAlertRings dans ForceGraph. */}
+      <div style={{ borderTop: '1px solid #334155', marginTop: 6, paddingTop: 6 }}>
+        {[
+          { color: '#22c55e', label: t('legend_ring_safe') },
+          { color: '#f59e0b', label: t('legend_ring_warn') },
+          { color: '#ef4444', label: t('legend_ring_crit') },
+        ].map(({ color, label }) => (
+          <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+            <span style={{
+              width: 10, height: 10, borderRadius: '50%', flexShrink: 0,
+              border: `1.5px solid ${color}`,
+            }} />
+            <span style={{ fontSize: 9, color: '#64748b' }}>{label}</span>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
