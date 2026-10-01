@@ -723,7 +723,7 @@ app.add_middleware(
     allow_origin_regex=ALLOWED_ORIGIN_REGEX,
     allow_origins=["null"],              # EN: file:// pages (Electron renderer)
                                          # FR: pages file:// (renderer Electron)
-    allow_methods=["GET", "POST"],
+    allow_methods=["GET", "POST", "DELETE"],   # EN: DELETE needed for /alerts/ignore / FR: DELETE requis pour /alerts/ignore
     allow_headers=["X-Snitch-Token", "Content-Type"],
 )
 
@@ -1135,11 +1135,19 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
     try:
         while True:
             # EN: We never read client messages — receive_text() only serves
-            #     to detect disconnection.
+            #     to detect disconnection (the UI's 20 s '{}' heartbeat lands
+            #     here and is simply discarded).
             # FR: On ne lit jamais les messages clients — receive_text() sert
-            #     seulement à détecter la déconnexion.
+            #     seulement à détecter la déconnexion (le heartbeat « {} » de
+            #     20 s de l'UI arrive ici et est simplement ignoré).
             await websocket.receive_text()
     except WebSocketDisconnect:
+        pass
+    finally:
+        # EN: ANY termination path (disconnect, malformed frame, error) must
+        #     drop the client — a stale socket would error on next broadcast.
+        # FR: TOUTE sortie (déconnexion, trame malformée, erreur) doit retirer
+        #     le client — un socket périmé échouerait au prochain broadcast.
         if websocket in connected_clients:
             connected_clients.remove(websocket)
 
