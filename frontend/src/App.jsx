@@ -225,7 +225,7 @@ export default function App() {
             <div style={{
               position: 'absolute', bottom: 16, right: 8,
               display: 'flex', flexDirection: 'column', gap: 8,
-              alignItems: 'stretch', width: 230,
+              alignItems: 'stretch', width: 205,
             }}>
               <div style={{
                 width: '100%', boxSizing: 'border-box',
