@@ -10,7 +10,7 @@
     "build:dir": "electron-builder --win --x64 --dir"
   },
   "devDependencies": {
-    "electron": "^33.4.0",
+    "electron": "^44.4.5",
     "electron-builder": "^25.1.8"
   },
   "build": {
