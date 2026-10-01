@@ -390,6 +390,48 @@ export default function ForceGraph({ nodes, edges, lanDevices, alertedNodes = ne
     paintAlertRings(node, alertedNodes)
   }, [nodes, edges, lanDevices, alertedNodes])
 
+  // ── Gentle float — slow sinusoidal drift on top of the pinned layout.
+  //     Each node gets a stable phase from its id, so bubbles bob organically
+  //     without ever moving the layout or the user's view. Edges bend with
+  //     their endpoints so links stay glued to their bubbles.
+  // ── Flottement doux — dérive sinusoïdale lente par-dessus la mise en page
+  //     épinglée. Chaque nœud a une phase stable dérivée de son id : les bulles
+  //     ondulent organiquement sans jamais déplacer la mise en page ni la vue.
+  //     Les arêtes suivent leurs extrémités — les liens restent collés.
+  useEffect(() => {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+
+    // EN: Deterministic phase 0..2π from the node id.
+    // FR: Phase déterministe 0..2π dérivée de l'id du nœud.
+    const phase = id => {
+      let h = 0
+      for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) | 0
+      return ((h >>> 0) % 628) / 100
+    }
+    const AMP = 4.5                                        // EN: px of drift / FR: amplitude en px
+    const driftX = d => d.id === 'local' ? 0 : Math.sin(t0 * 0.35 + phase(d.id)) * AMP
+    const driftY = d => d.id === 'local' ? 0 : Math.cos(t0 * 0.28 + phase(d.id) * 1.3) * AMP
+    let t0 = 0
+
+    let raf
+    const frame = now => {
+      raf = requestAnimationFrame(frame)
+      if (document.hidden) return                          // EN: free when tab hidden / FR: gratuit onglet caché
+      t0 = now / 1000
+      nodeSel.current?.attr('transform', d => `translate(${d.x + driftX(d)},${d.y + driftY(d)})`)
+      linkSel.current
+        ?.attr('x1', d => d.source.x + driftX(d.source))
+        .attr('y1', d => d.source.y + driftY(d.source))
+        .attr('x2', d => d.target.x + driftX(d.target))
+        .attr('y2', d => d.target.y + driftY(d.target))
+      labelSel.current
+        ?.attr('x', d => (d.source.x + d.target.x) / 2 + (driftX(d.source) + driftX(d.target)) / 2)
+        .attr('y', d => (d.source.y + d.target.y) / 2 + (driftY(d.source) + driftY(d.target)) / 2)
+    }
+    raf = requestAnimationFrame(frame)
+    return () => cancelAnimationFrame(raf)
+  }, [])
+
   // ── Filter dimming — no simulation restart ───────────────────────────────
   // ── Estompage par filtre — sans relancer la simulation ────────────────────
   useEffect(() => {
