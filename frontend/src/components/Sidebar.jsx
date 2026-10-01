@@ -185,6 +185,21 @@ function Stat({ label, value, color }) {
   )
 }
 
+/** EN: Small explanatory note in the detail card — muted box, coloured
+ *      left border. / FR: Petite note explicative dans la fiche détail —
+ *      cadre discret, bordure gauche colorée. */
+function Hint({ children, accent = '#334155' }) {
+  return (
+    <div style={{
+      marginTop: 8, padding: '6px 8px', fontSize: 9, lineHeight: 1.5,
+      color: '#64748b', background: '#1e293b', borderRadius: 6,
+      borderLeft: `2px solid ${accent}`,
+    }}>
+      {children}
+    </div>
+  )
+}
+
 /** EN: One row of the LAN device list. / FR: Une ligne de la liste d'appareils LAN. */
 function DeviceRow({ device }) {
   const { t } = useT()
@@ -278,34 +293,21 @@ function NodeDetail({ node, onWhitelist }) {
         </div>
       ))}
 
-      {/* EN: "What's happening" hint — an anonymous node is normal, not a
-              threat: identification may simply not have resolved yet.
-          FR: Indice « qu'est-ce qui se passe » — un nœud anonyme est normal,
-              pas une menace : l'identification n'est simplement pas encore
-              résolue. */}
+      {/* EN: "What's happening" hints — teach, don't alarm. Priority order:
+              gateway → LAN idle/active → still-anonymous → private MAC.
+          FR: Indices « qu'est-ce qui se passe » — expliquer, pas alarmer.
+              Priorité : passerelle → LAN inactif/actif → encore anonyme →
+              MAC privée. */}
+      {node.is_gateway && <Hint>{t('hint_gateway')}</Hint>}
+      {isLan && !node.is_gateway && (
+        <Hint>
+          {(node.bytes || 0) > 0 ? t('hint_lan_active', fmt(node.bytes)) : t('hint_lan_idle')}
+        </Hint>
+      )}
       {anonymous && (
-        <div style={{
-          marginTop: 8, padding: '6px 8px', fontSize: 9, lineHeight: 1.5,
-          color: '#64748b', background: '#1e293b', borderRadius: 6,
-          borderLeft: '2px solid #334155',
-        }}>
-          {t(isLan ? 'hint_unidentified' : 'hint_unresolved')}
-        </div>
+        <Hint>{t(isLan ? 'hint_unidentified' : 'hint_unresolved')}</Hint>
       )}
-
-      {/* EN: Randomized-MAC note — iOS/Android hide their real MAC, so "no
-              vendor" is expected, not suspicious.
-          FR: Note MAC randomisée — iOS/Android masquent leur vraie MAC, donc
-              « pas de fabricant » est attendu, pas suspect. */}
-      {node.private_mac && (
-        <div style={{
-          marginTop: 8, padding: '6px 8px', fontSize: 9, lineHeight: 1.5,
-          color: '#64748b', background: '#1e293b', borderRadius: 6,
-          borderLeft: '2px solid #a855f7',
-        }}>
-          {t('hint_private_mac')}
-        </div>
-      )}
+      {node.private_mac && <Hint accent="#a855f7">{t('hint_private_mac')}</Hint>}
 
       {processes.length > 0 && (
         <>

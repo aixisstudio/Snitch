@@ -91,7 +91,12 @@ const en = {
   hint_unidentified: "Not identified yet — its name appears when it announces itself (DNS/mDNS) or its MAC vendor is known. If you don't recognize it, check your router's client list.",
   hint_unresolved: 'Not yet named — the domain appears when a DNS answer or TLS handshake reveals it.',
   hint_private_mac: 'Private (randomized) MAC address — iOS/Android/Windows hide the real one, so the vendor can\'t be identified. This is normal privacy behavior.',
+  hint_gateway: 'This is your internet box/router — ALL your traffic physically passes through it, so seeing it communicate is normal and expected.',
+  hint_lan_idle: 'Seen on your network via the neighbour table — no data exchanged. A dashed edge means "present", not "talking".',
+  hint_lan_active: b => `${b} exchanged — usually automatic announcements (Bonjour/mDNS, file sharing). Watch it if the volume climbs.`,
   ext_empty: "No external connections yet — anything your machine talks to will appear here.",
+  legend_edge_solid: 'solid line = traffic',
+  legend_edge_dashed: 'dashed = seen, no data',
 
   // Alert panel / Panneau d'alertes
   alerts_title: 'Alerts',
@@ -317,7 +322,12 @@ const fr = {
   hint_unidentified: "Pas encore identifié — son nom apparaîtra s'il s'annonce (DNS/mDNS) ou si son fabricant est connu. Si vous ne le reconnaissez pas, vérifiez la liste des clients de votre box/routeur.",
   hint_unresolved: "Pas encore nommé — le domaine apparaîtra quand une réponse DNS ou un handshake TLS le révélera.",
   hint_private_mac: "Adresse MAC privée (aléatoire) — iOS/Android/Windows masquent la vraie, le fabricant ne peut pas être identifié. C'est un comportement de confidentialité normal.",
+  hint_gateway: "C'est votre box/routeur — TOUT votre trafic internet passe physiquement par elle, donc la voir communiquer est normal et attendu.",
+  hint_lan_idle: "Vu sur votre réseau via la table de voisinage — aucune donnée échangée. Une arête en pointillés signifie « présent », pas « en train de communiquer ».",
+  hint_lan_active: b => `${b} échangés — le plus souvent des annonces automatiques (Bonjour/mDNS, partage de fichiers). À surveiller si le volume grimpe.`,
   ext_empty: "Aucune connexion externe pour l'instant — tout hôte contacté par votre machine apparaîtra ici.",
+  legend_edge_solid: 'trait plein = trafic',
+  legend_edge_dashed: 'pointillés = vu, sans données',
 
   // Panneau d'alertes / Alert panel
   alerts_title: 'Alertes',

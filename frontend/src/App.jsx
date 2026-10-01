@@ -766,6 +766,20 @@ function Legend() {
           <span style={{ fontSize: 10, color: '#94a3b8' }}>{label}</span>
         </div>
       ))}
+      {/* EN: Edge semantics — the dashed/solid distinction is what tells a
+              newcomer "seen" from "actually exchanging data".
+          FR: Sémantique des arêtes — la distinction pointillés/plein dit au
+              néophyte « vu » versus « échange réel de données ». */}
+      <div style={{ borderTop: '1px solid #334155', marginTop: 6, paddingTop: 6 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+          <span style={{ width: 14, borderTop: '2px solid #64748b', flexShrink: 0 }} />
+          <span style={{ fontSize: 9, color: '#64748b' }}>{t('legend_edge_solid')}</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ width: 14, borderTop: '2px dashed #64748b', flexShrink: 0 }} />
+          <span style={{ fontSize: 9, color: '#64748b' }}>{t('legend_edge_dashed')}</span>
+        </div>
+      </div>
     </div>
   )
 }
