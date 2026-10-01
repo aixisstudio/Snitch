@@ -12,7 +12,6 @@
 import { Wifi, Smartphone, Monitor, Tv, Cpu, HelpCircle, ShieldOff } from 'lucide-react'
 import PrivacyScore from './PrivacyScore'
 import BandwidthChart from './BandwidthChart'
-import SearchBar from './SearchBar'
 import { useT } from '../i18n'
 
 // EN: Lucide icon per LAN device type. / FR: Icône Lucide par type d'appareil LAN.
@@ -121,12 +120,6 @@ export default function Sidebar({ nodes, lanDevices, packets, selected, onClose,
           <span style={{ fontSize: 17, fontWeight: 800, color: '#f1f5f9', letterSpacing: 1 }}>{t('app_name')}</span>
         </div>
         <span style={{ fontSize: 10, color: '#475569', letterSpacing: 1 }}>{t('tagline')}</span>
-      </div>
-
-      {/* EN: Search + category chips — first card, right under the brand.
-          FR: Recherche + puces de catégorie — première carte, juste sous la marque. */}
-      <div style={CARD}>
-        <SearchBar filter={filter} onChange={onFilterChange} />
       </div>
 
       {/* EN: Quick counters + live bandwidth sparkline.

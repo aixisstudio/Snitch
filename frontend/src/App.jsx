@@ -19,6 +19,7 @@ import AuroraCurtain from './components/AuroraCurtain'
 import MapView from './map/MapView'
 import AppsView from './components/AppsView'
 import Sidebar, { matchesFilter } from './components/Sidebar'
+import SearchBar from './components/SearchBar'
 import { AlertBell, AlertPanel, AlertToasts } from './components/AlertPanel'
 import { SettingsButton, SettingsPanel } from './components/Settings'
 import Onboarding from './components/Onboarding'
@@ -216,7 +217,25 @@ export default function App() {
               FR: Toasts flottants pour les alertes warning/critiques. */}
           <AlertToasts alerts={alerts.filter(a => a.severity !== 'info').slice(0, 3)} />
 
-          {view === 'graph' && <Legend />}
+          {/* EN: Bottom-right bento column — search/filter card floats
+                  ABOVE the legend card, both over the graph.
+              FR: Colonne bento en bas à droite — la carte recherche/filtres
+                  flotte AU-DESSUS de la carte légende, sur le graphe. */}
+          {view === 'graph' && (
+            <div style={{
+              position: 'absolute', bottom: 16, right: 16,
+              display: 'flex', flexDirection: 'column', gap: 8,
+              alignItems: 'flex-end', width: 230,
+            }}>
+              <div style={{
+                width: '100%', boxSizing: 'border-box',
+                background: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: 12,
+              }}>
+                <SearchBar filter={filter} onChange={setFilter} />
+              </div>
+              <Legend />
+            </div>
+          )}
         </div>
 
         <Timeline />
@@ -792,9 +811,8 @@ function Legend() {
   ]
   return (
     <div style={{
-      position: 'absolute', bottom: 16, right: 16,
       background: '#0f0f0f', border: '1px solid #2a2a2a',
-      borderRadius: 8, padding: '10px 14px',
+      borderRadius: 12, padding: '10px 14px',
     }}>
       {items.map(({ Icon, color, label }) => (
         <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
