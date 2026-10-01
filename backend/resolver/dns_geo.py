@@ -10,8 +10,9 @@ EN: Enrichment pipeline for remote IPs:
          Lite; raw maxminddb reads both formats)
 
     PRIVACY: there is NO online geolocation fallback. ip-api.com was removed —
-    a privacy tool must never leak visited IPs in plaintext. If no .mmdb is
-    present the UI shows "no geo" and the README explains how to enable it.
+    a privacy tool must never leak visited IPs in plaintext. DB-IP Lite ships
+    gzip'd inside the repo (CC BY 4.0) and is decompressed into GEO_DIR on
+    first use — so geo works out of the box with zero network calls.
     Databases live in the per-OS user data dir (paths.data_dir()), NOT next to
     __file__ — the old Path(__file__)/data code pointed inside the read-only
     PyInstaller bundle.
@@ -32,8 +33,9 @@ FR: Pipeline d'enrichissement des IP distantes :
 
     CONFIDENTIALITÉ : AUCUN repli de géolocalisation en ligne. ip-api.com a été
     supprimé — un outil de confidentialité ne doit jamais divulguer les IP
-    visitées en clair. Sans .mmdb, l'UI affiche « sans géo » et le README
-    explique comment l'activer. Les bases vivent dans le dossier de données
+    visitées en clair. DB-IP Lite est embarquée gzipée dans le repo (CC BY 4.0)
+    et décompressée dans GEO_DIR au premier usage — la géo marche d'emblée
+    sans aucun appel réseau. Les bases vivent dans le dossier de données
     utilisateur de l'OS (paths.data_dir()), PAS à côté de __file__ — l'ancien
     code Path(__file__)/data pointait dans le bundle PyInstaller en lecture
     seule.
@@ -46,10 +48,13 @@ FR: Pipeline d'enrichissement des IP distantes :
 """
 
 import asyncio
+import gzip
 import ipaddress
 import logging
 import socket
+import sys
 import threading
+from pathlib import Path
 import time
 from functools import lru_cache
 from typing import Optional
@@ -75,6 +80,19 @@ except ImportError:
 socket.setdefaulttimeout(3)
 
 GEO_DIR = data_dir() / "geo"
+
+# EN: Bundled gzip'd DB-IP Lite databases, shipped inside the repo/package so
+#     geolocation works out of the box with ZERO runtime download. On first
+#     use we decompress them into GEO_DIR (~130 MB — kept .gz in git to stay
+#     under the 100 MB/file host limit).
+# FR: Bases DB-IP Lite gzipées embarquées dans le repo/paquet pour que la
+#     géolocalisation marche d'emblée sans AUCUN téléchargement. À la première
+#     utilisation on les décompresse dans GEO_DIR (~130 Mo — gardées en .gz
+#     dans git pour rester sous la limite de 100 Mo/fichier de l'hébergeur).
+_BUNDLED_GEO_DIRS = [
+    Path(__file__).resolve().parent.parent / "data" / "geo",  # EN: source tree / FR: arborescence source
+    Path(getattr(sys, "_MEIPASS", "/nonexistent")) / "data" / "geo",  # EN: PyInstaller bundle / FR: bundle PyInstaller
+]
 
 _CITY_NAMES = ("dbip-city-lite.mmdb", "GeoLite2-City.mmdb")
 _ASN_NAMES = ("dbip-asn-lite.mmdb", "GeoLite2-ASN.mmdb")
@@ -179,6 +197,32 @@ def reset_readers() -> None:
     resolve_geo.cache_clear()
 
 
+def _install_bundled_dbs() -> None:
+    """
+    EN: Decompress each bundled `data/geo/*.mmdb.gz` into GEO_DIR when the
+        plain .mmdb isn't already there. Never overwrites a DB the user
+        installed/downloaded themselves. Idempotent and cheap once done.
+    FR: Décompresser chaque `data/geo/*.mmdb.gz` embarqué dans GEO_DIR quand le
+        .mmdb correspondant n'y est pas déjà. N'écrase jamais une base
+        installée/téléchargée par l'utilisateur. Idempotent et négligeable
+        une fois fait.
+    """
+    try:
+        bundled = next((d for d in _BUNDLED_GEO_DIRS if d.is_dir()), None)
+        if bundled is None:
+            return
+        for gz in bundled.glob("*.mmdb.gz"):
+            target = GEO_DIR / gz.name[:-3]
+            if target.exists():
+                continue
+            GEO_DIR.mkdir(parents=True, exist_ok=True)
+            with gzip.open(gz, "rb") as src, open(target, "wb") as dst:
+                dst.write(src.read())
+            logger.info("bundled geo database installed: %s", target.name)
+    except Exception as exc:
+        logger.warning("bundled geo install failed: %s", exc)
+
+
 def _get_reader(kind: str):
     """
     EN: Lazy-open one .mmdb reader ('city' or 'asn'). Prefers DB-IP Lite
@@ -192,6 +236,7 @@ def _get_reader(kind: str):
     with _readers_lock:
         if kind in _readers:
             return _readers[kind]
+        _install_bundled_dbs()
         names = _CITY_NAMES if kind == "city" else _ASN_NAMES
         reader = None
         for name in names:

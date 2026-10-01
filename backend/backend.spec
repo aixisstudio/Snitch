@@ -34,7 +34,12 @@ a = Analysis(
     # FR: Embarquer classifier/lists/ (listes trackers + CDN) pour que l'app
     #     figée les trouve — _list_dir() résout via sys._MEIPASS.
     datas=[('classifier/lists', 'classifier/lists'),
-           ('scanner/oui_table.txt.gz', 'scanner')],
+           ('scanner/oui_table.txt.gz', 'scanner'),
+           # EN: bundled DB-IP Lite (gzip'd) — geo works offline, zero
+           #     runtime download; resolver extracts them into <data>/geo.
+           # FR: DB-IP Lite embarquée (gzipée) — la géo marche hors ligne,
+           #     zéro téléchargement ; le resolver les extrait dans <data>/geo.
+           ('data/geo', 'data/geo')],
     hiddenimports=(
         # ── uvicorn internals / éléments internes d'uvicorn ─────────────
         collect_submodules('uvicorn')
