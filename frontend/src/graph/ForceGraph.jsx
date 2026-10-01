@@ -55,6 +55,7 @@ export default function ForceGraph({ nodes, edges, lanDevices, alertedNodes = ne
   const linkSel  = useRef(null)   // EN: d3 selection of edge <line>s / FR: sélection d3 des <line> arêtes
   const labelSel = useRef(null)   // EN: d3 selection of edge <text>s / FR: sélection d3 des <text> arêtes
   const posCache = useRef({})     // EN: { id: {x,y,fx,fy} } / FR: positions persistées
+  const zoomTf   = useRef(null)   // EN: last user pan/zoom transform / FR: dernière transformation pan/zoom
   const dataRef  = useRef({ nodes: {}, edges: {}, lanDevices: {} })
 
   const { t } = useT()
@@ -93,10 +94,23 @@ export default function ForceGraph({ nodes, edges, lanDevices, alertedNodes = ne
     const width  = svgRef.current.clientWidth
     const height = svgRef.current.clientHeight
 
-    const zoom = d3.zoom().scaleExtent([0.15, 6]).on('zoom', e => g.attr('transform', e.transform))
+    // EN: Persist the user's pan/zoom across sim rebuilds — without this,
+    //     rebinding d3.zoom on every structural change (new node, filter)
+    //     snaps the view back to identity: an unwanted "auto zoom".
+    // FR: Persister le pan/zoom de l'utilisateur entre deux reconstructions
+    //     — sinon, re-lier d3.zoom à chaque changement structurel (nouveau
+    //     nœud, filtre) ramène la vue à l'identité : un « zoom auto » gênant.
+    const zoom = d3.zoom().scaleExtent([0.15, 6]).on('zoom', e => {
+      zoomTf.current = e.transform
+      g.attr('transform', e.transform)
+    })
     svg.call(zoom)
 
     const g = svg.append('g')
+    // EN: Reapply the saved transform — fires the handler, so it must run
+    //     after g exists. / FR: Réappliquer la transformée — déclenche le
+    //     handler, donc après l'existence de g.
+    if (zoomTf.current) svg.call(zoom.transform, zoomTf.current)
 
     // EN: Arrowhead marker for directed edges. / FR: Marqueur de flèche pour les arêtes dirigées.
     svg.append('defs').append('marker')
