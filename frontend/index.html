@@ -18,6 +18,15 @@
          FR: Reset global + thème sombre de base. */
       *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
       body { background: #000000; color: #e2e8f0; font-family: 'Inter', system-ui, sans-serif; overflow: hidden; }
+
+      /* EN: Scrollbars on black — thin dark track, subtle gray thumb.
+         FR: Barres de défilement sur noir — piste sombre fine, curseur gris discret. */
+      * { scrollbar-width: thin; scrollbar-color: #2a2a2a #000000; }
+      ::-webkit-scrollbar { width: 8px; height: 8px; }
+      ::-webkit-scrollbar-track { background: #000000; }
+      ::-webkit-scrollbar-thumb { background: #2a2a2a; border-radius: 4px; }
+      ::-webkit-scrollbar-thumb:hover { background: #404040; }
+      ::-webkit-scrollbar-corner { background: #000000; }
     </style>
   </head>
   <body>
