@@ -32,6 +32,25 @@ const CATEGORY_COLORS = {
   dns: '#38bdf8', admin: '#fb923c', unknown: '#94a3b8', local: '#3b82f6',
 }
 
+/**
+ * EN: Display name for a node — `label_key` is a translation key resolved
+ *     through t() (e.g. the "local" node), then label, then IP fallback.
+ * FR: Nom d'affichage d'un nœud — `label_key` est une clé de traduction
+ *     résolue via t() (ex. le nœud « local »), puis label, puis l'IP.
+ */
+const nodeName = (n, t) => (n.label_key ? t(n.label_key) : n.label) || n.ip
+
+/**
+ * EN: Translate a raw backend enum value (device_type, category) through a
+ *     key prefix — falls back to the raw value when no key exists.
+ * FR: Traduit une valeur brute du backend (device_type, catégorie) via un
+ *     préfixe de clé — retombe sur la valeur brute si la clé n'existe pas.
+ */
+const enumName = (t, prefix, v) => {
+  const s = t(prefix + v)
+  return s === prefix + v ? v : s
+}
+
 /** EN: Human-readable byte size. / FR: Taille en octets lisible. */
 function fmt(bytes) {
   if (!bytes) return '0 B'
@@ -110,7 +129,7 @@ export default function Sidebar({ nodes, lanDevices, packets, selected, onClose,
         <div style={{ padding: '12px 20px', borderBottom: '1px solid #334155', background: '#0f172a' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
             <span style={{ fontSize: 12, fontWeight: 600, color: '#f1f5f9' }}>
-              {selected.label || selected.ip}
+              {nodeName(selected, t)}
             </span>
             <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: 16 }}>x</button>
           </div>
@@ -129,6 +148,11 @@ export default function Sidebar({ nodes, lanDevices, packets, selected, onClose,
         )}
 
         <SectionTitle label={t('section_ext', filteredNodes.length, hiddenCount)} />
+        {filteredNodes.length === 0 && (
+          <div style={{ padding: '10px 20px', fontSize: 10, color: '#475569', fontStyle: 'italic' }}>
+            {t('ext_empty')}
+          </div>
+        )}
         {filteredNodes
           .sort((a, b) => (b.bytes || 0) - (a.bytes || 0))
           .map(n => <NodeRow key={n.id} node={n} />)}
@@ -175,6 +199,9 @@ function DeviceRow({ device }) {
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 11, fontWeight: 600, color: '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {device.hostname || device.vendor || device.ip}
+          {!device.hostname && !device.vendor && (
+            <span style={{ fontSize: 9, color: '#475569', fontWeight: 400 }}> · {t('unidentified')}</span>
+          )}
         </div>
         <div style={{ fontSize: 9, color: '#64748b', fontFamily: 'monospace' }}>
           {device.ip} · {device.mac}
@@ -189,12 +216,13 @@ function DeviceRow({ device }) {
 
 /** EN: One row of the external-host list. / FR: Une ligne de la liste d'hôtes externes. */
 function NodeRow({ node }) {
+  const { t } = useT()
   return (
     <div style={{ padding: '6px 20px', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid #1e293b' }}>
       <div style={{ width: 7, height: 7, borderRadius: '50%', background: CATEGORY_COLORS[node.category] || '#94a3b8', flexShrink: 0 }} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 11, color: '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {node.label || node.ip}
+          {nodeName(node, t)}
         </div>
         <div style={{ fontSize: 9, color: '#64748b' }}>{node.country || '-'} · {node.packets || 0} pkt</div>
       </div>
@@ -212,14 +240,24 @@ function NodeDetail({ node, onWhitelist }) {
     [t('field_mac'),      node.mac],
     [t('field_hostname'), node.hostname],
     [t('field_vendor'),   node.vendor],
-    [t('field_type'),     node.device_type],
+    [t('field_type'),     node.device_type ? enumName(t, 'devtype_', node.device_type) : null],
     [t('field_country'),  node.country],
     [t('field_city'),     node.city],
     [t('field_org'),      node.org],
-    [t('field_category'), node.category],
+    [t('field_category'), node.category ? enumName(t, 'cat_', node.category) : null],
     [t('field_traffic'),  fmt(node.bytes || 0)],
     [t('field_packets'),  node.packets],
   ]
+
+  // EN: Is this node still anonymous? No name resolution has produced a
+  //     label beyond the bare IP — shown to the user as an explanatory hint
+  //     so "Unknown" nodes don't read as errors or threats.
+  // FR: Ce nœud est-il encore anonyme ? Aucune résolution de nom n'a produit
+  //     de label au-delà de l'IP — affiché comme indice explicatif pour que
+  //     les nœuds « Inconnu » ne soient pas lus comme des erreurs ou menaces.
+  const isLan = node.category === 'lan_device'
+  const anonymous = node.id !== 'local' && !node.hostname && !node.vendor
+    && (!node.label || node.label === node.ip)
 
   // EN: Top-5 processes by bytes on this node.
   // FR: Top 5 des processus par octets sur ce nœud.
@@ -235,6 +273,21 @@ function NodeDetail({ node, onWhitelist }) {
           <span style={{ fontSize: 10, color: '#e2e8f0', maxWidth: 170, textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v}</span>
         </div>
       ))}
+
+      {/* EN: "What's happening" hint — an anonymous node is normal, not a
+              threat: identification may simply not have resolved yet.
+          FR: Indice « qu'est-ce qui se passe » — un nœud anonyme est normal,
+              pas une menace : l'identification n'est simplement pas encore
+              résolue. */}
+      {anonymous && (
+        <div style={{
+          marginTop: 8, padding: '6px 8px', fontSize: 9, lineHeight: 1.5,
+          color: '#64748b', background: '#1e293b', borderRadius: 6,
+          borderLeft: '2px solid #334155',
+        }}>
+          {t(isLan ? 'hint_unidentified' : 'hint_unresolved')}
+        </div>
+      )}
 
       {processes.length > 0 && (
         <>

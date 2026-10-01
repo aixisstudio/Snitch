@@ -378,7 +378,7 @@ export default function MapView({ nodes, onNodeClick }) {
         .attr('font-size', Math.max(9 / k, 5))
         .attr('y', vr + 10 / k)
         .text(() => {
-          const lbl = d.label || d.ip || ''
+          const lbl = (d.label_key ? t(d.label_key) : d.label) || d.ip || ''
           return lbl.length > 18 ? lbl.slice(0, 16) + '…' : lbl
         })
     })
@@ -419,7 +419,7 @@ export default function MapView({ nodes, onNodeClick }) {
           boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
         }}>
           <div style={{ fontWeight: 700, fontSize: 12, color: '#f1f5f9', marginBottom: 3 }}>
-            {tooltip.node.label || tooltip.node.ip}
+            {(tooltip.node.label_key ? t(tooltip.node.label_key) : tooltip.node.label) || tooltip.node.ip}
           </div>
           {tooltip.node.country && (
             <div style={{ fontSize: 10, color: '#94a3b8' }}>

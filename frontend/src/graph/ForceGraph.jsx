@@ -30,19 +30,20 @@
 import { useEffect, useMemo, useRef } from 'react'
 import * as d3 from 'd3'
 import { nodeIconURI } from './icons'
+import { useT } from '../i18n'
 
 /** EN: Edge stroke width scales with logged traffic volume.
  *  FR: La largeur d'arête suit le volume de trafic en échelle log. */
 const edgeWidth = d => d.dashed ? 1 : Math.min(1 + Math.log1p((d.bytes || 0) / 1024), 6)
 
 /** EN: Native tooltip text for a node datum. / FR: Texte d'infobulle native d'un nœud. */
-const nodeTitle = d =>
-  [d.label || d.ip, d.vendor, d.mac, d.country, d.org, `${d.packets || 0} pkts`]
+const nodeTitle = (d, disp) =>
+  [disp(d), d.vendor, d.mac, d.country, d.org, `${d.packets || 0} pkts`]
     .filter(Boolean).join('\n')
 
 /** EN: Truncated label under a node. / FR: Étiquette tronquée sous un nœud. */
-const nodeLabel = d => {
-  const label = d.label || d.ip || ''
+const nodeLabel = (d, disp) => {
+  const label = disp(d) || ''
   return label.length > 20 ? label.slice(0, 18) + '…' : label
 }
 
@@ -55,6 +56,15 @@ export default function ForceGraph({ nodes, edges, lanDevices, alertedNodes = ne
   const labelSel = useRef(null)   // EN: d3 selection of edge <text>s / FR: sélection d3 des <text> arêtes
   const posCache = useRef({})     // EN: { id: {x,y,fx,fy} } / FR: positions persistées
   const dataRef  = useRef({ nodes: {}, edges: {}, lanDevices: {} })
+
+  const { t } = useT()
+  // EN: Display name — `label_key` resolves through i18n (e.g. the "local"
+  //     node shows "This Device"/"Cet appareil"), then label, then IP.
+  // FR: Nom d'affichage — `label_key` passe par l'i18n (ex. le nœud « local »
+  //     affiche « This Device »/« Cet appareil »), puis label, puis l'IP.
+  const displayName = d => (d.label_key ? t(d.label_key) : d.label) || d.ip
+  const displayNameRef = useRef(displayName)
+  displayNameRef.current = displayName
 
   // EN: Always-latest data for effects that don't rebuild the sim.
   // FR: Données toujours à jour pour les effets qui ne reconstruisent pas la sim.
@@ -210,13 +220,13 @@ export default function ForceGraph({ nodes, edges, lanDevices, alertedNodes = ne
       .attr('fill', d => d.category === 'lan_device' ? '#e2e8f0' : '#94a3b8')
       .attr('font-size', d => d.category === 'lan_device' ? 10 : 9)
       .attr('font-weight', d => d.category === 'lan_device' ? '600' : '400')
-      .text(nodeLabel)
+      .text(d => nodeLabel(d, displayNameRef.current))
 
     // EN: Native tooltip with full detail on hover — kept fresh by the
     //     metrics effect below.
     // FR: Infobulle native avec le détail complet au survol — maintenue à jour
     //     par l'effet métriques ci-dessous.
-    node.append('title').text(nodeTitle)
+    node.append('title').text(d => nodeTitle(d, displayNameRef.current))
 
     sim.on('tick', () => {
       link
@@ -259,8 +269,8 @@ export default function ForceGraph({ nodes, edges, lanDevices, alertedNodes = ne
     )
 
     link.attr('stroke-width', d => edgeWidth(edgeById.get(d.id) || d))
-    node.select('title').text(d => nodeTitle(nodeById.get(d.id) || d))
-    node.select('text').text(d => nodeLabel(nodeById.get(d.id) || d))
+    node.select('title').text(d => nodeTitle(nodeById.get(d.id) || d, displayNameRef.current))
+    node.select('text').text(d => nodeLabel(nodeById.get(d.id) || d, displayNameRef.current))
 
     paintAlertRings(node, alertedNodes)
   }, [nodes, edges, lanDevices, alertedNodes])

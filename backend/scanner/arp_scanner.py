@@ -60,7 +60,7 @@ class Device:
     """
     ip: str
     mac: str
-    vendor: str = "Unknown"
+    vendor: str = ""
     device_type: str = "unknown"        # phone / pc / router / iot / tv / unknown
     hostname: Optional[str] = None
     online: bool = True

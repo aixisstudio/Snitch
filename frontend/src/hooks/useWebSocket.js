@@ -86,6 +86,7 @@ export function useWebSocket(url) {
     let attempts = 0
     let timer = null
     let heartbeat = null  // EN: 20 s app-level keepalive / FR: keepalive applicatif de 20 s
+    let connectTimer = null  // EN: CONNECTING-state watchdog / FR: chien de garde de l'état CONNECTING
 
     async function connect() {
       // EN: Resolve the token BEFORE opening the socket.
@@ -95,7 +96,20 @@ export function useWebSocket(url) {
 
       ws.current = new WebSocket(wsUrl)
 
+      // EN: Watchdog — a proxy that accepts TCP but never completes the WS
+      //     upgrade leaves the socket stuck in CONNECTING forever (no open,
+      //     no error, no close → UI stuck on "connecting"). Close it after
+      //     8 s so onclose triggers the normal backoff retry.
+      // FR: Chien de garde — un proxy qui accepte le TCP sans terminer
+      //     l'upgrade WS laisse le socket CONNECTING indéfiniment (ni open,
+      //     ni error, ni close → UI bloquée sur « connexion »). On le ferme
+      //     au bout de 8 s pour que onclose déclenche la réessai normale.
+      connectTimer = setTimeout(() => {
+        if (ws.current?.readyState === WebSocket.CONNECTING) ws.current.close()
+      }, 8000)
+
       ws.current.onopen = () => {
+        clearTimeout(connectTimer)
         attempts = 0
         setStatus('connected')
         // EN: send a cheap JSON ping every 20 s so idle sockets aren't dropped
@@ -107,6 +121,7 @@ export function useWebSocket(url) {
         }, 20000)
       }
       ws.current.onclose = () => {
+        clearTimeout(connectTimer)
         clearInterval(heartbeat)
         if (stopped) return
         setStatus('disconnected')
@@ -280,6 +295,7 @@ export function useWebSocket(url) {
       // FR: Arrêter les reconnexions et libérer le timer en attente au démontage.
       stopped = true
       if (timer) clearTimeout(timer)
+      clearTimeout(connectTimer)
       clearInterval(heartbeat)
       ws.current?.close()
     }

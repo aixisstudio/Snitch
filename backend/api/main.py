@@ -653,7 +653,13 @@ async def _startup() -> None:
     _loop = asyncio.get_running_loop()
 
     nodes["local"] = {
-        "id": "local", "label": "This Device", "ip": "local",
+        # EN: "local" node = this machine. The label is a translation key —
+        #     the frontend renders t("node_local") so it follows the UI
+        #     language instead of being hard-English in the payload.
+        # FR: Le nœud « local » = cette machine. Le label est une clé de
+        #     traduction — le frontend affiche t("node_local") pour suivre
+        #     la langue de l'UI au lieu d'un anglais codé en dur.
+        "id": "local", "label_key": "node_local", "ip": "local",
         "category": "local", "color": "#3b82f6",
         "bytes": 0, "packets": 0, "alerted": False,
     }

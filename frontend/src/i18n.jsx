@@ -69,6 +69,28 @@ const en = {
   search_placeholder: 'Search host, IP, country…',
   cat_all: 'All',
   cat_unknown: 'Unknown',
+  cat_safe: 'Safe',
+  cat_tracking: 'Tracking',
+  cat_cdn: 'CDN',
+  cat_dns: 'DNS',
+  cat_admin: 'Admin',
+  cat_local: 'Local',
+  cat_lan_device: 'LAN device',
+  cat_other: 'Other',
+
+  // EN: Node names + identification hints shown to the user.
+  // FR: Noms de nœuds + indices d'identification affichés à l'utilisateur.
+  node_local: 'This Device',
+  unidentified: 'unidentified',
+  devtype_router: 'Router',
+  devtype_phone: 'Phone',
+  devtype_pc: 'Computer',
+  devtype_tv: 'TV',
+  devtype_iot: 'IoT device',
+  devtype_unknown: 'Unknown type',
+  hint_unidentified: "Not identified yet — its name appears when it announces itself (DNS/mDNS) or its MAC vendor is known. If you don't recognize it, check your router's client list.",
+  hint_unresolved: 'Not yet named — the domain appears when a DNS answer or TLS handshake reveals it.',
+  ext_empty: "No external connections yet — anything your machine talks to will appear here.",
 
   // Alert panel / Panneau d'alertes
   alerts_title: 'Alerts',
@@ -236,7 +258,7 @@ const fr = {
   legend_pc: 'PC',
   legend_iot: 'IoT',
   legend_https: 'HTTPS',
-  legend_tracking: 'Tracking',
+  legend_tracking: 'Pistage',
   legend_cdn: 'CDN',
   legend_dns: 'DNS',
 
@@ -272,6 +294,28 @@ const fr = {
   search_placeholder: 'Rechercher hôte, IP, pays…',
   cat_all: 'Tout',
   cat_unknown: 'Inconnu',
+  cat_safe: 'Sûr',
+  cat_tracking: 'Pistage',
+  cat_cdn: 'CDN',
+  cat_dns: 'DNS',
+  cat_admin: 'Admin',
+  cat_local: 'Local',
+  cat_lan_device: 'Appareil LAN',
+  cat_other: 'Autre',
+
+  // FR: Noms de nœuds + indices d'identification affichés à l'utilisateur.
+  // EN: Node names + identification hints shown to the user.
+  node_local: 'Cet appareil',
+  unidentified: 'non identifié',
+  devtype_router: 'Routeur',
+  devtype_phone: 'Téléphone',
+  devtype_pc: 'Ordinateur',
+  devtype_tv: 'TV',
+  devtype_iot: 'Objet connecté',
+  devtype_unknown: 'Type inconnu',
+  hint_unidentified: "Pas encore identifié — son nom apparaîtra s'il s'annonce (DNS/mDNS) ou si son fabricant est connu. Si vous ne le reconnaissez pas, vérifiez la liste des clients de votre box/routeur.",
+  hint_unresolved: "Pas encore nommé — le domaine apparaîtra quand une réponse DNS ou un handshake TLS le révélera.",
+  ext_empty: "Aucune connexion externe pour l'instant — tout hôte contacté par votre machine apparaîtra ici.",
 
   // Panneau d'alertes / Alert panel
   alerts_title: 'Alertes',

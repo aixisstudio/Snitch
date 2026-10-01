@@ -76,4 +76,4 @@ def lookup(mac: str) -> tuple[str, str]:
         inconnus renvoient ("Unknown", "unknown").
     """
     key = mac.upper().replace(":", "").replace("-", "")[:6]
-    return OUI_TABLE.get(key, ("Unknown", "unknown"))
+    return OUI_TABLE.get(key, ("", "unknown"))

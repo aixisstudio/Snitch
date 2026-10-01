@@ -27,5 +27,8 @@ def test_short_prefix_input():
 
 def test_unknown_prefix():
     vendor, dev_type = lookup("ZZ:ZZ:ZZ:00:11:22")
-    assert vendor == "Unknown"
+    assert vendor == ""          # EN: empty — UI falls back to the IP and
+                                 #     shows an "unidentified" badge instead
+                                 # FR: vide — l'UI retombe sur l'IP et
+                                 #     affiche un badge « non identifié »
     assert dev_type == "unknown"
