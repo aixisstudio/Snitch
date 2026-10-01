@@ -63,6 +63,7 @@ import json
 import logging
 import os
 import queue
+import socket
 import threading
 import time
 from contextlib import asynccontextmanager
@@ -242,6 +243,15 @@ def _ensure_lan_device(ip: str) -> dict:
 # FR: Cache de la passerelle par défaut — `route`/`/proc` relu au maximum
 #     une fois par minute pour que la création de stub reste légère.
 _gateway_cache: dict = {"ip": None, "ts": 0.0}
+
+
+def _local_hostname() -> str:
+    """EN: This machine's display name, minus the mDNS ".local" suffix.
+    FR: Le nom d'affichage de cette machine, sans le suffixe mDNS « .local »."""
+    try:
+        return socket.gethostname().removesuffix(".local")
+    except OSError:
+        return ""
 
 
 def _gateway() -> Optional[str]:
@@ -787,13 +797,15 @@ async def _startup() -> None:
     _loop = asyncio.get_running_loop()
 
     nodes["local"] = {
-        # EN: "local" node = this machine. The label is a translation key —
-        #     the frontend renders t("node_local") so it follows the UI
-        #     language instead of being hard-English in the payload.
-        # FR: Le nœud « local » = cette machine. Le label est une clé de
-        #     traduction — le frontend affiche t("node_local") pour suivre
-        #     la langue de l'UI au lieu d'un anglais codé en dur.
-        "id": "local", "label_key": "node_local", "ip": "local",
+        # EN: "local" node = this machine, labeled with its real hostname
+        #     ("MoneyLia") — users recognize their own device name better
+        #     than a generic "This Device". Falls back to the i18n key.
+        # FR: Le nœud « local » = cette machine, étiquetée avec son vrai nom
+        #     d'hôte (« MoneyLia ») — l'utilisateur reconnaît mieux le nom
+        #     de son appareil qu'un « Cet appareil » générique. Retombe sur
+        #     la clé i18n.
+        "id": "local", "label": _local_hostname(), "label_key": "node_local",
+        "hostname": _local_hostname(), "ip": "local",
         "category": "local", "color": "#3b82f6",
         "bytes": 0, "packets": 0, "alerted": False,
     }

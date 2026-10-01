@@ -81,6 +81,7 @@ const en = {
   // EN: Node names + identification hints shown to the user.
   // FR: Noms de nœuds + indices d'identification affichés à l'utilisateur.
   node_local: 'This Device',
+  hint_local: 'This is THIS machine — the one running Snitch. Everything it sends or receives radiates from the center of the graph.',
   unidentified: 'unidentified',
   devtype_router: 'Router',
   devtype_phone: 'Phone',
@@ -312,6 +313,7 @@ const fr = {
   // FR: Noms de nœuds + indices d'identification affichés à l'utilisateur.
   // EN: Node names + identification hints shown to the user.
   node_local: 'Cet appareil',
+  hint_local: "C'est CETTE machine — celle qui fait tourner Snitch. Tout ce qu'elle envoie ou reçoit rayonne depuis le centre du graphe.",
   unidentified: 'non identifié',
   devtype_router: 'Routeur',
   devtype_phone: 'Téléphone',

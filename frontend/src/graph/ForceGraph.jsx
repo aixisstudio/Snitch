@@ -62,7 +62,7 @@ export default function ForceGraph({ nodes, edges, lanDevices, alertedNodes = ne
   //     node shows "This Device"/"Cet appareil"), then label, then IP.
   // FR: Nom d'affichage — `label_key` passe par l'i18n (ex. le nœud « local »
   //     affiche « This Device »/« Cet appareil »), puis label, puis l'IP.
-  const displayName = d => (d.label_key ? t(d.label_key) : d.label) || d.ip
+  const displayName = d => d.label || (d.label_key ? t(d.label_key) : null) || d.ip
   const displayNameRef = useRef(displayName)
   displayNameRef.current = displayName
 

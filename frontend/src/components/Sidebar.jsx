@@ -38,7 +38,7 @@ const CATEGORY_COLORS = {
  * FR: Nom d'affichage d'un nœud — `label_key` est une clé de traduction
  *     résolue via t() (ex. le nœud « local »), puis label, puis l'IP.
  */
-const nodeName = (n, t) => (n.label_key ? t(n.label_key) : n.label) || n.ip
+const nodeName = (n, t) => n.label || (n.label_key ? t(n.label_key) : null) || n.ip
 
 /**
  * EN: Translate a raw backend enum value (device_type, category) through a
@@ -298,6 +298,7 @@ function NodeDetail({ node, onWhitelist }) {
           FR: Indices « qu'est-ce qui se passe » — expliquer, pas alarmer.
               Priorité : passerelle → LAN inactif/actif → encore anonyme →
               MAC privée. */}
+      {node.id === 'local' && <Hint accent="#3b82f6">{t('hint_local')}</Hint>}
       {node.is_gateway && <Hint>{t('hint_gateway')}</Hint>}
       {isLan && !node.is_gateway && (
         <Hint>
