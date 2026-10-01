@@ -88,13 +88,18 @@ export default function Sidebar({ nodes, lanDevices, packets, selected, onClose,
   const hiddenCount = filteredNodes.length < extNodes.length ? extNodes.length : null
 
   return (
+    /* EN: Bento layout — each section is a rounded card floating on the
+           black rail, separated by gaps instead of divider lines.
+       FR: Layout bento — chaque section est une carte arrondie flottant
+           sur le rail noir, séparée par des espaces plutôt que des lignes. */
     <div style={{
-      width: 300, height: '100vh', background: '#0f0f0f',
-      borderRight: '1px solid #2a2a2a', display: 'flex',
+      width: 308, height: '100vh', background: '#000000',
+      borderRight: '1px solid #141414', display: 'flex',
       flexDirection: 'column', overflow: 'hidden',
+      padding: 8, gap: 8, boxSizing: 'border-box',
     }}>
       {/* EN: Brand + live bandwidth / FR: Marque + débit en direct */}
-      <div style={{ padding: '14px 20px 8px', borderBottom: '1px solid #2a2a2a' }}>
+      <div style={{ ...CARD, padding: '14px 16px 8px' }}>
         <div style={{ marginBottom: 6 }}>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 7, marginBottom: 2 }}>
             <span style={{ fontSize: 9, fontFamily: 'monospace', color: '#f7b016', letterSpacing: 3, fontWeight: 600 }}>NET</span>
@@ -106,7 +111,7 @@ export default function Sidebar({ nodes, lanDevices, packets, selected, onClose,
       </div>
 
       {/* EN: Quick counters / FR: Compteurs rapides */}
-      <div style={{ padding: '10px 20px', borderBottom: '1px solid #2a2a2a' }}>
+      <div style={{ ...CARD, padding: '10px 16px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
           <Stat label={t('stat_lan')}     value={devList.length}      color="#f97316" />
           <Stat label={t('stat_ext')}     value={extNodes.length} />
@@ -115,18 +120,20 @@ export default function Sidebar({ nodes, lanDevices, packets, selected, onClose,
       </div>
 
       {privacyScore && (
-        <PrivacyScore
-          score={privacyScore.score}
-          grade={privacyScore.grade}
-          color={privacyScore.color}
-          labelKey={privacyScore.labelKey}
-          factors={privacyScore.factors}
-        />
+        <div style={CARD}>
+          <PrivacyScore
+            score={privacyScore.score}
+            grade={privacyScore.grade}
+            color={privacyScore.color}
+            labelKey={privacyScore.labelKey}
+            factors={privacyScore.factors}
+          />
+        </div>
       )}
 
       {/* EN: Detail card for the clicked node. / FR: Fiche détail du nœud cliqué. */}
       {selected && (
-        <div style={{ padding: '12px 20px', borderBottom: '1px solid #2a2a2a', background: '#000000' }}>
+        <div style={{ ...CARD, padding: '12px 16px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
             <span style={{ fontSize: 12, fontWeight: 600, color: '#f1f5f9' }}>
               {nodeName(selected, t)}
@@ -137,9 +144,11 @@ export default function Sidebar({ nodes, lanDevices, packets, selected, onClose,
         </div>
       )}
 
-      <SearchBar filter={filter} onChange={onFilterChange} />
+      <div style={CARD}>
+        <SearchBar filter={filter} onChange={onFilterChange} />
+      </div>
 
-      <div style={{ flex: 1, overflowY: 'auto' }}>
+      <div style={{ ...CARD, flex: 1, overflowY: 'auto', minHeight: 0 }}>
         {devList.length > 0 && (
           <>
             <SectionTitle label={t('section_lan', devList.length)} />
@@ -159,7 +168,7 @@ export default function Sidebar({ nodes, lanDevices, packets, selected, onClose,
       </div>
 
       {/* EN: Recent packet feed / FR: Flux de paquets récents */}
-      <div style={{ borderTop: '1px solid #2a2a2a', maxHeight: 160, overflowY: 'auto' }}>
+      <div style={{ ...CARD, maxHeight: 160, overflowY: 'auto', flexShrink: 0 }}>
         <SectionTitle label={t('section_packets')} />
         {packets.slice(0, 25).map((p, i) => <PacketRow key={i} packet={p} />)}
       </div>
@@ -167,10 +176,17 @@ export default function Sidebar({ nodes, lanDevices, packets, selected, onClose,
   )
 }
 
+/** EN: Bento card chrome — near-black fill, hairline border, 12px radius.
+ *  FR: Habillage carte bento — fond quasi noir, bordure fine, rayon 12 px. */
+const CARD = {
+  background: '#0f0f0f', border: '1px solid #1c1c1c',
+  borderRadius: 12,
+}
+
 /** EN: Sticky list section header. / FR: En-tête de section de liste collant. */
 function SectionTitle({ label }) {
   return (
-    <div style={{ padding: '5px 20px', fontSize: 10, color: '#64748b', textTransform: 'uppercase', letterSpacing: 1, background: '#0f0f0f', position: 'sticky', top: 0 }}>
+    <div style={{ padding: '6px 16px 4px', fontSize: 10, color: '#64748b', textTransform: 'uppercase', letterSpacing: 1, background: '#0f0f0f', position: 'sticky', top: 0, borderRadius: '12px 12px 0 0' }}>
       {label}
     </div>
   )
@@ -192,7 +208,7 @@ function Hint({ children, accent = '#2a2a2a' }) {
   return (
     <div style={{
       marginTop: 8, padding: '6px 8px', fontSize: 9, lineHeight: 1.5,
-      color: '#64748b', background: '#0f0f0f', borderRadius: 6,
+      color: '#64748b', background: '#000000', borderRadius: 6,
       borderLeft: `2px solid ${accent}`,
     }}>
       {children}
@@ -206,8 +222,8 @@ function DeviceRow({ device }) {
   const Icon = DEVICE_ICONS[device.device_type] || HelpCircle
   return (
     <div style={{
-      padding: '7px 20px', display: 'flex', alignItems: 'center', gap: 8,
-      borderBottom: '1px solid #0f0f0f',
+      padding: '7px 16px', display: 'flex', alignItems: 'center', gap: 8,
+      borderBottom: '1px solid #1a1a1a',
       opacity: device.online === false ? 0.45 : 1,
     }}>
       <Icon size={16} color={device.color} />
@@ -237,7 +253,7 @@ function DeviceRow({ device }) {
 function NodeRow({ node }) {
   const { t } = useT()
   return (
-    <div style={{ padding: '6px 20px', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid #0f0f0f' }}>
+    <div style={{ padding: '6px 16px', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid #1a1a1a' }}>
       <div style={{ width: 7, height: 7, borderRadius: '50%', background: CATEGORY_COLORS[node.category] || '#94a3b8', flexShrink: 0 }} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 11, color: '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -349,7 +365,7 @@ function PacketRow({ packet }) {
   const out   = packet.direction === 'out'
   const color = out ? '#22c55e' : '#3b82f6'
   return (
-    <div style={{ padding: '3px 20px', display: 'flex', alignItems: 'center', gap: 6 }}>
+    <div style={{ padding: '3px 16px', display: 'flex', alignItems: 'center', gap: 6 }}>
       <span style={{ color, fontSize: 10, flexShrink: 0 }}>{out ? '>' : '<'}</span>
       {packet.process && (
         <span style={{ fontSize: 9, color: '#f59e0b', flexShrink: 0, maxWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>

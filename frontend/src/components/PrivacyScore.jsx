@@ -41,7 +41,7 @@ export default function PrivacyScore({ score, grade, color, labelKey, factors })
   const badCount = factors.filter(f => f.bad).length
 
   return (
-    <div style={{ padding: '14px 20px', borderBottom: '1px solid #2a2a2a' }}>
+    <div style={{ padding: '14px 16px' }}>
       <div style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
         {t('privacy_title')}
       </div>

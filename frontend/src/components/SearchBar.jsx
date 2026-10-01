@@ -34,7 +34,7 @@ export default function SearchBar({ filter, onChange }) {
   }))
 
   return (
-    <div style={{ padding: '8px 12px', borderBottom: '1px solid #2a2a2a' }}>
+    <div style={{ padding: '8px 12px' }}>
       {/* EN: Text field / FR: Champ texte */}
       <div style={{ position: 'relative', marginBottom: 7 }}>
         <Search size={11} style={{

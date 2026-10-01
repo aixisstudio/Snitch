@@ -143,10 +143,16 @@ export default function Timeline() {
   const totalAlerts = data.reduce((a, d) => a + d.alerts,  0)
 
   return (
+    /* EN: Bento card — floats on the black canvas, hairline border,
+           12px radius matching the sidebar cards.
+       FR: Carte bento — flotte sur le canevas noir, bordure fine,
+           rayon 12 px assorti aux cartes de la sidebar. */
     <div style={{
       height: expanded ? EXPANDED_H : COLLAPSED_H,
-      background: '#000000',
-      borderTop: '1px solid #1c1c1c',
+      background: '#0f0f0f',
+      border: '1px solid #1c1c1c',
+      borderRadius: 12,
+      margin: '0 8px 8px',
       transition: 'height 0.2s ease',
       overflow: 'hidden',
       flexShrink: 0,
