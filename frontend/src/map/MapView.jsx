@@ -403,9 +403,10 @@ export default function MapView({ nodes, onNodeClick }) {
     <div style={{ width: '100%', height: '100%', position: 'relative' }}>
       <svg ref={svgRef} style={{ width: '100%', height: '100%' }} />
 
-      {/* EN: Geolocated-host counter badge / FR: Badge compteur d'hôtes géolocalisés */}
+      {/* EN: Geolocated-host counter badge — sits below the floating toolbar.
+          FR: Badge compteur d'hôtes géolocalisés — sous la barre d'outils flottante. */}
       <div style={{
-        position: 'absolute', top: 16, left: 16,
+        position: 'absolute', top: 64, left: 16,
         background: '#0f0f0f', border: '1px solid #2a2a2a',
         borderRadius: 8, padding: '8px 14px', fontSize: 10, color: '#64748b',
       }}>
