@@ -2,10 +2,24 @@
 Snitch — FastAPI application.
 
 EN: Heart of the backend. Owns the in-memory graph state (nodes / edges /
-    LAN devices), receives packets from the Scapy sniffer thread, enriches
-    them (DNS + geolocation + classification), feeds the anomaly detector,
-    persists aggregates to SQLite and pushes realtime updates over the
-    WebSocket.
+    LAN devices), receives packets from the libpcap sniffer thread, enriches
+    them (observed DNS/SNI + offline geolocation + classification), feeds the
+    anomaly detector, persists aggregates to SQLite and pushes realtime
+    updates over the WebSocket.
+
+    Pipeline (post-review redesign):
+      capture thread → bounded queue.Queue → ONE asyncio drain task every
+      250 ms → per-packet: filter + detector (lock-guarded) + graph aggregates
+      → ONE "batch" broadcast per tick. No per-packet coroutine storm, no
+      per-packet broadcast — json.dumps runs once per 250 ms window.
+
+    Enrichment is fire-and-forget: packets create/update nodes immediately
+    with a stub, a deduplicated background task fills in geo/hostname when it
+    resolves, then broadcasts a node patch. In-flight lookups are deduplicated
+    per IP and failures are never cached permanently.
+
+    Settings (port filter, excluded processes, whitelist) persist in SQLite
+    and are restored at startup.
 
     Security model (see api/security.py):
       - every REST endpoint requires the API token (X-Snitch-Token header or
@@ -14,10 +28,27 @@ EN: Heart of the backend. Owns the in-memory graph state (nodes / edges /
       - CORS is restricted to the dev server / self-origin / file:// (Electron)
 
 FR: Cœur du backend. Détenir l'état du graphe en mémoire (nœuds / arêtes /
-    appareils LAN), recevoir les paquets du thread du sniffer Scapy, les
-    enrichir (DNS + géolocalisation + classification), alimenter le détecteur
-    d'anomalies, persister les agrégats dans SQLite et pousser les mises à
-    jour temps réel via le WebSocket.
+    appareils LAN), recevoir les paquets du thread du sniffer libpcap, les
+    enrichir (DNS/SNI observés + géolocalisation hors ligne +
+    classification), alimenter le détecteur d'anomalies, persister les
+    agrégats dans SQLite et pousser les mises à jour temps réel via le
+    WebSocket.
+
+    Pipeline (refonte post-revue) :
+      thread de capture → queue.Queue bornée → UNE tâche asyncio de vidage
+      toutes les 250 ms → par paquet : filtre + détecteur (sous verrou) +
+      agrégats du graphe → UNE diffusion « batch » par tick. Plus de tempête
+      de coroutines ni de broadcast par paquet — json.dumps tourne une fois
+      par fenêtre de 250 ms.
+
+    L'enrichissement est en tâche de fond : les paquets créent/mettent à jour
+    les nœuds immédiatement avec un stub, une tâche dédupliquée remplit
+    géo/nom d'hôte quand la résolution aboutit, puis diffuse un patch de
+    nœud. Les recherches en vol sont dédupliquées par IP et les échecs ne sont
+    jamais cachés définitivement.
+
+    Les réglages (filtre de ports, processus exclus, whitelist) persistent
+    dans SQLite et sont restaurés au démarrage.
 
     Modèle de sécurité (voir api/security.py) :
       - chaque endpoint REST exige le jeton API (en-tête X-Snitch-Token ou
@@ -27,22 +58,27 @@ FR: Cœur du backend. Détenir l'état du graphe en mémoire (nœuds / arêtes /
 """
 
 import asyncio
+import ipaddress
 import json
 import logging
+import queue
 import threading
 import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+from pathlib import Path
 
 from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from api.security import ALLOWED_ORIGINS_LIST, require_token, ws_authorized
+from api.security import ALLOWED_ORIGIN_REGEX, require_token, ws_authorized
 from capture.sniffer import Packet, PacketSniffer
 from capture.media_monitor import MediaMonitor, MediaState
 from classifier.traffic import classify
-from resolver.dns_geo import enrich_ip
+from resolver.dns_geo import (enrich_ip, is_private, learn_dns_answers,
+                              learn_sni, lookup_domain)
 from scanner.arp_scanner import ARPScanner, Device
 from detection.anomaly import AnomalyDetector
 import storage.db as db
@@ -58,20 +94,33 @@ lan_devices: dict[str, dict] = {}
 connected_clients: list[WebSocket] = []
 enrichment_cache: dict[str, dict] = {}   # EN: remote_ip -> geo/hostname result
                                         # FR: remote_ip -> résultat geo/hostname
+_inflight_geo: set[str] = set()          # EN: IPs with a running enrich task
+                                        # FR: IP avec une tâche d'enrichissement en cours
 detector = AnomalyDetector()
 _loop: asyncio.AbstractEventLoop | None = None
 _sniffer: PacketSniffer | None = None
 _scanner: ARPScanner | None = None
+_media_monitor: MediaMonitor | None = None
 _capturing: bool = True
 _port_filter: list[int] = []
 _excluded_processes: set[str] = set()
 _whitelisted_ips: set[str] = set()
-_media_state: dict = {"mic": [], "camera": []}
+_media_state: dict = {"mic": [], "camera": [], "supported": True}
+_shutdown = False
+
+# EN: Bounded packet queue between the capture thread and the event loop.
+#     Full → drop oldest: a stale burst is less useful than fresh traffic.
+# FR: File de paquets bornée entre le thread de capture et la boucle.
+#     Pleine → on jette le plus ancien : une rafale périmée vaut moins que
+#     le trafic frais.
+_pkt_queue: queue.Queue = queue.Queue(maxsize=20_000)
 
 # EN: Hard caps so a long-running instance can't leak memory.
 # FR: Plafonds stricts pour qu'une instance longue durée ne fuie pas de mémoire.
 MAX_GRAPH_NODES = 800
 MAX_ENRICHMENT_CACHE = 4096
+DRAIN_INTERVAL_S = 0.25        # EN: ~4 Hz batch broadcasts / FR: ~4 lots par seconde
+DRAIN_MAX_PACKETS = 2_000      # EN: per tick / FR: par tick
 
 
 # ── Pydantic request models / Modèles de requête Pydantic ────────────────────
@@ -93,201 +142,344 @@ class WhitelistBody(BaseModel):
     ips: list[str] = Field(default_factory=list)
 
 
+class SettingsBody(BaseModel):
+    """EN: /settings payload — generic key/value settings persisted to SQLite.
+    FR: Charge utile de /settings — réglages clé/valeur persistés dans SQLite."""
+    settings: dict = Field(default_factory=dict)
+
+
 # ── Broadcast / Diffusion ────────────────────────────────────────────────────
 
 async def broadcast(message: dict) -> None:
     """
     EN: Send a JSON message to every connected WebSocket client; drop the
-        dead ones.
+        dead ones. Serialized ONCE for all clients.
     FR: Envoyer un message JSON à tous les clients WebSocket connectés ;
-        retirer les morts.
+        retirer les morts. Sérialisé UNE fois pour tous les clients.
     """
+    if not connected_clients:
+        return
+    payload = json.dumps(message)
     dead = []
     for ws in connected_clients:
         try:
-            await ws.send_text(json.dumps(message))
+            await ws.send_text(payload)
         except Exception:
             dead.append(ws)
     for ws in dead:
         connected_clients.remove(ws)
 
 
+# ── Noise filtering / Filtrage du bruit ──────────────────────────────────────
+
+def _is_noise_ip(ip: str) -> bool:
+    """
+    EN: True for traffic that must never become a node: multicast, broadcast,
+        loopback, link-local, unspecified. These used to spawn duplicate
+        "external" nodes before the ARP scan populated lan_devices.
+    FR: True pour le trafic qui ne doit jamais devenir un nœud : multicast,
+        broadcast, loopback, link-local, non spécifié. Ce trafic créait des
+        nœuds « externes » doublons avant que le scan ARP ne remplisse
+        lan_devices.
+    """
+    try:
+        a = ipaddress.ip_address(ip)
+        return (a.is_multicast or a.is_loopback or a.is_link_local
+                or a.is_unspecified or a.is_reserved)
+    except ValueError:
+        return ip == "255.255.255.255"
+
+
+def _ensure_lan_device(ip: str) -> dict:
+    """
+    EN: Guarantee a lan_devices entry for a private peer — even before the
+        ARP table yields it (router, DHCP guests). Real discoveries later
+        overwrite these stub fields with vendor/hostname info.
+    FR: Garantir une entrée lan_devices pour un pair privé — même avant que
+        la table ARP ne le livre (routeur, invités DHCP). Les vraies
+        découvertes écrasent ensuite ces champs stub avec fabricant/nom d'hôte.
+    """
+    key = f"lan:{ip}"
+    dev = lan_devices.get(key)
+    if dev is None:
+        dev = {
+            "id": key, "ip": ip, "mac": None,
+            "label": ip, "hostname": None, "vendor": "",
+            "category": "lan_device", "device_type": "unknown",
+            "online": True, "bytes": 0, "packets": 0,
+            "color": "#64748b", "alerted": False,
+        }
+        lan_devices[key] = dev
+        edges[f"lan-edge-{ip}"] = {
+            "id": f"lan-edge-{ip}", "source": "local", "target": key,
+            "protocol": "LAN", "label": "LAN", "color": "#64748b",
+            "bytes": 0, "packets": 0, "dashed": True,
+        }
+    return dev
+
+
 # ── Packet handling / Traitement des paquets ─────────────────────────────────
 
 def on_packet(pkt: Packet) -> None:
     """
-    EN: Called from the Scapy sniffer THREAD — schedule the async handler on
-        the event loop.
-    FR: Appelé depuis le THREAD du sniffer Scapy — planifier le handler async
-        sur la boucle d'événements.
+    EN: Called from the capture THREAD — drop into the bounded queue. The
+        event loop drains it in batches; no coroutine is created per packet.
+    FR: Appelé depuis le THREAD de capture — déposer dans la file bornée. La
+        boucle d'événements la vide par lots ; aucune coroutine n'est créée
+        par paquet.
     """
-    if _loop is None:
-        return
-    asyncio.run_coroutine_threadsafe(_handle_packet(pkt), _loop)
+    try:
+        _pkt_queue.put_nowait(pkt)
+    except queue.Full:
+        try:
+            _pkt_queue.get_nowait()         # EN: drop oldest / FR: jeter le plus ancien
+            _pkt_queue.put_nowait(pkt)
+        except (queue.Empty, queue.Full):
+            pass
 
 
-async def _handle_packet(pkt: Packet) -> None:
+def _request_enrichment(ip: str) -> None:
     """
-    EN: Per-packet pipeline — filter, enrich, update graph, persist, detect.
-        LAN-destined traffic is accounted on the device node instead of being
-        dropped, so LAN devices show real byte counters.
-    FR: Pipeline par paquet — filtrer, enrichir, mettre à jour le graphe,
-        persister, détecter. Le trafic vers le LAN est comptabilisé sur le nœud
-        de l'appareil au lieu d'être ignoré, pour que les appareils LAN
-        affichent de vrais compteurs d'octets.
+    EN: Kick off a deduplicated background enrichment for `ip`. The node is
+        patched + broadcast when the lookup resolves. Failures cache a stub
+        for 5 min only — never permanently.
+    FR: Lancer un enrichissement de fond dédupliqué pour `ip`. Le nœud est
+        patché + rediffusé quand la résolution aboutit. Les échecs sont cachés
+        5 min seulement — jamais définitivement.
     """
-    if pkt.process_name and pkt.process_name in _excluded_processes:
+    if ip in _inflight_geo or ip in enrichment_cache:
         return
+    _inflight_geo.add(ip)
 
-    remote_ip = pkt.dst_ip if pkt.direction == "out" else pkt.src_ip
+    async def _enrich() -> None:
+        try:
+            geo = await enrich_ip(ip)
+            if len(enrichment_cache) > MAX_ENRICHMENT_CACHE:
+                for stale in list(enrichment_cache.keys())[: MAX_ENRICHMENT_CACHE // 2]:
+                    enrichment_cache.pop(stale, None)
+            enrichment_cache[ip] = geo
+            node = nodes.get(ip)
+            if node:
+                node.update({
+                    "label": geo.get("hostname") or node["label"],
+                    "country": geo.get("country"),
+                    "country_code": geo.get("country_code"),
+                    "city": geo.get("city"),
+                    "lat": geo.get("lat"),
+                    "lon": geo.get("lon"),
+                    "org": geo.get("org"),
+                })
+                await broadcast({"type": "node_update", "node": node})
+        except Exception as exc:
+            logger.debug("enrich_ip failed for %s: %s", ip, exc)
+            enrichment_cache[ip] = {"ip": ip, "hostname": None, "private": False,
+                                    "_expires": time.time() + 300}
+        finally:
+            _inflight_geo.discard(ip)
 
-    if remote_ip in _whitelisted_ips:
-        return
+    asyncio.get_running_loop().create_task(_enrich())
 
-    # ── LAN traffic accounting / Comptabilisation du trafic LAN ─────────────
-    lan_key = f"lan:{remote_ip}"
-    if lan_key in lan_devices:
-        lan_devices[lan_key]["bytes"] = lan_devices[lan_key].get("bytes", 0) + pkt.size
-        lan_devices[lan_key]["packets"] = lan_devices[lan_key].get("packets", 0) + 1
-        edge = edges.get(f"lan-edge-{remote_ip}")
-        if edge:
+
+def _geo_for(ip: str) -> dict:
+    """
+    EN: Best geo info available RIGHT NOW — cached result or a stub with the
+        observed DNS/SNI domain. Kicks off background enrichment on a miss.
+    FR: Meilleure info géo disponible IMMÉDIATEMENT — résultat en cache ou
+        stub avec le domaine DNS/SNI observé. Lance un enrichissement de fond
+        en cas d'échec.
+    """
+    cached = enrichment_cache.get(ip)
+    if cached and cached.get("_expires", float("inf")) > time.time():
+        return cached
+    _request_enrichment(ip)
+    return {"ip": ip, "hostname": lookup_domain(ip), "private": is_private(ip)}
+
+
+def _process_batch(packets: list[Packet]) -> None:
+    """
+    EN: One drain tick — runs on the event-loop thread. Per packet: filters,
+        LAN accounting, graph aggregation, detection (lock-guarded inside).
+        Returns the coalesced broadcast payload pieces.
+    FR: Un tick de vidage — tourne sur le thread de la boucle. Par paquet :
+        filtres, comptabilisation LAN, agrégation du graphe, détection (sous
+        verrou à l'intérieur). Renvoie les morceaux du lot à diffuser.
+    """
+    touched_nodes: dict[str, dict] = {}
+    touched_edges: dict[str, dict] = {}
+    touched_devices: dict[str, dict] = {}
+    out_packets: list[dict] = []
+    out_alerts: list[dict] = []
+
+    for pkt in packets:
+        if pkt.process_name and pkt.process_name in _excluded_processes:
+            continue
+
+        remote_ip = pkt.dst_ip if pkt.direction == "out" else pkt.src_ip
+        if remote_ip in _whitelisted_ips or _is_noise_ip(remote_ip):
+            continue
+
+        # EN: Feed the observed-domain map first — DNS answers map many IPs,
+        #     SNI names the destination of this very packet.
+        # FR: Alimenter d'abord la table des domaines observés — les réponses
+        #     DNS mappent beaucoup d'IP, le SNI nomme la destination de ce
+        #     paquet même.
+        if pkt.dns:
+            learn_dns_answers(pkt.dns)
+        if pkt.sni:
+            learn_sni(remote_ip, pkt.sni)
+
+        # ── LAN accounting / Comptabilisation LAN ───────────────────────────
+        if is_private(remote_ip):
+            dev = _ensure_lan_device(remote_ip)
+            dev["bytes"] += pkt.size
+            dev["packets"] += 1
+            edge = edges[f"lan-edge-{remote_ip}"]
             edge["bytes"] += pkt.size
             edge["packets"] += 1
-        await broadcast({
-            "type": "device_update",
-            "device": lan_devices[lan_key],
-            "edge": edge,
-            "is_new": False,
+            touched_devices[dev["id"]] = dev
+            touched_edges[edge["id"]] = edge
+            continue
+
+        geo = _geo_for(remote_ip)
+
+        # EN: remote_port — the fix for the inbound classification bug.
+        #     Category is recomputed and updatable (not frozen at creation).
+        # FR: remote_port — la correction du bug de classification entrant.
+        #     La catégorie est recalculée et modifiable (pas figée à la
+        #     création).
+        category = classify(geo.get("hostname") or pkt.sni,
+                            pkt.remote_port, pkt.protocol)
+
+        node_id = remote_ip
+        node = nodes.get(node_id)
+        if node is None:
+            if len(nodes) >= MAX_GRAPH_NODES:
+                _evict_weakest_node()
+            node = {
+                "id": node_id,
+                "label": geo.get("hostname") or remote_ip,
+                "ip": remote_ip,
+                "country": geo.get("country"),
+                "country_code": geo.get("country_code"),
+                "city": geo.get("city"),
+                "lat": geo.get("lat"),
+                "lon": geo.get("lon"),
+                "org": geo.get("org"),
+                "category": category.category,
+                "color": category.color,
+                "bytes": 0, "packets": 0, "alerted": False,
+            }
+            nodes[node_id] = node
+        elif node["category"] == "other" and category.category != "other":
+            # EN: Upgrade a placeholder category once DNS/SNI gives a real name.
+            # FR: Améliorer une catégorie générique quand DNS/SNI donne un vrai nom.
+            node["category"] = category.category
+            node["color"] = category.color
+        elif node["label"] == remote_ip and geo.get("hostname"):
+            node["label"] = geo["hostname"]
+
+        node["bytes"] += pkt.size
+        node["packets"] += 1
+
+        if pkt.process_name:
+            procs = node.setdefault("processes", {})
+            proc = procs.setdefault(pkt.process_name, {"bytes": 0, "packets": 0})
+            proc["bytes"] += pkt.size
+            proc["packets"] += 1
+
+        edge_id = f"local-{node_id}-{pkt.protocol}"
+        edge = edges.setdefault(edge_id, {
+            "id": edge_id, "source": "local", "target": node_id,
+            "protocol": pkt.protocol, "label": category.label,
+            "color": category.color, "bytes": 0, "packets": 0,
         })
-        return
+        edge["bytes"] += pkt.size
+        edge["packets"] += 1
 
-    # EN: Enrich once per IP (reverse DNS + geolocation), then cache it.
-    #     The cache is bounded — evict the oldest half when full.
-    # FR: Enrichir une fois par IP (DNS inverse + géolocalisation), puis cacher.
-    #     Le cache est borné — évincer la moitié la plus ancienne quand plein.
-    if remote_ip not in enrichment_cache:
-        if len(enrichment_cache) > MAX_ENRICHMENT_CACHE:
-            for stale in list(enrichment_cache.keys())[: MAX_ENRICHMENT_CACHE // 2]:
-                enrichment_cache.pop(stale, None)
-        try:
-            enrichment_cache[remote_ip] = await enrich_ip(remote_ip)
-        except Exception as exc:
-            logger.debug("enrich_ip failed for %s: %s", remote_ip, exc)
-            enrichment_cache[remote_ip] = {"ip": remote_ip, "hostname": None, "private": False}
-    geo = enrichment_cache[remote_ip]
+        db.accumulate(datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M"),
+                      category.category, pkt.size)
 
-    category = classify(geo.get("hostname"), pkt.dst_port, pkt.protocol)
+        # EN: Detection runs in the event loop — analyze_packet is
+        #     lock-guarded internally, no executor hop needed.
+        # FR: La détection tourne dans la boucle — analyze_packet est
+        #     protégée par verrou, pas besoin de saut d'executor.
+        for alert in detector.analyze_packet(pkt, geo):
+            if alert.node_id and alert.node_id in nodes:
+                nodes[alert.node_id]["alerted"] = True
+            alert_dict = alert.to_dict()
+            db.log_alert(alert_dict)
+            out_alerts.append(alert_dict)
 
-    # ── Graph node update / Mise à jour du nœud ─────────────────────────────
-    node_id = remote_ip
-    if node_id not in nodes:
-        # EN: Bound the graph — evict the lowest-traffic non-alerted node.
-        # FR: Borner le graphe — évincer le nœud au plus faible trafic non alerté.
-        if len(nodes) >= MAX_GRAPH_NODES:
-            _evict_weakest_node()
-        nodes[node_id] = {
-            "id": node_id,
-            "label": geo.get("hostname") or remote_ip,
-            "ip": remote_ip,
-            "country": geo.get("country"),
-            "country_code": geo.get("country_code"),
-            "city": geo.get("city"),
-            "lat": geo.get("lat"),
-            "lon": geo.get("lon"),
-            "org": geo.get("org"),
-            "category": category.category,
-            "color": category.color,
-            "bytes": 0,
-            "packets": 0,
-            "alerted": False,
-        }
-
-    nodes[node_id]["bytes"] += pkt.size
-    nodes[node_id]["packets"] += 1
-
-    # EN: Track per-process traffic on this node (top talkers in the UI).
-    # FR: Suivre le trafic par processus sur ce nœud (top parleurs dans l'UI).
-    if pkt.process_name:
-        procs = nodes[node_id].setdefault("processes", {})
-        if pkt.process_name not in procs:
-            procs[pkt.process_name] = {"bytes": 0, "packets": 0}
-        procs[pkt.process_name]["bytes"] += pkt.size
-        procs[pkt.process_name]["packets"] += 1
-
-    # ── Graph edge update / Mise à jour de l'arête ──────────────────────────
-    edge_id = f"local-{node_id}-{pkt.protocol}"
-    if edge_id not in edges:
-        edges[edge_id] = {
-            "id": edge_id,
-            "source": "local",
-            "target": node_id,
-            "protocol": pkt.protocol,
-            "label": category.label,
-            "color": category.color,
-            "bytes": 0,
-            "packets": 0,
-        }
-    edges[edge_id]["bytes"] += pkt.size
-    edges[edge_id]["packets"] += 1
-
-    # EN: Persist per-minute aggregates — batched, non-blocking.
-    # FR: Persister les agrégats par minute — par lots, sans blocage.
-    minute = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M")
-    db.accumulate(minute, category.category, pkt.size)
-
-    # ── Anomaly detection / Détection d'anomalies ───────────────────────────
-    loop = asyncio.get_running_loop()
-    alerts = await loop.run_in_executor(None, detector.analyze_packet, pkt, geo)
-    for alert in alerts:
-        if alert.node_id and alert.node_id in nodes:
-            nodes[alert.node_id]["alerted"] = True
-        alert_dict = alert.to_dict()
-        await loop.run_in_executor(None, db.log_alert, alert_dict)
-        await broadcast({"type": "alert", "alert": alert_dict})
-
-    await broadcast({
-        "type": "update",
-        "node": nodes[node_id],
-        "edge": edges[edge_id],
-        "packet": {
-            "src": pkt.src_ip,
-            "dst": pkt.dst_ip,
-            "protocol": pkt.protocol,
-            "size": pkt.size,
-            "direction": pkt.direction,
-            "process": pkt.process_name,
+        touched_nodes[node_id] = node
+        touched_edges[edge_id] = edge
+        out_packets.append({
+            "src": pkt.src_ip, "dst": pkt.dst_ip,
+            "protocol": pkt.protocol, "size": pkt.size,
+            "direction": pkt.direction, "process": pkt.process_name,
+            "remote_port": pkt.remote_port, "sni": pkt.sni,
             "timestamp": pkt.timestamp,
-        },
-    })
+        })
+
+    return {
+        "type": "batch",
+        "nodes": list(touched_nodes.values()),
+        "edges": list(touched_edges.values()),
+        "devices": list(touched_devices.values()),
+        "packets": out_packets,
+        "alerts": out_alerts,
+    }
+
+
+async def _drain_loop() -> None:
+    """
+    EN: THE consumer of _pkt_queue — one task, ~4 Hz. Each tick drains up to
+        DRAIN_MAX_PACKETS, aggregates them, and broadcasts a single "batch"
+        message. Replaces the old per-packet coroutine+broadcast storm.
+    FR: LE consommateur de _pkt_queue — une tâche, ~4 Hz. Chaque tick vide
+        jusqu'à DRAIN_MAX_PACKETS paquets, les agrège et diffuse un unique
+        message « batch ». Remplace l'ancienne tempête coroutine+broadcast
+        par paquet.
+    """
+    while not _shutdown:
+        batch: list[Packet] = []
+        for _ in range(DRAIN_MAX_PACKETS):
+            try:
+                batch.append(_pkt_queue.get_nowait())
+            except queue.Empty:
+                break
+        if batch:
+            try:
+                await broadcast(_process_batch(batch))
+            except Exception as exc:
+                logger.exception("packet batch failed: %s", exc)
+        await asyncio.sleep(DRAIN_INTERVAL_S)
 
 
 def _evict_weakest_node() -> None:
     """
     EN: Remove the lowest-byte, non-alerted, non-local node (and its edges)
-        when the graph hits MAX_GRAPH_NODES. Called from _handle_packet.
+        when the graph hits MAX_GRAPH_NODES.
     FR: Retirer le nœud au plus faible trafic, non alerté et non « local »
-        (et ses arêtes) quand le graphe atteint MAX_GRAPH_NODES. Appelé depuis
-        _handle_packet.
+        (et ses arêtes) quand le graphe atteint MAX_GRAPH_NODES.
     """
-    candidates = [
-        n for n in nodes.values()
-        if n["id"] != "local" and not n.get("alerted")
-    ]
+    candidates = [n for n in nodes.values()
+                  if n["id"] != "local" and not n.get("alerted")]
     if not candidates:
         return
     weakest = min(candidates, key=lambda n: n.get("bytes", 0))
     wid = weakest["id"]
     nodes.pop(wid, None)
     enrichment_cache.pop(wid, None)
-    for eid in [eid for eid, e in edges.items() if e["target"] == wid or e["source"] == wid]:
+    for eid in [eid for eid, e in edges.items()
+                if e["target"] == wid or e["source"] == wid]:
         edges.pop(eid, None)
 
 
 # ── LAN device handling / Gestion des appareils LAN ──────────────────────────
 
 def on_device(device: Device, is_new: bool) -> None:
-    """EN: ARP scanner callback — schedules async handling.
-    FR: Callback du scanner ARP — planifie le traitement async."""
+    """EN: ARP-table scanner callback — schedules async handling.
+    FR: Callback du scanner de table ARP — planifie le traitement async."""
     if _loop is None:
         return
     asyncio.run_coroutine_threadsafe(_handle_device(device, is_new), _loop)
@@ -301,8 +493,8 @@ async def _handle_device(device: Device, is_new: bool) -> None:
         arête pointillée vers « local », lancer les règles niveau appareil.
     """
     node = device.to_dict()
-    # EN: Preserve accumulated byte counters across rediscovery.
-    # FR: Préserver les compteurs d'octets accumulés à travers les redécouvertes.
+    # EN: Preserve accumulated counters + merge any stub the packet path made.
+    # FR: Préserver les compteurs + fusionner l'éventuel stub du chemin paquets.
     prev = lan_devices.get(node["id"])
     if prev:
         node["bytes"] = prev.get("bytes", 0)
@@ -332,7 +524,7 @@ async def _handle_device(device: Device, is_new: bool) -> None:
         if alert.node_id and alert.node_id in lan_devices:
             lan_devices[alert.node_id]["alerted"] = True
         alert_dict = alert.to_dict()
-        await loop.run_in_executor(None, db.log_alert, alert_dict)
+        db.log_alert(alert_dict)
         await broadcast({"type": "alert", "alert": alert_dict})
 
     await broadcast({
@@ -348,23 +540,24 @@ async def _handle_device(device: Device, is_new: bool) -> None:
 def _on_media_change(state: MediaState) -> None:
     """
     EN: MediaMonitor callback — sync the detector's media sets and notify UI.
+        `supported=False` (macOS) is forwarded so the badge can hide.
     FR: Callback MediaMonitor — synchroniser les ensembles média du détecteur
-        et notifier l'UI.
+        et notifier l'UI. `supported=False` (macOS) est transmis pour que le
+        badge se masque.
     """
     global _media_state
-    _media_state = {"mic": state.mic, "camera": state.camera}
+    _media_state = {"mic": state.mic, "camera": state.camera,
+                    "supported": state.supported}
     detector.update_media_state(state.mic, state.camera)
     if _loop:
         asyncio.run_coroutine_threadsafe(
-            broadcast({"type": "media", "mic": state.mic, "camera": state.camera}),
-            _loop,
-        )
+            broadcast({"type": "media", **_media_state}), _loop)
 
 
 def _flush_loop() -> None:
     """EN: Periodically flush the traffic accumulator to SQLite.
     FR: Vider périodiquement l'accumulateur de trafic vers SQLite."""
-    while True:
+    while not _shutdown:
         time.sleep(10)
         try:
             db.flush()
@@ -374,15 +567,16 @@ def _flush_loop() -> None:
 
 def _cleanup_loop() -> None:
     """
-    EN: Drop rows older than 24h — the timeline is a sliding window, the DB
-        must not grow forever.
-    FR: Supprimer les lignes de plus de 24 h — la timeline est une fenêtre
-        glissante, la BDD ne doit pas grossir indéfiniment.
+    EN: Drop rows older than the configured retention — the DB must not grow
+        forever. Retention is a persisted setting (hours, default 24).
+    FR: Supprimer les lignes plus anciennes que la rétention configurée — la
+        BDD ne doit pas grossir indéfiniment. La rétention est un réglage
+        persisté (heures, défaut 24).
     """
-    while True:
+    while not _shutdown:
         time.sleep(3600)
         try:
-            db.cleanup_old_data(hours=24)
+            db.cleanup_old_data(hours=int(db.get_setting("retention_hours", 24)))
         except Exception as exc:
             logger.error("db cleanup failed: %s", exc)
 
@@ -390,8 +584,8 @@ def _cleanup_loop() -> None:
 # ── Capture lifecycle / Cycle de vie de la capture ───────────────────────────
 
 def _start_capture() -> None:
-    """EN: (Re)start sniffer + ARP scanner in daemon threads.
-    FR: (Re)démarrer sniffer + scanner ARP dans des threads daemon."""
+    """EN: (Re)start sniffer + ARP-table scanner in daemon threads.
+    FR: (Re)démarrer sniffer + scanner de table ARP dans des threads daemon."""
     global _sniffer, _scanner, _capturing
     _sniffer = PacketSniffer(callback=on_packet, ports=_port_filter)
     threading.Thread(target=_sniffer.start, daemon=True).start()
@@ -412,10 +606,27 @@ def _stop_capture() -> None:
     logger.info("capture stopped")
 
 
+def _load_settings() -> None:
+    """
+    EN: Restore persisted settings from SQLite at startup — filters, whitelist
+        and process exclusions survive restarts now.
+    FR: Restaurer les réglages persistés depuis SQLite au démarrage — filtres,
+        whitelist et exclusions de processus survivent aux redémarrages.
+    """
+    global _port_filter, _excluded_processes, _whitelisted_ips
+    _port_filter = db.get_setting("ports", []) or []
+    _excluded_processes = set(db.get_setting("excluded_processes", []) or [])
+    _whitelisted_ips = set(db.get_setting("whitelisted_ips", []) or [])
+    if _port_filter:
+        logger.info("restored port filter: %s", _port_filter)
+
+
 async def _startup() -> None:
-    """EN: Startup — create the "local" node, start capture + background threads.
-    FR: Démarrage — créer le nœud « local », lancer capture + threads d'arrière-plan."""
-    global _loop
+    """EN: Startup — create the "local" node, load settings, start capture +
+    drain task + background threads.
+    FR: Démarrage — créer le nœud « local », charger les réglages, lancer
+    capture + tâche de vidage + threads d'arrière-plan."""
+    global _loop, _media_monitor
     _loop = asyncio.get_running_loop()
 
     nodes["local"] = {
@@ -424,20 +635,57 @@ async def _startup() -> None:
         "bytes": 0, "packets": 0, "alerted": False,
     }
 
+    _load_settings()
     _start_capture()
+    asyncio.get_running_loop().create_task(_drain_loop())
     threading.Thread(target=_flush_loop, daemon=True).start()
     threading.Thread(target=_cleanup_loop, daemon=True).start()
 
-    media = MediaMonitor(callback=_on_media_change, interval=3)
-    threading.Thread(target=media.start, daemon=True).start()
+    _media_monitor = MediaMonitor(callback=_on_media_change, interval=3)
+    threading.Thread(target=_media_monitor.start, daemon=True).start()
+
+
+async def _shutdown_all() -> None:
+    """
+    EN: Ordered shutdown — stop capture sources, drain pending packets, flush
+        the DB. Threads are daemons so nothing blocks process exit.
+    FR: Arrêt ordonné — stopper les sources de capture, vider les paquets en
+        attente, flusher la BDD. Les threads sont daemon donc rien ne bloque
+        la sortie du processus.
+    """
+    global _shutdown
+    _shutdown = True
+    _stop_capture()
+    if _media_monitor:
+        _media_monitor.stop()
+    # EN: Final drain + flush so nothing in flight is lost.
+    # FR: Dernier vidage + flush pour ne rien perdre en vol.
+    remaining: list[Packet] = []
+    while True:
+        try:
+            remaining.append(_pkt_queue.get_nowait())
+        except queue.Empty:
+            break
+    if remaining:
+        try:
+            _process_batch(remaining)
+        except Exception as exc:
+            logger.error("shutdown drain failed: %s", exc)
+    try:
+        db.flush()
+    except Exception as exc:
+        logger.error("final db flush failed: %s", exc)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """EN: FastAPI lifespan — startup logic, then yield for the app's life.
-    FR: Lifespan FastAPI — logique de démarrage, puis yield pour la vie de l'app."""
+    """EN: FastAPI lifespan — startup, yield, then clean shutdown.
+    FR: Lifespan FastAPI — démarrage, yield, puis arrêt propre."""
     await _startup()
-    yield
+    try:
+        yield
+    finally:
+        await _shutdown_all()
 
 
 app = FastAPI(title="Snitch API", lifespan=lifespan)
@@ -450,7 +698,9 @@ app = FastAPI(title="Snitch API", lifespan=lifespan)
 #     l'attaque « n'importe quelle page ouverte pilote mon API ».
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS_LIST,
+    allow_origin_regex=ALLOWED_ORIGIN_REGEX,
+    allow_origins=["null"],              # EN: file:// pages (Electron renderer)
+                                         # FR: pages file:// (renderer Electron)
     allow_methods=["GET", "POST"],
     allow_headers=["X-Snitch-Token", "Content-Type"],
 )
@@ -479,13 +729,39 @@ async def get_devices() -> dict:
 
 @app.get("/alerts", dependencies=_AUTH)
 async def get_alerts() -> dict:
-    """EN: Last 100 in-memory alerts. / FR: Les 100 dernières alertes en mémoire."""
+    """EN: Alert history — SQLite-backed so it survives restarts; falls back
+    to the in-memory tail if the DB read fails.
+    FR: Historique des alertes — adossé à SQLite donc survit aux
+    redémarrages ; repli sur la queue en mémoire si la lecture échoue."""
+    loop = asyncio.get_running_loop()
+    try:
+        rows = await loop.run_in_executor(None, db.get_alerts, 100)
+        if rows:
+            return {"alerts": rows}
+    except Exception as exc:
+        logger.debug("get_alerts db read failed: %s", exc)
     return {"alerts": detector.history[-100:]}
 
 @app.get("/media", dependencies=_AUTH)
 async def get_media() -> dict:
-    """EN: Current mic/camera usage. / FR: Usage actuel micro/caméra."""
+    """EN: Current mic/camera usage (+ supported flag).
+    FR: Usage actuel micro/caméra (+ drapeau supported)."""
     return _media_state
+
+@app.get("/settings", dependencies=_AUTH)
+async def get_settings() -> dict:
+    """EN: All persisted settings. / FR: Tous les réglages persistés."""
+    loop = asyncio.get_running_loop()
+    return {"settings": await loop.run_in_executor(None, db.all_settings)}
+
+@app.post("/settings", dependencies=_AUTH)
+async def post_settings(body: SettingsBody) -> dict:
+    """EN: Persist arbitrary settings keys (language, thresholds…).
+    FR: Persister des clés de réglage arbitraires (langue, seuils…)."""
+    loop = asyncio.get_running_loop()
+    for key, value in body.settings.items():
+        await loop.run_in_executor(None, db.set_setting, key, value)
+    return {"ok": True}
 
 @app.get("/capture/status", dependencies=_AUTH)
 async def get_capture_status() -> dict:
@@ -501,6 +777,7 @@ async def get_capture_status() -> dict:
 async def stop_capture() -> dict:
     """EN: Stop sniffing + ARP scan. / FR: Arrêter le sniffing + le scan ARP."""
     _stop_capture()
+    db.set_setting("ports", _port_filter)
     await broadcast({
         "type": "capture_status",
         "capturing": False,
@@ -515,12 +792,14 @@ async def set_port_filter(body: PortFilterBody) -> dict:
     """
     EN: Restrict capture to a list of ports (empty = all). Graph and detector
         runtime state are both reset so the UI only shows matching traffic.
+        Persisted — the filter survives restarts.
     FR: Restreindre la capture à une liste de ports (vide = tous). Le graphe et
         l'état du détecteur sont réinitialisés pour que l'UI n'affiche que le
-        trafic correspondant.
+        trafic correspondant. Persisté — le filtre survit aux redémarrages.
     """
     global _port_filter
     _port_filter = [p for p in body.ports if 1 <= p <= 65535]
+    db.set_setting("ports", _port_filter)
 
     # EN: Clear graph + detector state — keep only the "local" node.
     # FR: Vider graphe + état du détecteur — ne garder que le nœud « local ».
@@ -560,9 +839,11 @@ async def start_capture() -> dict:
 
 @app.post("/capture/processes", dependencies=_AUTH)
 async def set_process_filter(body: ProcessFilterBody) -> dict:
-    """EN: Hide traffic from named processes. / FR: Masquer le trafic de processus nommés."""
+    """EN: Hide traffic from named processes (persisted).
+    FR: Masquer le trafic de processus nommés (persisté)."""
     global _excluded_processes
     _excluded_processes = {str(p) for p in body.excluded}
+    db.set_setting("excluded_processes", sorted(_excluded_processes))
 
     await broadcast({
         "type": "capture_status",
@@ -576,26 +857,28 @@ async def set_process_filter(body: ProcessFilterBody) -> dict:
 @app.post("/capture/whitelist", dependencies=_AUTH)
 async def set_ip_whitelist(body: WhitelistBody) -> dict:
     """
-    EN: Mark IPs as trusted — dropped from capture and display. Removed nodes
-        also get forgotten by the detector and the enrichment cache, so
-        un-whitelisting works correctly afterwards.
+    EN: Mark IPs as trusted — dropped from capture and display (persisted).
+        Removed nodes also get forgotten by the detector and the enrichment
+        cache, so un-whitelisting works correctly afterwards.
     FR: Marquer des IP comme fiables — ignorées de la capture et de
-        l'affichage. Les nœuds retirés sont aussi oubliés par le détecteur et
-        le cache d'enrichissement, pour qu'un retrait de la whitelist
-        fonctionne ensuite correctement.
+        l'affichage (persisté). Les nœuds retirés sont aussi oubliés par le
+        détecteur et le cache d'enrichissement, pour qu'un retrait de la
+        whitelist fonctionne ensuite correctement.
     """
     global _whitelisted_ips
     _whitelisted_ips = {str(ip) for ip in body.ips}
+    db.set_setting("whitelisted_ips", sorted(_whitelisted_ips))
 
-    removed_ids = [ip for ip in _whitelisted_ips if ip != "local" and nodes.pop(ip, None) is not None]
+    removed_ids = [ip for ip in _whitelisted_ips
+                   if ip != "local" and nodes.pop(ip, None) is not None]
     if removed_ids:
         removed_set = set(removed_ids)
-        for edge_id in [eid for eid, e in edges.items() if e["source"] in removed_set or e["target"] in removed_set]:
+        for edge_id in [eid for eid, e in edges.items()
+                        if e["source"] in removed_set or e["target"] in removed_set]:
             edges.pop(edge_id, None)
         for ip in removed_ids:
             enrichment_cache.pop(ip, None)
-            detector.forget(ip)   # EN: clear seen/beacon/spike state too
-                                  # FR: vider aussi l'état seen/beacon/spike
+            detector.forget(ip)
 
     await broadcast({
         "type": "capture_status",
@@ -624,10 +907,10 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
     """
     EN: Realtime channel. Handshake is gated by ws_authorized() — Origin
         allowlist + token. On success we send the `init` snapshot BEFORE
-        registering the client so no `update` can reference unknown nodes.
+        registering the client so no `batch` can reference unknown nodes.
     FR: Canal temps réel. Le handshake est filtré par ws_authorized() — liste
         blanche d'Origin + jeton. En cas de succès on envoie l'instantané
-        `init` AVANT d'enregistrer le client pour qu'aucun `update` ne
+        `init` AVANT d'enregistrer le client pour qu'aucun « batch » ne
         référence de nœud inconnu.
     """
     if not await ws_authorized(websocket):
@@ -667,9 +950,6 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
 # FR: En mode Docker / hors Electron, FastAPI sert le frontend compilé en
 #     fichiers statiques. Monté sur "/", il intercepte toutes les routes non
 #     correspondantes — donc enregistré en DERNIER.
-from pathlib import Path
-from fastapi.staticfiles import StaticFiles
-
 _frontend_dist = Path(__file__).parent.parent.parent / 'frontend_dist'
 if _frontend_dist.exists():
     app.mount('/', StaticFiles(directory=str(_frontend_dist), html=True), name='frontend')

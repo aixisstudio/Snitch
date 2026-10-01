@@ -1,23 +1,43 @@
 """
-Snitch — LAN scanner (ARP discovery).
+Snitch — LAN device discovery via the system ARP table.
 
-EN: Periodically ARP-scans every IPv4 subnet the host is attached to and
-    reports each responder as a `Device`. Devices that stop answering are
-    marked offline. Vendor/device-type identification comes from the local
-    OUI table (scanner/oui.py).
+EN: Scapy is gone (GPL-2.0-only), so active ARP broadcast scanning went with
+    it. Discovery now reads the OS neighbour cache — populated passively by
+    normal traffic, so it catches what your machine actually talks to:
 
-FR: Scanne périodiquement en ARP chaque sous-réseau IPv4 auquel l'hôte est
-    rattaché et rapporte chaque répondant comme `Device`. Les appareils qui
-    cessent de répondre sont marqués hors ligne. L'identification du
-    fabricant/type vient de la table OUI locale (scanner/oui.py).
+      - Linux   : /proc/net/arp
+      - Windows : `arp -a`   ("  192.168.1.1   00-11-22-33-44-55   dynamic")
+      - macOS   : `arp -a`   ("? (192.168.1.1) at 0:11:22:33:44:55 on en0")
+
+    Entries marked "incomplete"/permanent-failed are skipped. Each responder
+    is reverse-DNS'd and OUI-matched to guess vendor + device type. Devices
+    absent from a scan are flagged offline and announced once more.
+
+FR: Scapy est parti (GPL-2.0-only), donc le scan ARP broadcast actif l'a suivi.
+    La découverte lit désormais le cache de voisinage de l'OS — alimenté
+    passivement par le trafic normal, donc il attrape ce à quoi votre machine
+    parle vraiment :
+
+      - Linux   : /proc/net/arp
+      - Windows : `arp -a`   («  192.168.1.1   00-11-22-33-44-55   dynamic »)
+      - macOS   : `arp -a`   (« ? (192.168.1.1) at 0:11:22:33:44:55 on en0 »)
+
+    Les entrées « incomplete »/échouées sont ignorées. Chaque répondant passe
+    en DNS inverse + correspondance OUI pour deviner fabricant et type
+    d'appareil. Les appareils absents d'un scan passent hors ligne et sont
+    annoncés une dernière fois.
 """
 
 import ipaddress
 import logging
+import re
 import socket
+import subprocess
+import sys
 import threading
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Callable, Optional
 
 import psutil
@@ -26,80 +46,114 @@ from scanner.oui import lookup, DEVICE_TYPE_COLORS
 
 logger = logging.getLogger("snitch.scanner")
 
-try:
-    from scapy.all import ARP, Ether, srp
-    SCAPY_AVAILABLE = True
-except ImportError:
-    # EN: Without Scapy there is no ARP scan — the rest of the app still works.
-    # FR: Sans Scapy pas de scan ARP — le reste de l'app fonctionne quand même.
-    SCAPY_AVAILABLE = False
+# EN: MAC address matcher — handles both : and - separators.
+# FR: Reconnaisseur d'adresse MAC — gère les séparateurs : et -.
+MAC_RE = re.compile(r"([0-9a-fA-F]{2}[:\-]){5}[0-9a-fA-F]{2}")
+IPV4_RE = re.compile(r"\b\d{1,3}(?:\.\d{1,3}){3}\b")
 
 
 @dataclass
 class Device:
     """
-    EN: One host discovered on the local network.
-    FR: Un hôte découvert sur le réseau local.
+    EN: One LAN device as displayed in the graph.
+    FR: Un appareil LAN tel qu'affiché dans le graphe.
     """
     ip: str
     mac: str
-    vendor: str
-    device_type: str        # "router" | "phone" | "pc" | "tv" | "iot" | "unknown"
-    hostname: Optional[str]
+    vendor: str = "Unknown"
+    device_type: str = "unknown"        # phone / pc / router / iot / tv / unknown
+    hostname: Optional[str] = None
     online: bool = True
+    first_seen: float = field(default_factory=time.time)
+    last_seen: float = field(default_factory=time.time)
+    bytes: int = 0
+    packets: int = 0
     color: str = "#64748b"
-    icon: str = "?"
 
     def to_dict(self) -> dict:
-        """
-        EN: Serialize to the node shape the frontend graph expects. The `lan:`
-            id prefix keeps LAN nodes from colliding with external-IP nodes.
-        FR: Sérialiser vers la forme de nœud attendue par le graphe frontend.
-            Le préfixe d'id « lan: » évite les collisions avec les nœuds
-            d'IP externes.
-        """
+        """EN: Serialize for JSON transport. / FR: Sérialiser pour le transport JSON."""
         return {
             "id": f"lan:{self.ip}",
             "ip": self.ip,
             "mac": self.mac,
-            "vendor": self.vendor,
-            "device_type": self.device_type,
-            "hostname": self.hostname,
             "label": self.hostname or self.vendor or self.ip,
-            "online": self.online,
+            "hostname": self.hostname,
+            "vendor": self.vendor,
             "category": "lan_device",
+            "device_type": self.device_type,
+            "online": self.online,
+            "bytes": self.bytes,
+            "packets": self.packets,
             "color": self.color,
-            "icon": self.icon,
-            "bytes": 0,
-            "packets": 0,
         }
 
 
-def _get_local_subnets() -> list[str]:
+def _get_local_ips() -> set[str]:
+    """EN: This host's own IPv4 addresses — filtered out of results.
+    FR: Les IPv4 propres à cet hôte — filtrées des résultats."""
+    return {
+        addr.address
+        for addrs in psutil.net_if_addrs().values()
+        for addr in addrs
+        if addr.family == socket.AF_INET
+    }
+
+
+def _read_arp_table() -> list[tuple[str, str]]:
     """
-    EN: Build the list of local IPv4 subnets (CIDR) from interface addresses
-        and netmasks. Skips loopback and absurdly large/small networks.
-    FR: Construire la liste des sous-réseaux IPv4 locaux (CIDR) à partir des
-        adresses d'interfaces et masques. Ignore le loopback et les réseaux
-        absurdement grands/petits.
+    EN: Snapshot of the system ARP/neighbour table as (ip, mac) pairs.
+        Platform-specific reader; returns [] on failure — the scanner stays
+        alive and retries next interval.
+    FR: Instantané de la table ARP/voisinage système en couples (ip, mac).
+        Lecteur par plateforme ; renvoie [] en cas d'échec — le scanner reste
+        vivant et réessaie à l'intervalle suivant.
     """
-    subnets = []
-    for iface, addrs in psutil.net_if_addrs().items():
-        for addr in addrs:
-            if addr.family != socket.AF_INET:
-                continue
-            ip = addr.address
-            netmask = addr.netmask
-            if not netmask or ip.startswith("127."):
-                continue
-            try:
-                network = ipaddress.IPv4Network(f"{ip}/{netmask}", strict=False)
-                if network.num_addresses <= 2 or network.num_addresses > 65536:
-                    continue
-                subnets.append(str(network))
-            except ValueError:
-                continue
-    return subnets
+    if sys.platform.startswith("linux"):
+        return _read_arp_linux()
+    return _read_arp_cmd()
+
+
+def _read_arp_linux() -> list[tuple[str, str]]:
+    """EN: Parse /proc/net/arp — flag 0x0 or 00:00:... means incomplete.
+    FR: Analyser /proc/net/arp — flag 0x0 ou MAC 00:00:… signifie incomplet."""
+    out = []
+    try:
+        lines = Path("/proc/net/arp").read_text().splitlines()[1:]
+    except OSError as exc:
+        logger.debug("/proc/net/arp unreadable: %s", exc)
+        return out
+    for line in lines:
+        parts = line.split()
+        if len(parts) < 6:
+            continue
+        ip, _hwtype, flags, mac = parts[0], parts[1], parts[2], parts[3]
+        if int(flags, 16) == 0 or mac == "00:00:00:00:00:00":
+            continue
+        out.append((ip, mac.upper()))
+    return out
+
+
+def _read_arp_cmd() -> list[tuple[str, str]]:
+    """EN: Parse `arp -a` on Windows ("-"-separated MACs) and macOS
+    (parenthesized IPs). / FR: Analyser `arp -a` sous Windows (MAC séparées par
+    « - ») et macOS (IP entre parenthèses)."""
+    try:
+        proc = subprocess.run(["arp", "-a"], capture_output=True, text=True,
+                              timeout=10)
+        out_text = proc.stdout
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        logger.debug("arp -a failed: %s", exc)
+        return []
+
+    pairs = []
+    for line in out_text.splitlines():
+        if "incomplete" in line.lower():
+            continue
+        ip_m = IPV4_RE.search(line)
+        mac_m = MAC_RE.search(line)
+        if ip_m and mac_m:
+            pairs.append((ip_m.group(0), mac_m.group(0).replace("-", ":").upper()))
+    return pairs
 
 
 def _resolve_hostname(ip: str) -> Optional[str]:
@@ -110,67 +164,14 @@ def _resolve_hostname(ip: str) -> Optional[str]:
         return None
 
 
-def _scan_subnet(subnet: str, timeout: int = 2) -> list[Device]:
-    """
-    EN: Send one broadcast ARP request per subnet and collect answers.
-        This host's own IPs are filtered out — the graph already has a
-        dedicated "local" node.
-    FR: Envoyer une requête ARP broadcast par sous-réseau et collecter les
-        réponses. Les IP de cette machine sont filtrées — le graphe possède
-        déjà un nœud « local » dédié.
-    """
-    if not SCAPY_AVAILABLE:
-        return []
-    try:
-        ans, _ = srp(
-            Ether(dst="ff:ff:ff:ff:ff:ff") / ARP(pdst=subnet),
-            timeout=timeout,
-            verbose=False,
-            retry=1,
-        )
-    except Exception as exc:
-        logger.debug("ARP scan of %s failed: %s", subnet, exc)
-        return []
-
-    devices = []
-    local_ips = {
-        addr.address
-        for addrs in psutil.net_if_addrs().values()
-        for addr in addrs
-        if addr.family == socket.AF_INET
-    }
-
-    for sent, received in ans:
-        ip = received.psrc
-        mac = received.hwsrc
-
-        if ip in local_ips:
-            continue
-
-        vendor, device_type = lookup(mac)
-        hostname = _resolve_hostname(ip)
-
-        devices.append(Device(
-            ip=ip,
-            mac=mac,
-            vendor=vendor,
-            device_type=device_type,
-            hostname=hostname,
-            online=True,
-            color=DEVICE_TYPE_COLORS.get(device_type, "#64748b"),
-        ))
-
-    return devices
-
-
 class ARPScanner:
     """
-    EN: Background scanner — scans all local subnets every `interval` seconds
-        and invokes `callback(device, is_new)` for each responder, plus once
-        more with online=False when a known device disappears.
-    FR: Scanner d'arrière-plan — scanne tous les sous-réseaux locaux toutes les
-        `interval` secondes et appelle `callback(device, is_new)` pour chaque
-        répondant, plus une fois avec online=False quand un appareil connu
+    EN: Background scanner — re-reads the neighbour table every `interval`
+        seconds. Invokes `callback(device, is_new)` for each entry, and once
+        with online=False when a known device disappears.
+    FR: Scanner d'arrière-plan — relit la table de voisinage toutes les
+        `interval` secondes. Appelle `callback(device, is_new)` pour chaque
+        entrée, et une fois avec online=False quand un appareil connu
         disparaît.
     """
 
@@ -183,21 +184,42 @@ class ARPScanner:
 
     def _run(self) -> None:
         """
-        EN: Scan loop. `seen_ips` tracks responders this round; known devices
-            absent from it are flipped to offline.
-        FR: Boucle de scan. `seen_ips` suit les répondants du tour ; les
-            appareils connus absents passent hors ligne.
+        EN: Scan loop. `seen_ips` tracks devices present this round; known
+            devices absent from it are flipped to offline.
+        FR: Boucle de scan. `seen_ips` suit les appareils présents ce tour ;
+            les appareils connus absents passent hors ligne.
         """
+        local_ips = _get_local_ips()
         while self._running:
-            subnets = _get_local_subnets()
             seen_ips: set[str] = set()
 
-            for subnet in subnets:
-                for device in _scan_subnet(subnet):
-                    seen_ips.add(device.ip)
-                    is_new = device.ip not in self._known
-                    self._known[device.ip] = device
-                    self.callback(device, is_new)
+            for ip, mac in _read_arp_table():
+                if ip in local_ips:
+                    continue
+                try:
+                    addr = ipaddress.ip_address(ip)
+                    if addr.is_multicast or addr.is_loopback or addr.is_link_local:
+                        continue
+                except ValueError:
+                    continue
+
+                seen_ips.add(ip)
+                is_new = ip not in self._known
+                if is_new:
+                    vendor, device_type = lookup(mac)
+                    hostname = _resolve_hostname(ip)
+                    self._known[ip] = Device(
+                        ip=ip, mac=mac, vendor=vendor, device_type=device_type,
+                        hostname=hostname, online=True,
+                        color=DEVICE_TYPE_COLORS.get(device_type, "#64748b"),
+                    )
+                else:
+                    self._known[ip].last_seen = time.time()
+                    if not self._known[ip].online:
+                        self._known[ip].online = True
+                        is_new = True  # EN: treat reappearance as a change event
+                                       # FR: traiter la réapparition comme un événement
+                self.callback(self._known[ip], is_new)
 
             # EN: Mark disappeared devices as offline.
             # FR: Marquer hors ligne les appareils disparus.

@@ -2,39 +2,55 @@
  * Snitch — Electron main process.
  *
  * EN: Orchestrates the desktop app:
- *       1. ensure Npcap is installed (Windows only, needed for raw capture)
+ *       1. check for Npcap (Windows only, needed for raw capture) — NOT
+ *          bundled: the free Npcap license forbids external redistribution,
+ *          so we guide the user to npcap.com instead
  *       2. show a splash screen
- *       3. generate a per-launch API token (crypto-random) and spawn the
- *          PyInstaller-compiled backend with SNITCH_TOKEN set
+ *       3. pick a FREE loopback port, generate a per-launch API token
+ *          (crypto-random) and spawn the PyInstaller backend with
+ *          SNITCH_PORT + SNITCH_TOKEN in its environment
  *       4. wait for the API to answer, then open the main window
- *       5. kill the backend cleanly on quit
+ *       5. kill only OUR backend child on quit — never a port sweep
  *
- *     The token is the heart of the local-API trust model: it is created in
- *     the main process, passed to the backend via its environment, and given
- *     to the renderer ONLY through the ipcMain.handle('snitch:get-token')
- *     bridge — never logged, never embedded in the page.
+ *     Token + port reach the renderer ONLY via the preload bridge
+ *     (ipcMain.handle → window.snitch.getToken() / getPort()) — never in the
+ *     page, the URL, or logs.
+ *
+ *     Why the free port: the old code bound a fixed :8000 and ran a netstat
+ *     sweep that matched ANY line containing ":8000" — including outbound
+ *     connections to a remote port 8000 — and taskkilled innocent processes.
+ *     A random port + killing only our own child removes that whole class.
  *
  * FR: Orchestre l'application bureau :
- *       1. vérifier que Npcap est installé (Windows uniquement, requis pour
- *          la capture brute)
+ *       1. vérifier Npcap (Windows uniquement, requis pour la capture brute)
+ *          — NON embarqué : la licence gratuite de Npcap interdit la
+ *          redistribution externe, donc on guide vers npcap.com
  *       2. afficher un écran de démarrage
- *       3. générer un jeton API par lancement (crypto-aléatoire) et lancer le
- *          backend compilé par PyInstaller avec SNITCH_TOKEN défini
+ *       3. choisir un port loopback LIBRE, générer un jeton API par lancement
+ *          (crypto-aléatoire) et lancer le backend PyInstaller avec
+ *          SNITCH_PORT + SNITCH_TOKEN dans son environnement
  *       4. attendre que l'API réponde, puis ouvrir la fenêtre principale
- *       5. tuer proprement le backend à la fermeture
+ *       5. tuer uniquement NOTRE enfant backend à la fermeture — jamais de
+ *          balayage de port
  *
- *     Le jeton est le cœur du modèle de confiance de l'API locale : créé dans
- *     le processus principal, transmis au backend via son environnement, et
- *     donné au renderer UNIQUEMENT via le pont ipcMain.handle('snitch:get-token')
- *     — jamais loggué, jamais embarqué dans la page.
+ *     Jeton + port arrivent au renderer UNIQUEMENT via le pont preload
+ *     (ipcMain.handle → window.snitch.getToken() / getPort()) — jamais dans
+ *     la page, l'URL ou les logs.
+ *
+ *     Pourquoi le port libre : l'ancien code fixait :8000 et lançait un
+ *     netstat qui retenait TOUTE ligne contenant « :8000 » — y compris les
+ *     connexions sortantes vers un port distant 8000 — et taskkill tuait des
+ *     processus innocents. Un port aléatoire + tuer seulement notre enfant
+ *     supprime toute cette classe de bug.
  */
 
 const _electron        = require('electron')
-const { app, BrowserWindow, dialog, ipcMain } = _electron.default || _electron
+const { app, BrowserWindow, dialog, ipcMain, shell } = _electron.default || _electron
 const { spawn, execSync }            = require('child_process')
 const crypto = require('crypto')
 const path = require('path')
 const http = require('http')
+const net  = require('net')
 const fs   = require('fs')
 
 // ── Paths / Chemins ──────────────────────────────────────────────────────────
@@ -47,28 +63,35 @@ const resourcesDir = isDev ? path.join(__dirname, '..') : process.resourcesPath
 
 const isWindows = process.platform === 'win32'
 const backendName = isWindows ? 'snitch-backend.exe' : 'snitch-backend'
+// EN: ONEDIR PyInstaller layout — the exe lives inside a snitch-backend/ dir.
+// FR: Layout ONEDIR de PyInstaller — l'exe vit dans un dossier snitch-backend/.
 const backendExe = isDev
-  ? path.join(resourcesDir, 'dist', 'backend', backendName)
-  : path.join(resourcesDir, backendName)
+  ? path.join(resourcesDir, 'dist', 'backend', 'snitch-backend', backendName)
+  : path.join(resourcesDir, 'snitch-backend', backendName)
 
-const npcapInstaller = path.join(resourcesDir, 'resources', 'npcap-installer.exe')
 const frontendDist   = isDev
   ? path.join(resourcesDir, 'frontend', 'dist')
   : path.join(resourcesDir, 'frontend_dist')
-
-const BACKEND_URL  = 'http://127.0.0.1:8000'
-const BACKEND_PORT = 8000
 
 const iconPath = isDev
   ? path.join(__dirname, 'icon.png')
   : path.join(resourcesDir, 'icon.png')
 
+// EN: Backend stdout/stderr go to a real log file — never stdio:'ignore',
+//     so crashes leave a trace the diagnostics export can pick up.
+// FR: stdout/stderr du backend vont dans un vrai fichier de log — jamais
+//     stdio:'ignore', pour qu'un crash laisse une trace récupérable par
+//     l'export de diagnostic.
+const logDir  = path.join(app.getPath('userData'), 'logs')
+const logFile = path.join(logDir, 'backend.log')
+
 let mainWindow   = null
 let splashWindow = null
 let backendProc  = null
+let backendPort  = 0            // EN: chosen at launch / FR: choisi au lancement
 let isQuitting   = false
 
-// ── API token / Jeton API ────────────────────────────────────────────────────
+// ── API token + port / Jeton API + port ─────────────────────────────────────
 // EN: 48-hex-char secret generated once per app launch. Passed to the backend
 //     via SNITCH_TOKEN and served to the renderer through ipcMain — the web
 //     page can only obtain it via the preload bridge.
@@ -77,85 +100,72 @@ let isQuitting   = false
 //     la page web ne peut l'obtenir que par le pont preload.
 const API_TOKEN = crypto.randomBytes(24).toString('hex')
 
-// EN: IPC handler — the ONLY way the renderer learns the token.
-// FR: Handler IPC — la SEULE façon pour le renderer d'apprendre le jeton.
-ipcMain.handle('snitch:get-token', () => API_TOKEN)
+// EN: IPC handlers — the ONLY way the renderer learns token/port/version.
+// FR: Handlers IPC — la SEULE façon pour le renderer d'apprendre jeton/port/version.
+ipcMain.handle('snitch:get-token',   () => API_TOKEN)
+ipcMain.handle('snitch:get-port',    () => backendPort)
+ipcMain.handle('snitch:get-version', () => app.getVersion())
 
-// ── Port management / Gestion du port ────────────────────────────────────────
 /**
- * EN: Free the backend port — kills any leftover process still listening on
- *     it (zombies from crashed sessions). Windows uses netstat/taskkill;
- *     POSIX uses lsof + kill.
- * FR: Libérer le port du backend — tue tout processus résiduel qui écoute
- *     encore dessus (zombies de sessions plantées). Windows utilise
- *     netstat/taskkill ; POSIX utilise lsof + kill.
+ * EN: Find a free loopback port by binding :0 and releasing — the backend
+ *     then binds the same number. A tiny race window remains (another
+ *     process could grab it between release and bind); waitForBackend's
+ *     timeout surfaces it instead of silently stealing someone else's port.
+ * FR: Trouver un port loopback libre en liant :0 puis en relâchant — le
+ *     backend lie ensuite le même numéro. Une minuscule fenêtre de course
+ *     subsiste (un autre processus pourrait le prendre entre relâche et
+ *     bind) ; le timeout de waitForBackend la fait surface plutôt que de
+ *     voler silencieusement le port d'un autre.
  */
-function killPort(port) {
-  try {
-    if (isWindows) {
-      const out = execSync(`netstat -ano`, { encoding: 'utf8', stdio: 'pipe' })
-      const pids = new Set()
-      for (const line of out.split('\n')) {
-        // EN: Match lines whose local address ends with :PORT.
-        // FR: Garder les lignes dont l'adresse locale finit par :PORT.
-        if (!line.includes(`:${port} `) && !line.includes(`:${port}\t`)) continue
-        const m = line.trim().match(/(\d+)\s*$/)
-        if (m && m[1] !== '0') pids.add(m[1])
-      }
-      for (const pid of pids) {
-        try { execSync(`taskkill /PID ${pid} /F`, { stdio: 'pipe' }) } catch {}
-      }
-      if (pids.size > 0) {
-        // EN: Brief wait for the OS to release the port (~1s via ping).
-        // FR: Petite attente pour que l'OS libère le port (~1 s via ping).
-        try { execSync('ping -n 2 127.0.0.1', { stdio: 'pipe' }) } catch {}
-      }
-    } else {
-      // EN: POSIX — lsof reports PIDs listening on the port, kill them.
-      // FR: POSIX — lsof rapporte les PID qui écoutent sur le port, on les tue.
-      try {
-        const out = execSync(`lsof -ti tcp:${port} -sTCP:LISTEN`, { encoding: 'utf8', stdio: 'pipe' })
-        for (const pid of out.split('\n').map(s => s.trim()).filter(Boolean)) {
-          try { process.kill(Number(pid), 'SIGKILL') } catch {}
-        }
-      } catch {}
-    }
-  } catch {}
+function findFreePort() {
+  return new Promise((resolve, reject) => {
+    const srv = net.createServer()
+    srv.listen(0, '127.0.0.1', () => {
+      const { port } = srv.address()
+      srv.close(() => resolve(port))
+    })
+    srv.on('error', reject)
+  })
 }
 
 // ── Npcap ────────────────────────────────────────────────────────────────────
 /**
- * EN: Npcap is the Windows packet-capture driver Scapy needs. We detect it
- *     through its registry keys.
- * FR: Npcap est le pilote de capture Windows dont Scapy a besoin. On le détecte
- *     via ses clés de registre.
+ * EN: Npcap is the Windows packet-capture driver libpcap needs. Detected via
+ *     its DLL presence in System32\Npcap — NOT its registry keys, and NOT a
+ *     bundled installer (which the free license forbids redistributing).
+ * FR: Npcap est le pilote de capture Windows requis par libpcap. Détecté via
+ *     la présence de sa DLL dans System32\Npcap — PAS via ses clés de
+ *     registre, et PAS via un installateur embarqué (que la licence gratuite
+ *     interdit de redistribuer).
  */
 function isNpcapInstalled() {
-  const keys = [
-    'HKLM\\SOFTWARE\\Npcap',
-    'HKLM\\SOFTWARE\\WOW6432Node\\Npcap',
-  ]
-  for (const key of keys) {
-    try {
-      const out = execSync(`reg query "${key}"`, { stdio: 'pipe', encoding: 'utf8' })
-      if (out.includes('Npcap') || out.includes(key)) return true
-    } catch {}
-  }
-  return false
+  try {
+    const sysRoot = process.env.SystemRoot || 'C:\\Windows'
+    return fs.existsSync(path.join(sysRoot, 'System32', 'Npcap', 'wpcap.dll'))
+  } catch { return false }
 }
 
 /**
- * EN: Run the bundled Npcap installer. Silent mode requires a paid OEM
- *     license, so we launch the standard GUI installer.
- * FR: Lancer l'installateur Npcap fourni. Le mode silencieux exige une licence
- *     OEM payante, donc on lance l'installateur GUI standard.
+ * EN: Offer to open npcap.com in the user's browser. There is intentionally
+ *     NO silent install — the free installer has no silent mode, and bundling
+ *     it is a license violation.
+ * FR: Proposer d'ouvrir npcap.com dans le navigateur. AUCUNE installation
+ *     silencieuse — l'installateur gratuit n'a pas de mode silencieux, et
+ *     l'embarquer violerait la licence.
  */
-function installNpcap() {
-  if (!fs.existsSync(npcapInstaller)) return false
-  try {
-    execSync(`"${npcapInstaller}"`, { stdio: 'inherit' })
-    return true
-  } catch { return false }
+async function offerNpcapDownload() {
+  const choice = await dialog.showMessageBox({
+    type: 'info', title: 'Snitch — Npcap required / Npcap requis',
+    message: 'Snitch needs Npcap to capture network traffic on Windows.\n' +
+             'Snitch a besoin de Npcap pour capturer le trafic réseau sous Windows.\n\n' +
+             'Download it free from npcap.com, install it, then restart Snitch.\n' +
+             'Téléchargez-le gratuitement sur npcap.com, installez-le, puis relancez Snitch.',
+    buttons: ['Open npcap.com / Ouvrir npcap.com', 'Quit / Quitter'], defaultId: 0,
+  })
+  if (choice.response === 0) {
+    await shell.openExternal('https://npcap.com')
+  }
+  app.quit()
 }
 
 // ── Windows / Fenêtres ───────────────────────────────────────────────────────
@@ -166,23 +176,24 @@ function createSplash() {
     width: 380, height: 310, frame: false,
     resizable: false, alwaysOnTop: true, center: true,
     transparent: true, icon: iconPath,
-    webPreferences: { nodeIntegration: false },
+    webPreferences: { nodeIntegration: false, sandbox: true },
   })
   splashWindow.loadFile(path.join(__dirname, 'splash.html'))
 }
 
 function createMain() {
   /** EN: Main window — loads the Vite dev server in dev, or the compiled
-   *      frontend otherwise.
+   *      frontend otherwise. Sandbox on: the preload only needs ipcRenderer.
    *  FR: Fenêtre principale — charge le serveur de dev Vite en dev, ou le
-   *      frontend compilé sinon. */
+   *      frontend compilé sinon. Sandbox activé : le preload n'a besoin que
+   *      d'ipcRenderer. */
   mainWindow = new BrowserWindow({
     width: 1400, height: 860, minWidth: 900, minHeight: 600,
     show: false, title: 'Snitch', backgroundColor: '#000000',
     icon: iconPath,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
-      contextIsolation: true, nodeIntegration: false,
+      contextIsolation: true, nodeIntegration: false, sandbox: true,
     },
   })
 
@@ -213,7 +224,7 @@ function waitForBackend(maxAttempts = 40) {
     let n = 0
     function poll() {
       const req = http.request(
-        BACKEND_URL + '/graph',
+        `http://127.0.0.1:${backendPort}/graph`,
         { headers: { 'X-Snitch-Token': API_TOKEN } },
         res => { res.resume(); res.statusCode === 200 ? resolve() : retry() }
       )
@@ -229,12 +240,16 @@ function waitForBackend(maxAttempts = 40) {
 }
 
 /**
- * EN: Kill the backend child process and free its port.
- *     `taskkill /F /T` is more reliable than .kill() on Windows and takes
- *     the whole process tree; POSIX gets SIGKILL.
- * FR: Tuer le processus enfant du backend et libérer son port.
- *     `taskkill /F /T` est plus fiable que .kill() sous Windows et prend tout
- *     l'arbre de processus ; POSIX reçoit SIGKILL.
+ * EN: Kill ONLY our own backend child — `taskkill /F /T` takes the whole
+ *     process tree on Windows, POSIX kills the detached process group. No
+ *     netstat port sweep: with a random port there is no zombie-port problem
+ *     to clean up, and sweeping by port number was what killed unrelated
+ *     processes.
+ * FR: Tuer UNIQUEMENT notre enfant backend — `taskkill /F /T` prend tout
+ *     l'arbre sous Windows, POSIX tue le groupe détaché. Pas de balayage
+ *     netstat : avec un port aléatoire il n'y a plus de zombie à nettoyer, et
+ *     le balayage par numéro de port était ce qui tuait des processus
+ *     innocents.
  */
 function killBackend() {
   if (backendProc) {
@@ -249,32 +264,38 @@ function killBackend() {
     }
     backendProc = null
   }
-  killPort(BACKEND_PORT)
 }
 
 function launchBackend() {
-  /** EN: Spawn the compiled backend with SNITCH_TOKEN in its environment;
-   *      show a dialog and quit on failure.
-   *  FR: Lancer le backend compilé avec SNITCH_TOKEN dans son environnement ;
-   *      afficher une boîte de dialogue et quitter en cas d'échec. */
+  /** EN: Spawn the compiled backend with SNITCH_TOKEN + SNITCH_PORT in its
+   *      environment; windowsHide keeps a console window from flashing;
+   *      stdout/stderr stream to the log file for diagnostics.
+   *  FR: Lancer le backend compilé avec SNITCH_TOKEN + SNITCH_PORT dans son
+   *      environnement ; windowsHide évite l'éclair d'une fenêtre console ;
+   *      stdout/stderr vont dans le fichier de log pour le diagnostic. */
   if (!fs.existsSync(backendExe)) {
     dialog.showErrorBox('Snitch', `Backend not found / Backend introuvable :\n${backendExe}`)
     app.quit(); return
   }
 
-  // EN: Free the port first — handles zombies from crashed sessions.
-  // FR: Libérer le port d'abord — gère les zombies de sessions plantées.
-  killPort(BACKEND_PORT)
+  fs.mkdirSync(logDir, { recursive: true })
+  const logFd = fs.openSync(logFile, 'a')
 
   const env = Object.assign({}, process.env)
-  // EN: Inject the API token — the backend will require it on every request.
-  // FR: Injecter le jeton API — le backend l'exigera sur chaque requête.
   env.SNITCH_TOKEN = API_TOKEN
+  env.SNITCH_PORT  = String(backendPort)
+  env.SNITCH_USER_DATA = '1'   // EN: per-OS user data dir, not the bundle
+                               // FR: dossier de données utilisateur, pas le bundle
   // EN: Prevent the child from being interpreted as an Electron/Node process.
   // FR: Empêcher le processus enfant d'être interprété comme un processus Electron/Node.
   delete env.ELECTRON_RUN_AS_NODE
 
-  backendProc = spawn(backendExe, [], { detached: !isWindows, stdio: 'ignore', env })
+  backendProc = spawn(backendExe, [], {
+    detached: !isWindows,
+    windowsHide: true,
+    stdio: ['ignore', logFd, logFd],
+    env,
+  })
   backendProc.on('error', err => {
     if (isQuitting) return
     dialog.showErrorBox('Snitch', `Failed to start backend / Échec du démarrage du backend :\n${err.message}`)
@@ -291,26 +312,17 @@ function launchBackend() {
 
 // ── App lifecycle / Cycle de vie de l'application ────────────────────────────
 app.whenReady().then(async () => {
-  // EN: On Windows, Npcap is a hard requirement — offer to install it.
-  // FR: Sous Windows, Npcap est obligatoire — proposer son installation.
+  // EN: On Windows, Npcap is a hard requirement — guide the user to npcap.com
+  //     (it is deliberately NOT bundled; see licensing notes).
+  // FR: Sous Windows, Npcap est obligatoire — guider l'utilisateur vers
+  //     npcap.com (volontairement NON embarqué ; voir les notes de licence).
   if (isWindows && !isNpcapInstalled()) {
-    if (fs.existsSync(npcapInstaller)) {
-      const choice = dialog.showMessageBoxSync({
-        type: 'question', title: 'Snitch — Npcap required / Npcap requis',
-        message: 'Snitch needs Npcap to capture network traffic. Install it now?\n' +
-                 'Snitch a besoin de Npcap pour capturer le trafic réseau. Installer maintenant ?',
-        buttons: ['Install / Installer', 'Quit / Quitter'], defaultId: 0,
-      })
-      if (choice === 1) { app.quit(); return }
-      if (!installNpcap()) {
-        dialog.showErrorBox('Snitch', 'Npcap installation failed. Install it manually from https://npcap.com\n' +
-                                     "L'installation de Npcap a échoué. Installez-le depuis https://npcap.com")
-        app.quit(); return
-      }
-    }
+    await offerNpcapDownload()
+    return
   }
 
   createSplash()
+  backendPort = await findFreePort()
   launchBackend()
 
   try {

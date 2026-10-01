@@ -1,111 +1,160 @@
 """
-Snitch — DNS reverse resolution + IP geolocation.
+Snitch — DNS/domain resolution + IP geolocation.
 
 EN: Enrichment pipeline for remote IPs:
-      1. reverse DNS (hostname)                  via socket.gethostbyaddr
-      2. geolocation, local GeoLite2 offline DB  via geoip2 (optional)
-      3. OPTIONAL online fallback to ip-api.com  via urllib (45 req/min)
+      1. observed DNS answers — captured DNS responses map IP → real domain
+         (the name the user actually asked for, not a useless CDN PTR)
+      2. observed TLS SNI     — ClientHello hostname for the same purpose
+      3. reverse DNS          — socket.gethostbyaddr, last resort
+      4. geolocation          — local .mmdb ONLY (MaxMind GeoLite2 or DB-IP
+         Lite; raw maxminddb reads both formats)
 
-    PRIVACY: the online fallback sends every contacted IP to a third-party
-    service in plaintext. For a privacy tool that's contradictory, so it is
-    OFF by default — enable it explicitly with SNITCH_ONLINE_GEO=1 and get a
-    GeoLite2 DB for fully-offline lookups.
+    PRIVACY: there is NO online geolocation fallback. ip-api.com was removed —
+    a privacy tool must never leak visited IPs in plaintext. If no .mmdb is
+    present the UI shows "no geo" and the README explains how to enable it.
+    Databases live in the per-OS user data dir (paths.data_dir()), NOT next to
+    __file__ — the old Path(__file__)/data code pointed inside the read-only
+    PyInstaller bundle.
 
-    Reliability fixes vs the naive version:
-      - reverse DNS bounded by a global socket timeout (no more executor
-        threads parked forever)
-      - ip-api results use a TTL cache; failures are NOT cached, so a
-        temporary error doesn't permanently blind an IP
-      - a tiny client-side rate limiter keeps us under the 45 req/min quota
+    Expected files in <data_dir>/geo/:
+      GeoLite2-City.mmdb  or  dbip-city-lite.mmdb   (city/country/lat/lon)
+      GeoLite2-ASN.mmdb   or  dbip-asn-lite.mmdb    (org/ASN)
+    DB-IP Lite (CC BY 4.0): https://db-ip.com/db/lite.php — attribution shown
+    in the UI footer and THIRD_PARTY_NOTICES.
 
 FR: Pipeline d'enrichissement des IP distantes :
-      1. DNS inverse (hostname)                    via socket.gethostbyaddr
-      2. géolocalisation, BDD hors ligne GeoLite2  via geoip2 (optionnel)
-      3. repli en ligne OPTIONNEL vers ip-api.com  via urllib (45 req/min)
+      1. réponses DNS observées — les réponses DNS capturées associent IP →
+         vrai domaine (le nom réellement demandé, pas un PTR CDN inutile)
+      2. SNI TLS observé        — nom d'hôte du ClientHello, même objectif
+      3. DNS inverse            — socket.gethostbyaddr, dernier recours
+      4. géolocalisation        — .mmdb local UNIQUEMENT (GeoLite2 MaxMind ou
+         DB-IP Lite ; le lecteur maxminddb brut lit les deux formats)
 
-    CONFIDENTIALITÉ : le repli en ligne envoie chaque IP contactée à un service
-    tiers en clair. Contradictoire pour un outil de confidentialité : il est
-    donc DÉSACTIVÉ par défaut — l'activer explicitement avec
-    SNITCH_ONLINE_GEO=1, ou déposer une base GeoLite2 pour des recherches
-    100 % hors ligne.
+    CONFIDENTIALITÉ : AUCUN repli de géolocalisation en ligne. ip-api.com a été
+    supprimé — un outil de confidentialité ne doit jamais divulguer les IP
+    visitées en clair. Sans .mmdb, l'UI affiche « sans géo » et le README
+    explique comment l'activer. Les bases vivent dans le dossier de données
+    utilisateur de l'OS (paths.data_dir()), PAS à côté de __file__ — l'ancien
+    code Path(__file__)/data pointait dans le bundle PyInstaller en lecture
+    seule.
 
-    Corrections de fiabilité :
-      - DNS inverse borné par un timeout global de socket (plus de threads
-        d'executor bloqués indéfiniment)
-      - résultats ip-api dans un cache à TTL ; les échecs ne sont PAS cachés,
-        donc une erreur temporaire n'aveugle pas une IP pour toujours
-      - un petit limiteur côté client reste sous le quota de 45 req/min
+    Fichiers attendus dans <data_dir>/geo/ :
+      GeoLite2-City.mmdb  ou  dbip-city-lite.mmdb   (ville/pays/lat/lon)
+      GeoLite2-ASN.mmdb   ou  dbip-asn-lite.mmdb    (org/ASN)
+    DB-IP Lite (CC BY 4.0) : https://db-ip.com/db/lite.php — attribution
+    affichée dans le pied de l'UI et THIRD_PARTY_NOTICES.
 """
 
 import asyncio
 import ipaddress
-import json
 import logging
-import os
 import socket
 import threading
 import time
-import urllib.request
-from collections import deque
 from functools import lru_cache
-from pathlib import Path
 from typing import Optional
+
+from paths import data_dir
 
 logger = logging.getLogger("snitch.resolver")
 
 try:
-    import geoip2.database
-    import geoip2.errors
-    GEOIP_AVAILABLE = True
+    import maxminddb
+    MMDB_AVAILABLE = True
 except ImportError:
-    # EN: geoip2 not installed — MaxMind lookups unavailable.
-    # FR: geoip2 non installé — recherches MaxMind indisponibles.
-    GEOIP_AVAILABLE = False
+    # EN: maxminddb ships with geoip2 — absent only on minimal installs.
+    # FR: maxminddb arrive avec geoip2 — absent seulement des installs minimales.
+    MMDB_AVAILABLE = False
 
-# EN: Global ceiling for blocking socket operations (reverse DNS mainly).
-#     gethostbyaddr has no per-call timeout, so we bound it globally.
-# FR: Plafond global pour les opérations socket bloquantes (DNS inverse surtout).
-#     gethostbyaddr n'a pas de timeout par appel : on le borne globalement.
+# EN: Global ceiling for blocking socket ops — gethostbyaddr has no per-call
+#     timeout, so we bound it globally (a stuck PTR lookup used to park
+#     executor threads forever).
+# FR: Plafond global pour les opérations socket bloquantes — gethostbyaddr n'a
+#     pas de timeout par appel, donc on le borne globalement (une résolution
+#     PTR coincée parquait des threads d'executor indéfiniment).
 socket.setdefaulttimeout(3)
 
-# EN: Online geolocation is OPT-IN (privacy by default).
-# FR: La géolocalisation en ligne est OPT-IN (confidentialité par défaut).
-ONLINE_GEO_ENABLED = os.environ.get("SNITCH_ONLINE_GEO", "").strip() == "1"
+GEO_DIR = data_dir() / "geo"
 
-# EN: Optional GeoLite2 database — drop GeoLite2-City.mmdb into data/.
-# FR: Base GeoLite2 optionnelle — déposer GeoLite2-City.mmdb dans data/.
-GEOIP_DB_PATH = Path(__file__).parent.parent.parent / "data" / "GeoLite2-City.mmdb"
-_geoip_reader = None
+_CITY_NAMES = ("dbip-city-lite.mmdb", "GeoLite2-City.mmdb")
+_ASN_NAMES = ("dbip-asn-lite.mmdb", "GeoLite2-ASN.mmdb")
 
+_readers: dict[str, object] = {}
+_readers_lock = threading.Lock()
 
-def get_geoip_reader():
-    """EN: Lazy-open the MaxMind reader once. / FR: Ouverture paresseuse du lecteur MaxMind."""
-    global _geoip_reader
-    if _geoip_reader is None and GEOIP_AVAILABLE and GEOIP_DB_PATH.exists():
-        try:
-            _geoip_reader = geoip2.database.Reader(str(GEOIP_DB_PATH))
-        except Exception as exc:
-            logger.warning("Could not open GeoLite2 DB at %s: %s", GEOIP_DB_PATH, exc)
-    return _geoip_reader
+# EN: ip → (domain, expiry_epoch) learned from captured DNS answers and SNI.
+#     Bounded — 10k entries, TTL-respecting.
+# FR: ip → (domaine, expiration) appris des réponses DNS capturées et du SNI.
+#     Borné — 10k entrées, respect du TTL.
+_domain_map: dict[str, tuple[str, float]] = {}
+_domain_lock = threading.Lock()
+MAX_DOMAIN_MAP = 10_000
 
 
 def is_private(ip: str) -> bool:
-    """EN: RFC1918 / loopback / link-local / ULA check — works for v4 and v6.
-    FR: Test RFC1918 / loopback / link-local / ULA — fonctionne en v4 et v6."""
+    """EN: RFC1918 / loopback / link-local / multicast / ULA check (v4 + v6).
+    FR: Test RFC1918 / loopback / link-local / multicast / ULA (v4 + v6)."""
     try:
-        return ipaddress.ip_address(ip).is_private
+        a = ipaddress.ip_address(ip)
+        return a.is_private or a.is_loopback or a.is_link_local or a.is_multicast
     except ValueError:
         return False
 
 
+# ── Observed domain names / Noms de domaine observés ─────────────────────────
+
+def learn_dns_answers(answers: list[tuple[str, str, int]]) -> None:
+    """
+    EN: Store A/AAAA answers from a captured DNS response so subsequent
+        packets to those IPs get a meaningful hostname. TTL-aware; expires
+        automatically on read.
+    FR: Stocker les réponses A/AAAA d'une réponse DNS capturée pour que les
+        paquets suivants vers ces IP obtiennent un nom d'hôte utile.
+        Conscient du TTL ; expiration automatique à la lecture.
+    """
+    now = time.time()
+    with _domain_lock:
+        for name, ip, ttl in answers:
+            if not name or not ip:
+                continue
+            # EN: Bound the map — evict expired first, then oldest.
+            # FR: Borner la table — évincer les expirées d'abord, puis les plus anciennes.
+            if len(_domain_map) >= MAX_DOMAIN_MAP:
+                _domain_map.clear()
+            _domain_map[ip] = (name, now + min(ttl, 86400))
+
+
+def learn_sni(ip: str, hostname: Optional[str]) -> None:
+    """EN: Record a TLS ClientHello hostname for a destination IP.
+    FR: Enregistrer le nom d'hôte du ClientHello TLS pour une IP destination."""
+    if not hostname:
+        return
+    with _domain_lock:
+        if len(_domain_map) >= MAX_DOMAIN_MAP:
+            _domain_map.clear()
+        # EN: SNI has no TTL — keep for the session (24h cap).
+        # FR: Le SNI n'a pas de TTL — conservation pour la session (plafond 24 h).
+        _domain_map.setdefault(ip, (hostname, time.time() + 86400))
+
+
+def lookup_domain(ip: str) -> Optional[str]:
+    """EN: Domain learned from DNS/SNI, or None. / FR: Domaine appris via DNS/SNI, ou None."""
+    with _domain_lock:
+        hit = _domain_map.get(ip)
+        if hit and hit[1] > time.time():
+            return hit[0]
+        return None
+
+
+# ── Reverse DNS / DNS inverse ────────────────────────────────────────────────
+
 @lru_cache(maxsize=2048)
 def resolve_hostname(ip: str) -> Optional[str]:
     """
-    EN: Reverse DNS — returns None on NXDOMAIN/timeout. lru_cache caches
-        negatives too, which is what we want: failed lookups are stable.
-    FR: DNS inverse — renvoie None sur NXDOMAIN/timeout. lru_cache met aussi en
-        cache les échecs, ce qui est souhaité : les échecs de résolution sont
-        stables.
+    EN: Reverse DNS — None on NXDOMAIN/timeout. lru_cache caches negatives
+        too: PTR absence is stable, so that's the desired behavior.
+    FR: DNS inverse — None sur NXDOMAIN/timeout. lru_cache met aussi en cache
+        les échecs : l'absence de PTR est stable, c'est le comportement voulu.
     """
     try:
         return socket.gethostbyaddr(ip)[0]
@@ -113,125 +162,89 @@ def resolve_hostname(ip: str) -> Optional[str]:
         return None
 
 
-@lru_cache(maxsize=2048)
-def resolve_geo_maxmind(ip: str) -> dict:
+# ── Geolocation / Géolocalisation ────────────────────────────────────────────
+
+def _get_reader(kind: str):
     """
-    EN: Offline geolocation via the local GeoLite2 DB. Returns {} when the DB
-        is absent, the IP is private, or the lookup fails. Safe to cache —
-        results don't change within a session.
-    FR: Géolocalisation hors ligne via la base GeoLite2 locale. Renvoie {} si
-        la base est absente, l'IP privée, ou la requête en échec. Cache sûr —
-        les résultats ne changent pas pendant une session.
+    EN: Lazy-open one .mmdb reader ('city' or 'asn'). Prefers DB-IP Lite
+        (CC BY 4.0) over GeoLite2 when both exist. Returns None if absent.
+    FR: Ouvrir paresseusement un lecteur .mmdb (« city » ou « asn »). Préfère
+        DB-IP Lite (CC BY 4.0) à GeoLite2 quand les deux existent. Renvoie
+        None si absente.
     """
-    reader = get_geoip_reader()
-    if not reader or is_private(ip):
-        return {}
-    try:
-        resp = reader.city(ip)
-        return {
-            "country": resp.country.name,
-            "country_code": resp.country.iso_code,
-            "city": resp.city.name,
-            "lat": resp.location.latitude,
-            "lon": resp.location.longitude,
-            "org": resp.traits.autonomous_system_organization,
-        }
-    except Exception:
-        return {}
+    if not MMDB_AVAILABLE:
+        return None
+    with _readers_lock:
+        if kind in _readers:
+            return _readers[kind]
+        names = _CITY_NAMES if kind == "city" else _ASN_NAMES
+        reader = None
+        for name in names:
+            path = GEO_DIR / name
+            if path.exists():
+                try:
+                    reader = maxminddb.open_database(str(path))
+                    logger.info("geo %s database loaded: %s", kind, path.name)
+                except Exception as exc:
+                    logger.warning("could not open %s: %s", path, exc)
+                break
+        _readers[kind] = reader
+        return reader
 
 
-# ── Online fallback: TTL cache + rate limiter ────────────────────────────────
-# ── Repli en ligne : cache TTL + limiteur de débit ───────────────────────────
-
-GEO_CACHE_TTL = 6 * 3600          # EN: 6h / FR: 6 h
-GEO_RATE_MAX   = 40               # EN: max requests per window / FR: requêtes max par fenêtre
-GEO_RATE_WINDOW = 60              # seconds / secondes
-
-_geo_cache: dict[str, tuple[float, dict]] = {}
-_geo_cache_lock = threading.Lock()
-_geo_calls: deque = deque()       # EN: timestamps of recent API calls / FR: timestamps des appels récents
-
-
-def _rate_limit_ok() -> bool:
-    """
-    EN: Sliding-window rate limiter — returns False when the quota for the
-        last 60 s is exhausted.
-    FR: Limiteur à fenêtre glissante — renvoie False quand le quota des 60
-        dernières secondes est épuisé.
-    """
-    now = time.time()
-    while _geo_calls and now - _geo_calls[0] > GEO_RATE_WINDOW:
-        _geo_calls.popleft()
-    if len(_geo_calls) >= GEO_RATE_MAX:
-        return False
-    _geo_calls.append(now)
-    return True
-
-
-def resolve_geo_ipapi(ip: str) -> dict:
-    """
-    EN: Online fallback — free ip-api.com, no key, ~45 req/min.
-        Disabled unless SNITCH_ONLINE_GEO=1. Successes are TTL-cached;
-        failures return {} and are NOT cached so the IP can retry later.
-    FR: Repli en ligne — ip-api.com gratuit, sans clé, ~45 req/min.
-        Désactivé sauf si SNITCH_ONLINE_GEO=1. Les succès sont cachés avec TTL ;
-        les échecs renvoient {} et ne sont PAS cachés pour permettre un re-essai.
-    """
-    if not ONLINE_GEO_ENABLED or is_private(ip):
-        return {}
-
-    now = time.time()
-    with _geo_cache_lock:
-        hit = _geo_cache.get(ip)
-        if hit and now - hit[0] < GEO_CACHE_TTL:
-            return hit[1]
-
-    if not _rate_limit_ok():
-        logger.debug("geo rate limit reached — skipping %s", ip)
-        return {}
-
-    try:
-        url = f"http://ip-api.com/json/{ip}?fields=status,country,countryCode,city,lat,lon,org"
-        req = urllib.request.Request(url, headers={"User-Agent": "snitch/1.0"})
-        with urllib.request.urlopen(req, timeout=4) as resp:
-            data = json.loads(resp.read())
-        if data.get("status") == "success":
-            geo = {
-                "country": data.get("country"),
-                "country_code": data.get("countryCode"),
-                "city": data.get("city"),
-                "lat": data.get("lat"),
-                "lon": data.get("lon"),
-                "org": data.get("org"),
-            }
-            with _geo_cache_lock:
-                _geo_cache[ip] = (now, geo)
-            return geo
-    except Exception as exc:
-        logger.debug("ip-api lookup failed for %s: %s", ip, exc)
-    return {}
-
-
+@lru_cache(maxsize=4096)
 def resolve_geo(ip: str) -> dict:
     """
-    EN: MaxMind first (offline, private), online fallback second.
-    FR: MaxMind d'abord (hors ligne, privé), repli en ligne ensuite.
+    EN: Offline geolocation via local .mmdb files. Returns {} when no DB is
+        present, the IP is private, or the lookup fails. Safe to cache —
+        results are stable within a session.
+    FR: Géolocalisation hors ligne via les .mmdb locaux. Renvoie {} sans base,
+        sur IP privée, ou en cas d'échec. Cache sûr — les résultats sont
+        stables pendant une session.
     """
-    geo = resolve_geo_maxmind(ip)
-    if geo:
-        return geo
-    return resolve_geo_ipapi(ip)
+    if is_private(ip):
+        return {}
+
+    geo: dict = {}
+    city = _get_reader("city")
+    if city is not None:
+        try:
+            rec = city.get(ip) or {}
+            country = rec.get("country") or rec.get("registered_country") or {}
+            geo = {
+                "country": (country.get("names") or {}).get("en") or country.get("name"),
+                "country_code": country.get("iso_code"),
+                "city": ((rec.get("city") or {}).get("names") or {}).get("en"),
+                "lat": (rec.get("location") or {}).get("latitude"),
+                "lon": (rec.get("location") or {}).get("longitude"),
+            }
+        except Exception as exc:
+            logger.debug("city lookup failed for %s: %s", ip, exc)
+
+    asn = _get_reader("asn")
+    if asn is not None:
+        try:
+            rec = asn.get(ip) or {}
+            geo["org"] = rec.get("autonomous_system_organization")
+        except Exception as exc:
+            logger.debug("asn lookup failed for %s: %s", ip, exc)
+
+    return geo
 
 
 async def enrich_ip(ip: str) -> dict:
     """
-    EN: Async wrapper — runs the blocking DNS/geo work in the default
-        executor so the event loop stays responsive under load.
-    FR: Enveloppe async — exécute le travail DNS/geo bloquant dans l'executor
-        par défaut pour que la boucle reste réactive sous charge.
+    EN: Async wrapper — blocking DNS/geo work runs in the default executor so
+        the event loop stays responsive. Domain preference order:
+        observed DNS/SNI > reverse DNS.
+    FR: Enveloppe async — le travail DNS/geo bloquant tourne dans l'executor
+        par défaut pour garder la boucle réactive. Préférence de domaine :
+        DNS/SNI observé > DNS inverse.
     """
     loop = asyncio.get_running_loop()
-    hostname = await loop.run_in_executor(None, resolve_hostname, ip)
+    hostname = lookup_domain(ip)
+    if not hostname:
+        hostname = await loop.run_in_executor(None, resolve_hostname, ip)
     geo = await loop.run_in_executor(None, resolve_geo, ip)
     return {
         "ip": ip,

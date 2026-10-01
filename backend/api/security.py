@@ -27,10 +27,10 @@ FR: Trois protections complémentaires :
 import logging
 import os
 import secrets
-import sys
-from pathlib import Path
 
 from fastapi import HTTPException, Request, WebSocket, status
+
+from paths import data_dir
 
 logger = logging.getLogger("snitch.api.security")
 
@@ -39,35 +39,45 @@ logger = logging.getLogger("snitch.api.security")
 # FR: Origines autorisées à joindre l'API. `null` couvre les pages file://
 #     (renderer Electron) — les navigateurs envoient Origin: null pour les
 #     fichiers locaux.
-ALLOWED_ORIGINS = {
-    "http://localhost:5173",   # EN: Vite dev / FR: dev Vite
-    "http://127.0.0.1:5173",
-    "http://localhost:8000",   # EN: backend serving its own frontend
-    "http://127.0.0.1:8000",   # FR: le backend servant son propre frontend
-    "null",                    # EN: file:// (Electron) / FR: file:// (Electron)
-}
+# EN: The port is dynamic now (free-port selection), so the allowlist is a
+#     RULE, not a literal set: loopback hosts on any port + `null` (file://
+#     Electron). A loopback origin can only come from a local process/page —
+#     remote origins always fail. Token auth applies on top regardless.
+# FR: Le port est désormais dynamique (choix de port libre), donc la liste
+#     blanche est une RÈGLE, pas un ensemble littéral : hôtes loopback sur tout
+#     port + `null` (file:// Electron). Une origine loopback ne peut venir que
+#     d'une page/processus local — les origines distantes échouent toujours.
+#     L'authentification par jeton s'applique de toute façon par-dessus.
+_LOOPBACK_HOSTS = {"localhost", "127.0.0.1", "::1", "[::1]"}
 
-ALLOWED_ORIGINS_LIST = sorted(ALLOWED_ORIGINS)
+def _is_loopback_origin(origin: str) -> bool:
+    """EN: True when the origin's hostname is loopback (any scheme/port).
+    FR: True quand le nom d'hôte de l'origine est loopback (schéma/port quelconques)."""
+    try:
+        from urllib.parse import urlparse
+        host = urlparse(origin).hostname or ""
+        return host.lower() in _LOOPBACK_HOSTS
+    except Exception:
+        return False
 
 
-def _data_dir() -> Path:
+def origin_allowed(origin: str | None) -> bool:
     """
-    EN: Resolve the writable data directory — same rules as storage.db:
-        SNITCH_DATA_DIR env override, LOCALAPPDATA\\Snitch when frozen by
-        PyInstaller, otherwise <repo>/data.
-    FR: Résoudre le dossier de données inscriptible — mêmes règles que
-        storage.db : SNITCH_DATA_DIR en priorité, LOCALAPPDATA\\Snitch quand
-        figé par PyInstaller, sinon <dépôt>/data.
+    EN: An absent Origin header means a non-browser client (curl, Electron's
+        main process) — allowed. Present origins must be loopback or `null`.
+    FR: Un en-tête Origin absent signifie un client non-navigateur (curl,
+        processus principal d'Electron) — autorisé. Les origines présentes
+        doivent être loopback ou `null`.
     """
-    env_dir = os.environ.get("SNITCH_DATA_DIR")
-    if env_dir:
-        d = Path(env_dir)
-    elif getattr(sys, "frozen", False):
-        d = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "Snitch"
-    else:
-        d = Path(__file__).parent.parent.parent / "data"
-    d.mkdir(parents=True, exist_ok=True)
-    return d
+    if origin is None:
+        return True
+    return origin == "null" or _is_loopback_origin(origin)
+
+
+# EN: CORS needs literal strings/regex — a loopback regex mirrors the rule.
+# FR: CORS exige des chaînes/regex littérales — une regex loopback reflète la règle.
+ALLOWED_ORIGIN_REGEX = r"^https?://(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$"
+ALLOWED_ORIGINS_LIST = ["null"]
 
 
 def _load_or_create_token() -> str:
@@ -89,7 +99,7 @@ def _load_or_create_token() -> str:
     if token:
         return token
 
-    token_file = _data_dir() / "api_token.txt"
+    token_file = data_dir() / "api_token.txt"
     try:
         if token_file.exists():
             existing = token_file.read_text().strip()
@@ -120,6 +130,12 @@ def _load_or_create_token() -> str:
 API_TOKEN = _load_or_create_token()
 
 
+def get_token() -> str:
+    """EN: Public accessor — the CLI needs the token to build the open-URL.
+    FR: Accesseur public — la CLI a besoin du jeton pour construire l'URL."""
+    return API_TOKEN
+
+
 def _extract_token(request: Request) -> str | None:
     """
     EN: Accept `X-Snitch-Token` header (preferred) or `?token=` query param
@@ -142,17 +158,6 @@ def require_token(request: Request) -> None:
     token = _extract_token(request)
     if not token or not secrets.compare_digest(token, API_TOKEN):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="Invalid or missing API token")
-
-
-def origin_allowed(origin: str | None) -> bool:
-    """
-    EN: An absent Origin header means a non-browser client (curl, Electron's
-        main process) — allowed. Present origins must be in the allowlist.
-    FR: Un en-tête Origin absent signifie un client non-navigateur (curl,
-        processus principal d'Electron) — autorisé. Les origines présentes
-        doivent figurer dans la liste blanche.
-    """
-    return origin is None or origin in ALLOWED_ORIGINS
 
 
 async def ws_authorized(websocket: WebSocket) -> bool:

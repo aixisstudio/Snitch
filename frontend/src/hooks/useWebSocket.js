@@ -21,7 +21,7 @@
  *     La connexion s'ouvre avec le jeton API via wsUrlWithToken().
  */
 import { useEffect, useRef, useState } from 'react'
-import { API_BASE, authHeaders, wsUrlWithToken } from '../api'
+import { apiBase, authHeaders, wsUrlWithToken, wsBase } from '../api'
 
 export function useWebSocket(url) {
   const ws = useRef(null)
@@ -69,7 +69,7 @@ export function useWebSocket(url) {
     async function connect() {
       // EN: Resolve the token BEFORE opening the socket.
       // FR: Résoudre le jeton AVANT d'ouvrir le socket.
-      const wsUrl = await wsUrlWithToken(url)
+      const wsUrl = await wsUrlWithToken(url ?? wsBase)
       if (stopped) return
 
       ws.current = new WebSocket(wsUrl)
@@ -112,16 +112,67 @@ export function useWebSocket(url) {
           if (msg.alerts?.length) setAlerts(msg.alerts.reverse())
         }
 
-        // EN: Incremental graph update (one per packet).
-        // FR: Mise à jour incrémentale du graphe (une par paquet).
+        // EN: Incremental graph update (one per packet — legacy path).
+        // FR: Mise à jour incrémentale du graphe (une par paquet — chemin hérité).
         if (msg.type === 'update') {
           setNodes(prev => ({ ...prev, [msg.node.id]: msg.node }))
           setEdges(prev => ({ ...prev, [msg.edge.id]: msg.edge }))
           setPackets(prev => [msg.packet, ...prev].slice(0, 100))
-          // EN: Accumulate bytes into the current second bucket.
-          // FR: Accumuler les octets dans le seau de la seconde courante.
           const sec = Math.floor(Date.now() / 1000) * 1000
           bwRef.current[sec] = (bwRef.current[sec] || 0) + (msg.packet?.size || 0)
+        }
+
+        // EN: Batched update — the backend coalesces a 250 ms window into one
+        //     message. All arrays land in a single React state pass each, so
+        //     a burst of 200 packets = 4 renders/s, not 200.
+        // FR: Mise à jour par lot — le backend coalesce une fenêtre de 250 ms
+        //     en un message. Chaque tableau déclenche un seul passage React,
+        //     donc une rafale de 200 paquets = 4 rendus/s, pas 200.
+        if (msg.type === 'batch') {
+          if (msg.nodes?.length) {
+            const incoming = msg.nodes
+            setNodes(prev => {
+              const next = { ...prev }
+              for (const n of incoming) next[n.id] = n
+              return next
+            })
+          }
+          if (msg.edges?.length) {
+            const incoming = msg.edges
+            setEdges(prev => {
+              const next = { ...prev }
+              for (const e of incoming) next[e.id] = e
+              return next
+            })
+          }
+          if (msg.devices?.length) {
+            const incoming = msg.devices
+            setLanDevices(prev => {
+              const next = { ...prev }
+              for (const d of incoming) next[d.id] = d
+              return next
+            })
+          }
+          if (msg.packets?.length) {
+            const incoming = msg.packets
+            setPackets(prev => [...incoming.slice(-50).reverse(), ...prev].slice(0, 100))
+            const sec = Math.floor(Date.now() / 1000) * 1000
+            const bytes = incoming.reduce((sum, p) => sum + (p.size || 0), 0)
+            bwRef.current[sec] = (bwRef.current[sec] || 0) + bytes
+          }
+          if (msg.alerts?.length) {
+            const incoming = msg.alerts
+            setAlerts(prev => [...incoming.slice().reverse(), ...prev].slice(0, 200))
+            setUnread(prev => prev + incoming.length)
+          }
+        }
+
+        // EN: Enriched node patch (hostname/geo resolved after the fact).
+        // FR: Patch de nœud enrichi (nom d'hôte/géo résolus après coup).
+        if (msg.type === 'node_update') {
+          setNodes(prev => prev[msg.node.id]
+            ? { ...prev, [msg.node.id]: msg.node }
+            : prev)
         }
 
         // EN: LAN device appeared / changed / went offline.
@@ -161,9 +212,16 @@ export function useWebSocket(url) {
           })
         }
 
-        // EN: Mic/camera usage changed. / FR: L'usage micro/caméra a changé.
+        // EN: Mic/camera usage changed. `supported=false` (macOS) lets the
+        //     badge hide entirely instead of lying with empty lists.
+        // FR: L'usage micro/caméra a changé. `supported=false` (macOS) permet
+        //     au badge de se masquer plutôt que de mentir avec des listes vides.
         if (msg.type === 'media') {
-          setMedia({ mic: msg.mic || [], camera: msg.camera || [] })
+          setMedia({
+            mic: msg.mic || [],
+            camera: msg.camera || [],
+            supported: msg.supported !== false,
+          })
         }
 
         // EN: Full graph reset (e.g. after the port filter changed).
@@ -201,7 +259,7 @@ export function useWebSocket(url) {
 
   async function toggleCapture() {
     const endpoint = capturing ? '/capture/stop' : '/capture/start'
-    const res = await fetch(`${API_BASE}${endpoint}`, {
+    const res = await fetch(`${await apiBase()}${endpoint}`, {
       method: 'POST',
       headers: await authHeaders(),
     })
@@ -210,7 +268,7 @@ export function useWebSocket(url) {
   }
 
   async function updatePortFilter(ports) {
-    const res = await fetch(`${API_BASE}/capture/ports`, {
+    const res = await fetch(`${await apiBase()}/capture/ports`, {
       method: 'POST',
       headers: await authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ ports }),
@@ -220,7 +278,7 @@ export function useWebSocket(url) {
   }
 
   async function updateProcessFilter(excluded) {
-    const res = await fetch(`${API_BASE}/capture/processes`, {
+    const res = await fetch(`${await apiBase()}/capture/processes`, {
       method: 'POST',
       headers: await authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ excluded }),
@@ -230,7 +288,7 @@ export function useWebSocket(url) {
   }
 
   async function updateIpWhitelist(ips) {
-    const res = await fetch(`${API_BASE}/capture/whitelist`, {
+    const res = await fetch(`${await apiBase()}/capture/whitelist`, {
       method: 'POST',
       headers: await authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ ips }),

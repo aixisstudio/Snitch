@@ -26,10 +26,45 @@
  */
 const isElectron = window.location.protocol === 'file:'
 
+// EN: Backend port — Electron picks a FREE port at launch and exposes it via
+//     the preload bridge (window.snitch.getPort()). Browsers/Docker use the
+//     page origin (same-origin deployment) or the vite proxy. Falls back to
+//     8000 only for compatibility.
+// FR: Port du backend — Electron choisit un port LIBRE au lancement et
+//     l'expose via le pont preload (window.snitch.getPort()). Navigateur/
+//     Docker utilisent l'origine de la page (déploiement same-origin) ou le
+//     proxy vite. Repli 8000 uniquement pour compatibilité.
+let _portPromise = null
+export function getApiPort() {
+  if (_portPromise) return _portPromise
+  _portPromise = (async () => {
+    if (window.snitch?.getPort) return await window.snitch.getPort()
+    if (isElectron) return 8000
+    return window.location.port || (window.location.protocol === 'https:' ? 443 : 80)
+  })()
+  return _portPromise
+}
+
+// EN: ws/wss follows the page scheme — a deployment behind an HTTPS proxy
+//     must not attempt a plaintext ws://.
+// FR: ws/wss suit le schéma de la page — un déploiement derrière un proxy
+//     HTTPS ne doit pas tenter un ws:// en clair.
+const wsScheme = window.location.protocol === 'https:' ? 'wss' : 'ws'
+
+export async function apiBase() {
+  if (isElectron) return `http://127.0.0.1:${await getApiPort()}`
+  return ''
+}
+
+export async function wsBase() {
+  if (isElectron) return `${wsScheme}://127.0.0.1:${await getApiPort()}/ws`
+  return `${wsScheme}://${window.location.host}/ws`
+}
+
 export const API_BASE = isElectron ? 'http://127.0.0.1:8000' : ''
 export const WS_URL   = isElectron
-  ? 'ws://127.0.0.1:8000/ws'
-  : `ws://${window.location.host}/ws`
+  ? `${wsScheme}://127.0.0.1:8000/ws`
+  : `${wsScheme}://${window.location.host}/ws`
 
 let _tokenPromise = null
 
@@ -81,5 +116,8 @@ export async function authHeaders(extra = {}) {
  */
 export async function wsUrlWithToken(base) {
   const token = await getToken()
-  return token ? `${base}?token=${encodeURIComponent(token)}` : base
+  // EN: `base` may be a function (async wsBase) or a legacy static string.
+  // FR: `base` peut être une fonction (wsBase async) ou une chaîne statique.
+  const url = typeof base === 'function' ? await base() : base
+  return token ? `${url}?token=${encodeURIComponent(token)}` : url
 }

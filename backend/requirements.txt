@@ -1,12 +1,20 @@
 # EN: Pinned Python dependencies for the Snitch backend.
+#     NOTE: Scapy was REMOVED — it is GPL-2.0-only, incompatible with the
+#     project's AGPL-3.0-or-later. Capture now runs through a ctypes binding
+#     to libpcap (BSD-licensed) plus our own parser (capture/pcap.py,
+#     capture/parser.py). dnspython went with it — DNS answers are parsed by
+#     our own parser now.
 # FR: Dépendances Python épinglées pour le backend Snitch.
+#     NOTE : Scapy a été RETIRÉ — c'est du GPL-2.0-only, incompatible avec
+#     l'AGPL-3.0-or-later du projet. La capture passe désormais par une
+#     liaison ctypes vers libpcap (licence BSD) plus notre propre parseur
+#     (capture/pcap.py, capture/parser.py). dnspython est parti aussi — les
+#     réponses DNS sont analysées par notre parseur.
 
 fastapi==0.115.0          # EN: REST + WebSocket API framework / FR: framework API REST + WebSocket
 uvicorn[standard]==0.30.6 # EN: ASGI server / FR: serveur ASGI
 websockets==13.0.1        # EN: WebSocket support / FR: support WebSocket
-scapy==2.6.0              # EN: raw packet capture + ARP scan / FR: capture de paquets + scan ARP
-dnspython==2.7.0          # EN: DNS utilities / FR: utilitaires DNS
-geoip2==4.8.0             # EN: MaxMind GeoLite2 reader / FR: lecteur MaxMind GeoLite2
+maxminddb==2.6.3          # EN: raw .mmdb reader — GeoLite2 AND DB-IP Lite / FR: lecteur .mmdb brut — GeoLite2 ET DB-IP Lite
 psutil==6.1.0             # EN: process + network interface info / FR: infos processus + interfaces réseau
 python-dotenv==1.0.1      # EN: .env file support / FR: support des fichiers .env
 aiofiles==24.1.0          # EN: async file I/O / FR: E/S fichiers asynchrones

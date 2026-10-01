@@ -1,0 +1,51 @@
+# Snitch — Python packaging.
+#
+# EN: `pipx install .` (or pip) gives you a `snitch` CLI that serves the web UI
+#     on 127.0.0.1 and opens the browser with the API token. Capture rights:
+#     admin on Windows, `sudo setcap cap_net_raw,cap_net_admin` (or root) on
+#     Linux, /dev/bpf* access on macOS.
+# FR: `pipx install .` (ou pip) fournit une CLI `snitch` qui sert l'UI web sur
+#     127.0.0.1 et ouvre le navigateur avec le jeton API. Droits de capture :
+#     admin sous Windows, `sudo setcap cap_net_raw,cap_net_admin` (ou root)
+#     sous Linux, accès /dev/bpf* sous macOS.
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "snitch"
+version = "1.1.0"
+description = "Real-time network traffic visualizer — EN/FR, privacy-first, local-only"
+readme = "README.md"
+license = { text = "AGPL-3.0-or-later" }
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi==0.115.0",
+    "uvicorn[standard]==0.30.6",
+    "websockets==13.0.1",
+    "maxminddb==2.6.3",
+    "psutil==6.1.0",
+    "python-dotenv==1.0.1",
+    "aiofiles==24.1.0",
+]
+
+[project.scripts]
+snitch = "cli:main"
+
+[tool.setuptools]
+package-dir = { "" = "backend" }
+packages = [
+    "api", "capture", "classifier", "detection", "resolver", "scanner",
+    "storage",
+]
+py-modules = ["cli", "paths", "logging_config", "run_backend"]
+
+# EN: The built frontend ships inside the wheel — `npm run build` output is
+#     expected at frontend/dist and gets copied to backend/frontend_dist by
+#     the release pipeline before building the wheel.
+# FR: Le frontend compilé est embarqué dans la wheel — la sortie de
+#     `npm run build` doit être dans frontend/dist et est copiée vers
+#     backend/frontend_dist par la chaîne de release avant le build.
+[tool.setuptools.package-data]
+"*" = ["frontend_dist/**/*"]

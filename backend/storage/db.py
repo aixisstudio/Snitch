@@ -28,35 +28,16 @@ FR: Deux tables :
 
 import json
 import logging
-import os
 import sqlite3
-import sys
 import threading
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
+
+from paths import data_dir
 
 logger = logging.getLogger("snitch.storage")
 
-
-def _get_db_path() -> Path:
-    """
-    EN: Resolve the DB path — see module docstring for the precedence order.
-    FR: Résoudre le chemin de la base — voir le docstring du module pour
-        l'ordre de priorité.
-    """
-    env_dir = os.environ.get("SNITCH_DATA_DIR")
-    if env_dir:
-        db_dir = Path(env_dir)
-    elif getattr(sys, 'frozen', False):
-        db_dir = Path(os.environ.get('LOCALAPPDATA', Path.home())) / 'Snitch'
-    else:
-        db_dir = Path(__file__).parent.parent.parent / 'data'
-    db_dir.mkdir(parents=True, exist_ok=True)
-    return db_dir / 'snitch.db'
-
-
-DB_PATH = _get_db_path()
+DB_PATH = data_dir() / 'snitch.db'
 
 # EN: Single shared connection guarded by a lock — sqlite3 is not thread-safe
 #     by default and we write from several threads.
@@ -125,8 +106,55 @@ def _init_schema(conn: sqlite3.Connection) -> None:
             details  TEXT
         );
         CREATE INDEX IF NOT EXISTS idx_alerts_ts ON alerts_log(ts);
+
+        -- EN: Persisted settings (filters, whitelist, language, thresholds…).
+        --     Values are JSON; the API loads them at startup.
+        -- FR: Réglages persistés (filtres, whitelist, langue, seuils…).
+        --     Valeurs en JSON ; l'API les charge au démarrage.
+        CREATE TABLE IF NOT EXISTS settings (
+            key   TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        );
     """)
     conn.commit()
+
+
+# ── Settings / Réglages ──────────────────────────────────────────────────────
+
+def get_setting(key: str, default=None):
+    """EN: Read one persisted setting (JSON-decoded). / FR: Lire un réglage persisté (décodé JSON)."""
+    with _conn_lock:
+        row = get_conn().execute(
+            "SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
+    if not row:
+        return default
+    try:
+        return json.loads(row[0])
+    except (json.JSONDecodeError, TypeError):
+        return default
+
+
+def set_setting(key: str, value) -> None:
+    """EN: Persist one setting as JSON. / FR: Persister un réglage en JSON."""
+    with _conn_lock:
+        conn = get_conn()
+        conn.execute(
+            "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+            (key, json.dumps(value)))
+        conn.commit()
+
+
+def all_settings() -> dict:
+    """EN: All persisted settings as a dict. / FR: Tous les réglages persistés en dict."""
+    with _conn_lock:
+        rows = get_conn().execute("SELECT key, value FROM settings").fetchall()
+    out = {}
+    for k, v in rows:
+        try:
+            out[k] = json.loads(v)
+        except (json.JSONDecodeError, TypeError):
+            pass
+    return out
 
 
 # ── Write helpers / Aides d'écriture ─────────────────────────────────────────
@@ -234,6 +262,32 @@ def get_timeline(minutes: int = 60) -> list[dict]:
         }
         for r in traffic_rows
     ]
+
+
+def get_alerts(limit: int = 100) -> list[dict]:
+    """
+    EN: Most recent persisted alerts, newest first — the /alerts endpoint now
+        survives restarts instead of serving only the in-memory tail.
+    FR: Alertes persistées les plus récentes, plus récentes d'abord — le
+        endpoint /alerts survit désormais aux redémarrages au lieu de servir
+        seulement la queue en mémoire.
+    """
+    with _conn_lock:
+        rows = get_conn().execute("""
+            SELECT id, ts, type, severity, message, node_id, details
+            FROM alerts_log ORDER BY ts DESC LIMIT ?
+        """, (limit,)).fetchall()
+    out = []
+    for r in rows:
+        try:
+            details = json.loads(r[6] or "{}")
+        except json.JSONDecodeError:
+            details = {}
+        out.append({
+            "id": r[0], "timestamp": r[1], "type": r[2], "severity": r[3],
+            "message": r[4], "node_id": r[5], "details": details,
+        })
+    return out
 
 
 def cleanup_old_data(hours: int = 24) -> None:

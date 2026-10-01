@@ -15,29 +15,10 @@ FR: Configuration centralisée des logs. Sortie vers stdout ET un fichier
 """
 
 import logging
-import os
-import sys
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
-
-def _data_dir() -> Path:
-    """
-    EN: Same resolution as api.security / storage.db — duplicated here so this
-        module has zero internal dependencies (it must be importable first).
-    FR: Même résolution que api.security / storage.db — dupliquée ici pour que
-        ce module n'ait aucune dépendance interne (il doit être importable en
-        premier).
-    """
-    env_dir = os.environ.get("SNITCH_DATA_DIR")
-    if env_dir:
-        d = Path(env_dir)
-    elif getattr(sys, "frozen", False):
-        d = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "Snitch"
-    else:
-        d = Path(__file__).parent.parent / "data"
-    d.mkdir(parents=True, exist_ok=True)
-    return d
+from paths import data_dir
 
 
 def setup_logging(level: int = logging.INFO) -> Path:
@@ -47,7 +28,7 @@ def setup_logging(level: int = logging.INFO) -> Path:
     FR: Configurer le logger racine « snitch ». Renvoie le chemin du fichier
         de log. Idempotent — appelable plusieurs fois sans effet.
     """
-    log_dir = _data_dir() / "logs"
+    log_dir = data_dir() / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
     log_file = log_dir / "snitch.log"
 

@@ -1,6 +1,6 @@
 # Snitch — Docker Compose
 # EN: Runs the full Snitch stack (backend + compiled frontend) with host networking.
-#     Host networking is required so Scapy can capture traffic on real host interfaces.
+#     Host networking is required so libpcap can capture real host interfaces.
 #     Linux only — Docker Desktop (Mac/Windows) uses a VM and cannot capture host traffic.
 #
 #     SECURITY: SNITCH_BIND defaults to 127.0.0.1 — the API exposes your full
@@ -11,7 +11,7 @@
 #     token auth still applies on every endpoint.
 #
 # FR: Lance toute la stack Snitch (backend + frontend compilé) en réseau hôte.
-#     Le réseau hôte est requis pour que Scapy capture le trafic des vraies interfaces.
+#     Le réseau hôte est requis pour que libpcap capture les vraies interfaces.
 #     Linux uniquement — Docker Desktop (Mac/Windows) utilise une VM et ne peut pas
 #     capturer le trafic de l'hôte.
 #
@@ -37,17 +37,25 @@ services:
       # EN: Uncomment to pin a fixed token instead of an auto-generated one.
       # FR: Décommenter pour imposer un jeton fixe plutôt qu'un jeton généré.
       # - SNITCH_TOKEN=change-me
-      # EN: Opt-in ONLY — sends contacted IPs to ip-api.com over HTTP.
-      #     Offline GeoLite2 (data/GeoLite2-City.mmdb) needs nothing external.
-      # FR: OPT-IN SEULEMENT — envoie les IP contactées à ip-api.com en HTTP.
-      #     GeoLite2 hors ligne (data/GeoLite2-City.mmdb) ne requiert rien d'externe.
-      # - SNITCH_ONLINE_GEO=1
+      # EN: NO online geolocation exists — the app never sends your IPs
+      #     anywhere. Drop an .mmdb in data/geo/ for fully-offline lookups.
+      # FR: AUCUNE géolocalisation en ligne — l'app n'envoie jamais vos IP.
+      #     Déposez un .mmdb dans data/geo/ pour des recherches 100 % hors ligne.
     volumes:
-      # EN: data/GeoLite2-City.mmdb — optional, for offline geolocation
-      #     data/snitch.db         — created automatically at runtime
-      #     data/api_token.txt     — generated API token (0600)
-      # FR: data/GeoLite2-City.mmdb — optionnel, pour la géolocalisation hors ligne
-      #     data/snitch.db         — créé automatiquement au démarrage
-      #     data/api_token.txt     — jeton API généré (0600)
+      # EN: data/geo/*.mmdb   — optional, offline geolocation (DB-IP Lite or GeoLite2)
+      #     data/snitch.db    — created automatically at runtime
+      #     data/api_token.txt — generated API token (0600)
+      # FR: data/geo/*.mmdb    — optionnel, géolocalisation hors ligne (DB-IP Lite ou GeoLite2)
+      #     data/snitch.db     — créé automatiquement au démarrage
+      #     data/api_token.txt — jeton API généré (0600)
       - ./data:/app/data
+    healthcheck:
+      # EN: /capture/status requires the token — use TCP connect as the liveness
+      #     probe instead (unauthenticated requests get 401 by design).
+      # FR: /capture/status exige le jeton — la sonde de vie est un simple
+      #     connect TCP (les requêtes non authentifiées reçoivent 401 par design).
+      test: ["CMD-SHELL", "python -c \"import socket,os; socket.create_connection(('127.0.0.1', int(os.environ.get('SNITCH_PORT','8000'))), 3)\""]
+      interval: 30s
+      timeout: 5s
+      retries: 3
     restart: unless-stopped

@@ -38,9 +38,15 @@ logger = logging.getLogger("snitch.capture.media")
 @dataclass
 class MediaState:
     """EN: Snapshot of which process names are using mic/camera.
-    FR: Instantané des noms de processus utilisant micro/caméra."""
+        `supported=False` means the platform has no detection backend
+        (macOS) — the UI hides the badge entirely rather than lying.
+    FR: Instantané des noms de processus utilisant micro/caméra.
+        `supported=False` signifie que la plateforme n'a pas de backend de
+        détection (macOS) — l'UI masque complètement le badge plutôt que de
+        mentir."""
     mic: list[str] = field(default_factory=list)
     camera: list[str] = field(default_factory=list)
+    supported: bool = True
 
 
 def _detect_windows() -> MediaState:
@@ -69,41 +75,44 @@ def _detect_windows() -> MediaState:
         procs = []
         key_path = rf"SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\{device}"
         try:
-            key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path)
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path) as key:
+                i = 0
+                while True:
+                    try:
+                        sub = winreg.EnumKey(key, i)
+                        i += 1
+                    except OSError:
+                        break
+
+                    try:
+                        if sub == "NonPackaged":
+                            # EN: Desktop apps — one sub-key per exe path.
+                            # FR: Apps bureau — une sous-clé par chemin d'exe.
+                            with winreg.OpenKey(key, sub) as np_key:
+                                j = 0
+                                while True:
+                                    try:
+                                        app = winreg.EnumKey(np_key, j)
+                                        j += 1
+                                        with winreg.OpenKey(np_key, app) as app_key:
+                                            if _key_in_use(app_key):
+                                                procs.append(app.split("#")[-1])
+                                    except OSError:
+                                        break
+                        else:
+                            # EN: Packaged (Store/UWP) apps sit directly under
+                            #     the capability key.
+                            # FR: Les apps packagées (Store/UWP) sont
+                            #     directement sous la clé de capacité.
+                            with winreg.OpenKey(key, sub) as app_key:
+                                if _key_in_use(app_key):
+                                    procs.append(sub)
+                    except OSError:
+                        # EN: One broken key must not abort the whole walk.
+                        # FR: Une clé cassée ne doit pas interrompre le parcours.
+                        continue
         except OSError:
-            return procs
-
-        i = 0
-        while True:
-            try:
-                sub = winreg.EnumKey(key, i)
-                i += 1
-            except OSError:
-                break
-
-            try:
-                if sub == "NonPackaged":
-                    # EN: Desktop apps — one sub-key per exe path.
-                    # FR: Apps bureau — une sous-clé par chemin d'exe.
-                    np_key = winreg.OpenKey(key, sub)
-                    j = 0
-                    while True:
-                        try:
-                            app = winreg.EnumKey(np_key, j)
-                            j += 1
-                            app_key = winreg.OpenKey(np_key, app)
-                            if _key_in_use(app_key):
-                                procs.append(app.split("#")[-1])
-                        except OSError:
-                            break
-                else:
-                    # EN: Packaged (Store/UWP) apps sit directly under the key.
-                    # FR: Les apps packagées (Store/UWP) sont directement sous la clé.
-                    app_key = winreg.OpenKey(key, sub)
-                    if _key_in_use(app_key):
-                        procs.append(sub)
-            except OSError:
-                continue
+            pass
         return procs
 
     state.mic = _read_consent("microphone")
@@ -138,9 +147,18 @@ def _detect_linux() -> MediaState:
 
 
 def detect_media_usage() -> MediaState:
-    """EN: Platform dispatch. / FR: Répartition selon la plateforme."""
+    """
+    EN: Platform dispatch. macOS has no straightforward API for this — the
+        Linux branch would be wrong there, so we report "unsupported" and let
+        the UI hide the feature.
+    FR: Répartition selon la plateforme. macOS n'offre pas d'API simple pour
+        cela — la branche Linux y serait fausse, donc on rapporte
+        « non supporté » et l'UI masque la fonctionnalité.
+    """
     if sys.platform == "win32":
         return _detect_windows()
+    if sys.platform == "darwin":
+        return MediaState(supported=False)
     return _detect_linux()
 
 

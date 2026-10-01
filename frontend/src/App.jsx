@@ -22,11 +22,13 @@ import Timeline from './components/Timeline'
 import Dropdown from './components/Dropdown'
 import { useWebSocket } from './hooks/useWebSocket'
 import { computePrivacyScore } from './scoring/privacy'
-import { WS_URL } from './api'
+// EN: WS URL is resolved dynamically (port + ws/wss) via api.js wsBase().
+// FR: L'URL WS est résolue dynamiquement (port + ws/wss) via wsBase() d'api.js.
 import { useT } from './i18n'
 
 export default function App() {
-  const { nodes, edges, lanDevices, packets, alerts, unread, clearUnread, status, bandwidth, capturing, toggleCapture, portFilter, updatePortFilter, excludedProcesses, updateProcessFilter, whitelistedIps, updateIpWhitelist, media } = useWebSocket(WS_URL)
+  const { nodes, edges, lanDevices, packets, alerts, unread, clearUnread, status, bandwidth, capturing, toggleCapture, portFilter, updatePortFilter, excludedProcesses, updateProcessFilter, whitelistedIps, updateIpWhitelist, media } = useWebSocket(null)  // EN: null → resolves the dynamic port/scheme via wsBase()
+                    // FR: null → résout port/schéma dynamiques via wsBase()
   const [selected, setSelected] = useState(null)
   const [view, setView] = useState('graph')
   const [showAlerts, setShowAlerts] = useState(false)

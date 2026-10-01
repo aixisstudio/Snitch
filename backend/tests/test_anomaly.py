@@ -30,6 +30,8 @@ def pkt(remote=PUBLIC_IP, direction="out", port=443, size=500, process=None, pro
         dst_ip=remote if direction == "out" else local,
         src_port=50000 if direction == "out" else port,
         dst_port=port if direction == "out" else 50000,
+        remote_port=port,              # EN: the remote end — same both ways
+                                       # FR: l'extrémité distante — identique dans les deux sens
         protocol=proto,
         size=size,
         timestamp=datetime.now(timezone.utc).isoformat(),

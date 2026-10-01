@@ -13,7 +13,9 @@ EN: Stateful, rule-based detector fed with every captured packet and every
       - SUSPICIOUS_PORT    traffic to ports associated with shells/botnets/Tor
       - BEACON             *regular-interval* traffic (low interval variance)
                            — real C2 heartbeat detection, not a dumb rate count
-      - VOLUME_SPIKE       a single packet far above the host's average size
+      - PORT_SCAN          many distinct remote ports from one origin in a
+                           short window (both directions)
+      - VOLUME_SPIKE       bytes-per-window far above the rolling baseline
       - MEDIA_EXFIL        mic/camera-using process (not whitelisted) sending out
       - NEW_LAN_DEVICE     device appears on the local network
       - DEVICE_OFFLINE     device disappears from the local network
@@ -39,7 +41,9 @@ FR: Détecteur à état basé sur des règles, alimenté par chaque paquet captu
       - SUSPICIOUS_PORT    trafic vers des ports associés shells/botnets/Tor
       - BEACON             trafic à intervalles *réguliers* (faible variance) —
                            vraie détection de heartbeat C2, pas un simple compteur
-      - VOLUME_SPIKE       un paquet bien au-dessus de la moyenne de l'hôte
+      - PORT_SCAN          beaucoup de ports distants distincts depuis une
+                           origine sur une courte fenêtre (deux sens)
+      - VOLUME_SPIKE       octets par fenêtre bien au-dessus de la base roulante
       - MEDIA_EXFIL        processus micro/caméra (non whitelisté) qui émet
       - NEW_LAN_DEVICE     un appareil apparaît sur le réseau local
       - DEVICE_OFFLINE     un appareil disparaît du réseau local
@@ -113,7 +117,30 @@ BEACON_MAX_INTERVAL_S = 600.0
 BEACON_MAX_CV = 0.35
 BEACON_MIN_SPAN_S = 60.0
 
-VOLUME_SPIKE_FACTOR = 8    # EN: 8× average bytes → spike / FR: 8× la moyenne → pic
+# ── Volume spike / Pic de volume ─────────────────────────────────────────────
+# EN: Bytes in a trailing window vs a rolling baseline of completed windows —
+#     NOT single-packet size (a 1.5 KB packet after 100-byte ACKs used to fire).
+# FR: Octets dans une fenêtre glissante vs base roulante des fenêtres passées —
+#     PAS la taille d'un paquet (un paquet de 1,5 Ko après des ACK de 100 o
+#     déclenchait tout le temps).
+VOLUME_WINDOW_S = 60
+VOLUME_MIN_BYTES = 5 * 1024 * 1024     # EN: windows under 5 MB never alert
+                                       # FR: les fenêtres sous 5 Mo n'alertent pas
+VOLUME_MULTIPLIER = 5.0
+
+# ── Port scan / Scan de ports ────────────────────────────────────────────────
+SCAN_WINDOW_S = 60
+SCAN_THRESHOLD = 20                    # EN: distinct remote ports / FR: ports distants
+SCAN_COMMON_PORTS = {53, 80, 123, 443, 853}   # EN: chatty-by-design ports
+                                              # FR: ports bavards par nature
+
+# EN: Resolver/NTP ports + known DNS-stack processes — excluded from
+#     port-scan counting (they legitimately touch many ports).
+# FR: Ports résolveurs/NTP + processus de pile DNS connus — exclus du comptage
+#     de scan de ports (ils touchent légitimement beaucoup de ports).
+KNOWN_RESOLVER_PORTS = {53, 853, 123}
+KNOWN_RESOLVER_PROCS = {"systemd-resolved", "dnsmasq", "named", "svchost"}
+
 COOLDOWN = 60              # EN: seconds before re-alerting the same key
                            # FR: secondes avant de re-alerter la même clé
 
@@ -237,6 +264,13 @@ class AnomalyDetector:
         self._seen_process_conns = BoundedSet(MAX_SEEN_PROC_CONNS)
         self._pkt_times: dict[str, deque] = defaultdict(lambda: deque(maxlen=120))
         self._host_bytes_window: dict[str, deque] = defaultdict(lambda: deque(maxlen=60))
+        # EN: (ts, port) events per scan-origin key + (ts, bytes) per remote IP.
+        # FR: Événements (ts, port) par clé d'origine de scan + (ts, octets)
+        #     par IP distante.
+        self._scan_events: dict[str, deque] = defaultdict(lambda: deque(maxlen=1000))
+        self._byte_window: dict[str, deque] = defaultdict(lambda: deque(maxlen=5000))
+        self._byte_baseline: dict[str, deque] = defaultdict(lambda: deque(maxlen=10))
+        self._byte_last_fold: dict[str, float] = {}
         self._cooldowns: dict[str, float] = {}
         self.history: list[dict] = []
         self._mic_procs: set[str] = set()
@@ -276,6 +310,9 @@ class AnomalyDetector:
             self._seen_process_conns = BoundedSet(MAX_SEEN_PROC_CONNS)
             self._pkt_times.clear()
             self._host_bytes_window.clear()
+            self._scan_events.clear()
+            self._byte_window.clear()
+            self._byte_baseline.clear()
             self._cooldowns.clear()
 
     # ── Public API / API publique ────────────────────────────────────────────
@@ -297,8 +334,9 @@ class AnomalyDetector:
             alerts += self._check_new_host(remote_ip, geo)
             alerts += self._check_suspicious_process(pkt, remote_ip, geo)
             alerts += self._check_suspicious_port(pkt, remote_ip, geo)
+            alerts += self._check_port_scan(pkt, remote_ip, geo)
             alerts += self._check_beacon(remote_ip, geo)
-            alerts += self._check_volume_spike(remote_ip, pkt.size, geo)
+            alerts += self._check_volume_spike(remote_ip, pkt, geo)
             alerts += self._check_media_exfil(pkt, remote_ip, geo)
             self._record(alerts)
             return alerts
@@ -377,21 +415,87 @@ class AnomalyDetector:
         )]
 
     def _check_suspicious_port(self, pkt: Packet, remote_ip: str, geo: dict) -> list[Alert]:
-        """EN: Traffic to a notorious port → warning (cooldown-limited).
-        FR: Trafic vers un port sulfureux → warning (limité par cooldown)."""
-        port = pkt.dst_port
+        """
+        EN: Traffic involving a notorious REMOTE port → warning. remote_port
+            is direction-aware — the old dst_port code flagged inbound
+            traffic by OUR local port. Severity rises when a brand-new host
+            touches the port (context, not just the number).
+        FR: Trafic impliquant un port DISTANT sulfureux → warning.
+            remote_port tient compte du sens — l'ancien code sur dst_port
+            signalait le trafic entrant via NOTRE port local. La sévérité
+            monte quand un hôte tout nouveau touche le port (contexte, pas
+            juste le numéro).
+        """
+        port = pkt.remote_port
         if port not in SUSPICIOUS_PORTS:
             return []
         if not self._cooldown_ok(f"port:{port}:{remote_ip}"):
             return []
         label = geo.get("hostname") or remote_ip
         reason = SUSPICIOUS_PORTS[port]
+        is_new_host = remote_ip not in self._seen_hosts
         return [Alert(
             type="SUSPICIOUS_PORT",
-            severity="warning",
+            severity="critical" if is_new_host else "warning",
             message=f"Suspicious port {port} ({reason}) -> {label}",
             node_id=remote_ip,
-            details={"port": port, "reason": reason, "ip": remote_ip, "host": label},
+            details={"port": port, "reason": reason, "ip": remote_ip, "host": label,
+                     "direction": pkt.direction, "process": pkt.process_name},
+        )]
+
+    def _check_port_scan(self, pkt: Packet, remote_ip: str, geo: dict) -> list[Alert]:
+        """
+        EN: Port-scan rule (advertised by the README, previously absent):
+            ≥ SCAN_THRESHOLD distinct remote ports within SCAN_WINDOW_S from
+            one origin — works in BOTH directions: an inbound scan (one remote
+            IP probing many local ports) and an outbound scan (one local
+            process touching many remote ports) both register. Common chatty
+            ports (53/80/443/853/123) can't feed the counter — a browser
+            hitting :443 on 40 servers is traffic, not a scan.
+        FR: Règle de scan de ports (annoncée par le README, absente avant) :
+            ≥ SCAN_THRESHOLD ports distants distincts en SCAN_WINDOW_S depuis
+            une origine — dans les DEUX sens : scan entrant (une IP distante
+            sonde beaucoup de ports locaux) et sortant (un processus local
+            touche beaucoup de ports distants) comptent tous deux. Les ports
+            bavards courants (53/80/443/853/123) n'alimentent pas le compteur —
+            un navigateur sur :443 vers 40 serveurs est du trafic, pas un scan.
+        """
+        remote_port = pkt.remote_port
+        if not remote_port or remote_port in SCAN_COMMON_PORTS:
+            return []
+        proc = (pkt.process_name or "").lower()
+        if remote_port in KNOWN_RESOLVER_PORTS or proc in KNOWN_RESOLVER_PROCS:
+            return []
+
+        # EN: Key by origin — inbound scans key on the remote IP, outbound on
+        #     the local process so different apps don't pool their counts.
+        # FR: Clé par origine — les scans entrants se clés sur l'IP distante,
+        #     les sortants sur le processus local pour ne pas fusionner les
+        #     compteurs d'apps différentes.
+        key = remote_ip if pkt.direction == "in" else f"local:{proc or 'unknown'}"
+        now = time.time()
+        dq = self._scan_events[key]
+        dq.append((now, remote_port))
+        cutoff = now - SCAN_WINDOW_S
+        while dq and dq[0][0] < cutoff:
+            dq.popleft()
+
+        if len({p for _, p in dq}) < SCAN_THRESHOLD:
+            return []
+        dq.clear()                          # EN: don't re-fire on the same burst
+                                            # FR: ne pas redéclencher sur la même rafale
+        if not self._cooldown_ok(f"scan:{key}", cooldown=300):
+            return []
+        label = geo.get("hostname") or remote_ip
+        source = remote_ip if pkt.direction == "in" else (pkt.process_name or "local")
+        return [Alert(
+            type="PORT_SCAN",
+            severity="warning",
+            message=f"Port scan: {source} touched {SCAN_THRESHOLD}+ ports in {SCAN_WINDOW_S}s",
+            node_id=remote_ip,
+            details={"source": source, "ip": remote_ip, "host": label,
+                     "ports": SCAN_THRESHOLD, "window_s": SCAN_WINDOW_S,
+                     "direction": pkt.direction},
         )]
 
     def _check_beacon(self, remote_ip: str, geo: dict) -> list[Alert]:
@@ -457,29 +561,58 @@ class AnomalyDetector:
             details={"ip": remote_ip, "host": label, "interval_s": round(mean, 1), "cv": round(cv, 3), "samples": len(intervals)},
         )]
 
-    def _check_volume_spike(self, remote_ip: str, size: int, geo: dict) -> list[Alert]:
-        """EN: One packet ≥ 8× the rolling average for that host → possible
-        burst/exfil → warning. / FR: Un paquet ≥ 8× la moyenne glissante de
-        l'hôte → rafale/exfil possible → warning."""
-        dq = self._host_bytes_window[remote_ip]
-        dq.append(size)
-        if len(self._host_bytes_window) > MAX_TRACKED_IPS:
-            self._host_bytes_window.clear()
-        if len(dq) < 10:
+    def _check_volume_spike(self, remote_ip: str, pkt: Packet, geo: dict) -> list[Alert]:
+        """
+        EN: Bytes per trailing window vs rolling baseline — not single-packet
+            size. Outbound only (exfil risk). Each completed window folds into
+            the baseline; a spike is > VOLUME_MULTIPLIER × median AND
+            > VOLUME_MIN_BYTES so tiny hosts can't trip it.
+        FR: Octets par fenêtre glissante vs base roulante — pas la taille
+            d'un paquet. Sortant seulement (risque d'exfiltration). Chaque
+            fenêtre terminée alimente la base ; un pic = > VOLUME_MULTIPLIER
+            × médiane ET > VOLUME_MIN_BYTES, donc les petits hôtes ne
+            déclenchent pas.
+        """
+        if pkt.direction != "out":
             return []
-        avg = sum(dq) / len(dq)
-        if size < avg * VOLUME_SPIKE_FACTOR or avg < 100:
-            return []
-        if not self._cooldown_ok(f"spike:{remote_ip}", cooldown=120):
-            return []
-        label = geo.get("hostname") or remote_ip
-        return [Alert(
-            type="VOLUME_SPIKE",
-            severity="warning",
-            message=f"Traffic spike to {label} ({size // 1024} KB in one packet)",
-            node_id=remote_ip,
-            details={"ip": remote_ip, "host": label, "size": size, "avg": int(avg), "kb": size // 1024},
-        )]
+        if len(self._byte_window) > MAX_TRACKED_IPS:
+            self._byte_window.clear()
+
+        now = time.time()
+        dq = self._byte_window[remote_ip]
+        dq.append((now, pkt.size))
+        cutoff = now - VOLUME_WINDOW_S
+        while dq and dq[0][0] < cutoff:
+            dq.popleft()
+        window_bytes = sum(s for _, s in dq)
+
+        baseline = self._byte_baseline[remote_ip]
+        base_med = sorted(baseline)[len(baseline) // 2] if len(baseline) >= 3 else 0
+
+        if window_bytes > VOLUME_MIN_BYTES and window_bytes > base_med * VOLUME_MULTIPLIER:
+            if not self._cooldown_ok(f"spike:{remote_ip}", cooldown=120):
+                return []
+            label = geo.get("hostname") or remote_ip
+            return [Alert(
+                type="VOLUME_SPIKE",
+                severity="warning",
+                message=f"Data spike to {label}: {window_bytes // 1024} KB in {VOLUME_WINDOW_S}s",
+                node_id=remote_ip,
+                details={"ip": remote_ip, "host": label, "bytes": window_bytes,
+                         "window_s": VOLUME_WINDOW_S, "baseline": int(base_med),
+                         "process": pkt.process_name},
+            )]
+
+        # EN: Fold the trailing window into the baseline once per
+        #     VOLUME_WINDOW_S — one sample per completed window.
+        # FR: Plier la fenêtre glissante dans la base une fois par
+        #     VOLUME_WINDOW_S — un échantillon par fenêtre terminée.
+        if now - self._byte_last_fold.get(remote_ip, 0) >= VOLUME_WINDOW_S:
+            baseline.append(window_bytes)
+            self._byte_last_fold[remote_ip] = now
+            if len(self._byte_last_fold) > MAX_TRACKED_IPS:
+                self._byte_last_fold.clear()
+        return []
 
     def _check_media_exfil(self, pkt: Packet, remote_ip: str, geo: dict) -> list[Alert]:
         """

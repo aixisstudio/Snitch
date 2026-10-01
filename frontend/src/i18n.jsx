@@ -82,6 +82,7 @@ const en = {
   alert_NEW_LAN_DEVICE: 'New device',
   alert_DEVICE_OFFLINE: 'Device offline',
   alert_MEDIA_EXFIL: 'Media exfiltration',
+  alert_PORT_SCAN: 'Port scan',
   // EN: Full alert messages built from backend codes + details — the backend
   //     only sends type + params, never prose.
   // FR: Messages d'alerte complets construits depuis les codes + détails du
@@ -90,10 +91,11 @@ const en = {
   alertmsg_SUSPICIOUS_PROCESS: d => `Suspicious process: ${d.process} → ${d.host || d.ip}`,
   alertmsg_SUSPICIOUS_PORT: d => `Suspicious port ${d.port} (${d.reason}) → ${d.host || d.ip}`,
   alertmsg_BEACON: d => `Beacon-like regularity: ~${d.interval_s}s interval to ${d.host || d.ip}`,
-  alertmsg_VOLUME_SPIKE: d => `Traffic spike to ${d.host || d.ip} (${d.kb} KB in one packet)`,
+  alertmsg_VOLUME_SPIKE: d => `Data spike to ${d.host || d.ip}: ${Math.round((d.bytes || 0) / 1024)} KB in ${d.window_s}s`,
   alertmsg_MEDIA_EXFIL: d => `Suspected ${d.device} exfiltration: ${d.process} → ${d.host || d.ip}`,
   alertmsg_NEW_LAN_DEVICE: d => `New device on the network: ${d.host || d.ip}`,
   alertmsg_DEVICE_OFFLINE: d => `Device went offline: ${d.host || d.ip}`,
+  alertmsg_PORT_SCAN: d => `Port scan: ${d.source || d.ip} touched ${d.ports}+ ports in ${d.window_s}s`,
   time_just_now: 'just now',
   time_seconds: n => `${n}s ago`,
   time_minutes: n => `${n}min ago`,
@@ -237,11 +239,13 @@ const fr = {
   alert_NEW_LAN_DEVICE: 'Nouvel appareil',
   alert_DEVICE_OFFLINE: 'Appareil hors ligne',
   alert_MEDIA_EXFIL: 'Exfiltration média',
+  alert_PORT_SCAN: 'Scan de ports',
   alertmsg_NEW_HOST: d => `Nouvel hôte contacté : ${d.host || d.ip}`,
   alertmsg_SUSPICIOUS_PROCESS: d => `Processus suspect : ${d.process} → ${d.host || d.ip}`,
   alertmsg_SUSPICIOUS_PORT: d => `Port suspect ${d.port} (${d.reason}) → ${d.host || d.ip}`,
   alertmsg_BEACON: d => `Régularité type beacon : intervalle ~${d.interval_s}s vers ${d.host || d.ip}`,
-  alertmsg_VOLUME_SPIKE: d => `Pic de trafic vers ${d.host || d.ip} (${d.kb} Ko en un paquet)`,
+  alertmsg_VOLUME_SPIKE: d => `Pic de données vers ${d.host || d.ip} : ${Math.round((d.bytes || 0) / 1024)} Ko en ${d.window_s}s`,
+  alertmsg_PORT_SCAN: d => `Scan de ports : ${d.source || d.ip} a touché ${d.ports}+ ports en ${d.window_s}s`,
   alertmsg_MEDIA_EXFIL: d => `Exfiltration ${d.device === 'camera' ? 'caméra' : 'micro'} suspectée : ${d.process} → ${d.host || d.ip}`,
   alertmsg_NEW_LAN_DEVICE: d => `Nouvel appareil sur le réseau : ${d.host || d.ip}`,
   alertmsg_DEVICE_OFFLINE: d => `Appareil hors ligne : ${d.host || d.ip}`,
@@ -330,7 +334,14 @@ const I18nContext = createContext(null)
  *     chaînes renvoyées telles quelles, les clés manquantes retombent sur la clé.
  */
 export function I18nProvider({ children }) {
-  const [lang, setLang] = useState('en')
+  // EN: Persisted language — survives restarts (localStorage, not just RAM).
+  // FR: Langue persistée — survit aux redémarrages (localStorage, pas juste la RAM).
+  const [lang, setLangState] = useState(
+    () => localStorage.getItem('snitch_lang') || 'en')
+  const setLang = (l) => {
+    localStorage.setItem('snitch_lang', l)
+    setLangState(l)
+  }
   const dict = lang === 'fr' ? fr : en
 
   function t(key, ...args) {

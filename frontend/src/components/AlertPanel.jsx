@@ -16,9 +16,9 @@
  */
 import { useState, useEffect, useRef } from 'react'
 import {
-  Bell, Info, AlertTriangle, AlertCircle,
-  Globe, WifiOff, Wifi,
-  Activity, Unlock, TrendingUp,
+  Bell, Info, AlertTriangle, AlertCircle, X,
+  Globe, WifiOff, Wifi, ScanLine,
+  Activity, Unlock, TrendingUp, Camera,
 } from 'lucide-react'
 import { useT } from '../i18n'
 
@@ -38,7 +38,8 @@ const TYPE_ICONS = {
   VOLUME_SPIKE:       TrendingUp,
   NEW_LAN_DEVICE:     Wifi,
   DEVICE_OFFLINE:     WifiOff,
-  MEDIA_EXFIL:        AlertCircle,
+  MEDIA_EXFIL:        Camera,
+  PORT_SCAN:          ScanLine,
 }
 
 export function AlertBell({ unread, onClick }) {
@@ -92,8 +93,8 @@ export function AlertPanel({ alerts, onClose }) {
           {criticalCount > 0 && <Badge count={criticalCount} color="#ef4444" />}
           {warningCount  > 0 && <Badge count={warningCount}  color="#f59e0b" />}
           {infoCount     > 0 && <Badge count={infoCount}     color="#38bdf8" />}
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer' }}>
-            <AlertCircle size={16} />
+          <button onClick={onClose} aria-label="Close alerts / Fermer les alertes" style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer' }}>
+            <X size={16} />
           </button>
         </div>
       </div>

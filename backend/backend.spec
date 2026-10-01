@@ -2,22 +2,25 @@
 #
 # EN: Run from the backend/ directory:
 #       pyinstaller backend.spec --distpath ../dist/backend
-#     Produces a single-file `snitch-backend` executable that the Electron
-#     wrapper spawns as a child process.
+#     Produces a `snitch-backend/` ONEDIR bundle the Electron wrapper spawns
+#     as a child process. ONEDIR (not onefile) is deliberate: fewer AV false
+#     positives, faster startup, no temp-dir self-extraction of a
+#     network-sniffing binary.
+#
+#     UPX is DISABLED — UPX-packed executables that touch the network are a
+#     well-known antivirus false-positive trigger.
 #
 # FR: À lancer depuis le dossier backend/ :
 #       pyinstaller backend.spec --distpath ../dist/backend
-#     Produit un exécutable unique `snitch-backend` que le conteneur Electron
-#     lance comme processus enfant.
+#     Produit un bundle ONEDIR `snitch-backend/` que le conteneur Electron
+#     lance comme processus enfant. ONEDIR (pas onefile) est voulu : moins de
+#     faux positifs antivirus, démarrage plus rapide, pas d'auto-extraction
+#     en temp d'un binaire qui sniffe le réseau.
+#
+#     UPX est DÉSACTIVÉ — les exécutables UPX qui touchent au réseau sont un
+#     déclencheur connu de faux positifs antivirus.
 
-from PyInstaller.utils.hooks import collect_all, collect_submodules
-
-# EN: Pull in ALL of scapy — layers, arch backends, libs and data files.
-#     Scapy does a lot of dynamic imports, so a plain Analysis misses them.
-# FR: On embarque TOUT scapy — couches, backends arch, libs et fichiers de
-#     données. Scapy fait beaucoup d'imports dynamiques, donc une Analysis
-#     simple les raterait.
-scapy_datas, scapy_binaries, scapy_hiddenimports = collect_all('scapy')
+from PyInstaller.utils.hooks import collect_submodules
 
 block_cipher = None
 
@@ -25,13 +28,11 @@ a = Analysis(
     ['run_backend.py'],
     pathex=['.'],           # EN: backend/ — so api.*, capture.*, etc. resolve
                           # FR: backend/ — pour que api.*, capture.*, etc. se résolvent
-    binaries=scapy_binaries,
-    datas=scapy_datas,
+    binaries=[],
+    datas=[],
     hiddenimports=(
-        scapy_hiddenimports
-
         # ── uvicorn internals / éléments internes d'uvicorn ─────────────
-        + collect_submodules('uvicorn')
+        collect_submodules('uvicorn')
 
         # ── FastAPI / Starlette / Pydantic ──────────────────────────────
         + collect_submodules('starlette')
@@ -49,8 +50,8 @@ a = Analysis(
             'aiofiles',
         ]
 
-        # ── DNS / networking / réseau ───────────────────────────────────
-        + collect_submodules('dns')
+        # ── mmdb / psutil internals ─────────────────────────────────────
+        + collect_submodules('maxminddb')
         + [
             'psutil',
             'psutil._pswindows',
@@ -71,8 +72,8 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    # EN: Exclude heavy unused packages to keep the binary small.
-    # FR: Exclure les gros paquets inutilisés pour garder un binaire léger.
+    # EN: Exclude heavy unused packages to keep the bundle small.
+    # FR: Exclure les gros paquets inutilisés pour garder un bundle léger.
     excludes=['tkinter', 'matplotlib', 'numpy', 'PIL', 'PyQt5', 'wx'],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
@@ -85,26 +86,36 @@ pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
     [],
+    exclude_binaries=True,      # EN: ONEDIR mode — binaries go into COLLECT
+                                # FR: mode ONEDIR — les binaires vont dans COLLECT
     name='snitch-backend',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
-    upx_exclude=[],
-    runtime_tmpdir=None,
-    # EN: Keep a console for debugging; set to False for release builds.
-    # FR: Garder une console pour le débogage ; passer à False en release.
-    console=True,
+    upx=False,                  # EN: UPX off — AV false-positive trigger
+                                # FR: UPX désactivé — faux positifs antivirus
+    console=False,              # EN: no console window under Electron
+                                # FR: pas de fenêtre console sous Electron
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    # EN: Elevation is handled by the Electron wrapper (NSIS requireAdministrator).
-    # FR: L'élévation est gérée par le conteneur Electron (NSIS requireAdministrator).
+    # EN: Elevation is handled by the Electron wrapper (NSIS
+    #     requireAdministrator) — the backend does not self-elevate.
+    # FR: L'élévation est gérée par le conteneur Electron (NSIS
+    #     requireAdministrator) — le backend ne s'élève pas tout seul.
     uac_admin=False,
+)
+
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.zipfiles,
+    a.datas,
+    strip=False,
+    upx=False,
+    upx_exclude=[],
+    name='snitch-backend',
 )

@@ -1,19 +1,26 @@
 # Snitch — continuous integration.
-# EN: Python lint (ruff, critical rules only) + pytest, and the frontend
-#     vitest suite + production build on every push/PR.
-# FR: Lint Python (ruff, règles critiques seulement) + pytest, et la suite
-#     vitest frontend + build de production à chaque push/PR.
+# EN: Python lint (ruff, critical rules only) + pytest on all three OSes,
+#     frontend vitest + production build on every push/PR.
+#     Release job (tags only): per-OS PyInstaller build + SHA256 checksums.
+# FR: Lint Python (ruff, règles critiques) + pytest sur les trois OS, vitest
+#     frontend + build de production à chaque push/PR.
+#     Job release (tags seulement) : build PyInstaller par OS + checksums SHA256.
 
 name: CI
 
 on:
   push:
     branches: [main]
+    tags: ['v*']
   pull_request:
 
 jobs:
   backend:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -25,6 +32,7 @@ jobs:
         run: ruff check backend --select E9,F
       - name: Pytest
         run: cd backend && python -m pytest tests/ -v
+        shell: bash
 
   frontend:
     runs-on: ubuntu-latest
@@ -36,6 +44,50 @@ jobs:
       - name: Install + test + build
         run: |
           cd frontend
-          npm install
+          npm ci
           npm test
           npm run build
+
+  # EN: Per-OS PyInstaller build — runs on tags; verifies the spec compiles
+  #     everywhere and produces checksums for the release.
+  # FR: Build PyInstaller par OS — sur tags ; vérifie que le spec compile
+  #     partout et produit les checksums pour la release.
+  package:
+    if: startsWith(github.ref, 'refs/tags/')
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Build frontend
+        run: cd frontend && npm ci && npm run build
+      - name: Install backend deps + PyInstaller
+        run: pip install -r backend/requirements.txt pyinstaller
+      - name: PyInstaller build (onedir)
+        run: cd backend && pyinstaller backend.spec --distpath ../dist/backend
+      - name: SHA256 checksums
+        shell: bash
+        run: |
+          cd dist/backend
+          tar czf snitch-backend-${{ matrix.os }}.tar.gz snitch-backend
+          sha256sum snitch-backend-${{ matrix.os }}.tar.gz > snitch-backend-${{ matrix.os }}.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: snitch-backend-${{ matrix.os }}
+          path: dist/backend/*.tar.gz*
+      # EN: Code signing/notarization placeholders — wire your secrets here:
+      #     Windows: signtool + Azure Trusted Signing / cert in secrets
+      #     macOS:   codesign + notarytool (APPLE_ID/TEAM_ID secrets)
+      #     They are intentionally disabled until secrets are configured.
+      # FR: Placeholders signature/notarisation — branchez vos secrets ici :
+      #     Windows : signtool + Azure Trusted Signing / cert dans secrets
+      #     macOS   : codesign + notarytool (secrets APPLE_ID/TEAM_ID)
+      #     Volontairement désactivés tant que les secrets ne sont pas configurés.

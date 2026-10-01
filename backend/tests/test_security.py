@@ -48,6 +48,8 @@ def test_valid_query_token_passes():
 @pytest.mark.parametrize("origin", [
     "http://localhost:5173",
     "http://127.0.0.1:8000",
+    "http://localhost:9999",   # EN: dynamic backend port / FR: port dynamique du backend
+    "http://[::1]:4242",
     "null",          # EN: file:// pages under Electron / FR: pages file:// sous Electron
 ])
 def test_allowed_origins(origin):
@@ -56,8 +58,11 @@ def test_allowed_origins(origin):
 
 @pytest.mark.parametrize("origin", [
     "http://evil.example.com",
-    "http://localhost:9999",
     "https://attacker.invalid",
+    "http://localhost.evil.com",   # EN: subdomain trick — NOT loopback
+                                   # FR: astuce sous-domaine — PAS loopback
+    "http://127.0.0.1.evil.com",
+    "null://evil.com",
 ])
 def test_foreign_origins_rejected(origin):
     assert not origin_allowed(origin)

@@ -31,7 +31,7 @@ The entire interface is available in **English and French**: use the `EN / FR` t
 | 15/30/60-min Timeline | Sliding history stored locally in SQLite (24 h retention) |
 | Anomaly Detection | Flags port scans, beaconing, potential exfiltration |
 | Process Attribution | Know which app generates which traffic (top 5 per connection) |
-| LAN Scanner | ARP discovery of all devices on your local network |
+| LAN Scanner | Passive discovery via the system ARP table (no broadcast scans) |
 | Privacy Score | Real-time score of your outgoing traffic exposure |
 | Bandwidth Monitor | Live MB/s sparkline |
 | EN / FR UI | Full bilingual interface, one click to switch |
@@ -40,19 +40,21 @@ The entire interface is available in **English and French**: use the `EN / FR` t
 
 | Layer | Technology |
 |---|---|
-| Packet capture | Python — Scapy — Npcap (Windows) / libpcap (Linux) |
+| Packet capture | ctypes → libpcap — Npcap (Windows) / libpcap (Linux/macOS) — own parser (IPv4/IPv6/TCP/UDP/DNS/TLS-SNI) |
 | Backend API | FastAPI — WebSockets — SQLite |
 | Frontend | React 18 — Vite — D3.js v7 — TopoJSON |
-| Desktop wrapper | Electron 28 |
-| Geolocation | MaxMind GeoLite2 (offline; ip-api.com fallback is **opt-in**) |
+| Desktop wrapper | Electron 33 |
+| Geolocation | **Offline only** — DB-IP Lite (CC BY 4.0) or MaxMind GeoLite2 `.mmdb` in the user data dir |
 
 ### Security & privacy
 
 - **API token** — every REST endpoint and the WebSocket require a token. Electron generates it per launch; in Docker/browser it's printed once in the backend logs and stored in `data/api_token.txt`. Open the UI with `http://localhost:8000/?token=<TOKEN>` (or enter it when prompted).
 - **Loopback-only by default** — the API binds `127.0.0.1` in every mode. Set `SNITCH_BIND=0.0.0.0` only if you explicitly want LAN access (token auth still applies).
 - **CORS/WebSocket origin allowlist** — only `localhost:5173`, the backend's own origin and Electron `file://` pages may connect.
-- **Geolocation is offline-first** — drop `GeoLite2-City.mmdb` into `data/` for fully local lookups (free MaxMind account required to download the DB). The ip-api.com fallback is **disabled by default** because it sends contacted IPs to a third party over plaintext HTTP; enable it only deliberately with `SNITCH_ONLINE_GEO=1`.
-- **All data stays local** — `snitch.db` (24 h sliding window) and `data/logs/snitch.log` never leave the machine.
+- **Geolocation is offline-only** — there is *no* online lookup. Drop `dbip-city-lite.mmdb` + `dbip-asn-lite.mmdb` ([DB-IP Lite](https://db-ip.com/db/lite.php), CC BY 4.0) or `GeoLite2-City.mmdb`/`GeoLite2-ASN.mmdb` (MaxMind) into `<data_dir>/geo/` for local lookups. Without a DB, IPs simply show no geo — nothing is ever sent to a third party.
+- **All data stays local** — `snitch.db` (24 h sliding window, configurable via `retention_hours` setting) and `data/logs/snitch.log` never leave the machine. No telemetry, no outbound calls.
+- **Settings persist** — port filters, excluded processes and the IP whitelist are stored in SQLite and restored on restart.
+- **LAN devices** are discovered passively from the system ARP table — no active broadcast scanning.
 
 ### Docker (Linux)
 
@@ -138,10 +140,10 @@ npm run build:dir
 
 ```
 snitch/
-├── backend/       Python FastAPI + Scapy capture engine
+├── backend/       Python FastAPI + libpcap capture engine (ctypes, own parser)
 ├── frontend/      React + D3.js UI (EN/FR)
 ├── electron/      Electron wrapper (main, splash, preload)
-├── data/          Runtime data (SQLite DB, GeoLite2 DB)
+├── data/          Runtime data (SQLite DB, .mmdb geo DBs in geo/)
 └── dist/          Compiled output (backend exe, installer)
 ```
 
@@ -163,7 +165,7 @@ Toute l'interface est disponible en **français et en anglais** : utilisez le s�
 | Timeline 15/30/60 min | Historique glissant stocké localement dans SQLite (rétention 24 h) |
 | Détection d'anomalies | Signale scans de ports, beaconing, exfiltration potentielle |
 | Attribution processus | Sachez quelle app génère quel trafic (top 5 par connexion) |
-| Scanner LAN | Découverte ARP de tous les appareils du réseau local |
+| Scanner LAN | Découverte passive via la table ARP système (aucun scan broadcast) |
 | Score de confidentialité | Score en temps réel de l'exposition de votre trafic sortant |
 | Moniteur de débit | Sparkline MB/s en direct |
 | UI FR / EN | Interface entièrement bilingue, bascule en un clic |
@@ -172,19 +174,21 @@ Toute l'interface est disponible en **français et en anglais** : utilisez le s�
 
 | Couche | Technologie |
 |---|---|
-| Capture de paquets | Python — Scapy — Npcap (Windows) / libpcap (Linux) |
+| Capture de paquets | ctypes → libpcap — Npcap (Windows) / libpcap (Linux/macOS) — parseur maison (IPv4/IPv6/TCP/UDP/DNS/SNI-TLS) |
 | API backend | FastAPI — WebSockets — SQLite |
 | Frontend | React 18 — Vite — D3.js v7 — TopoJSON |
-| Conteneur bureau | Electron 28 |
-| Géolocalisation | MaxMind GeoLite2 (hors ligne ; repli ip-api.com **opt-in**) |
+| Conteneur bureau | Electron 33 |
+| Géolocalisation | **Hors ligne uniquement** — DB-IP Lite (CC BY 4.0) ou MaxMind GeoLite2 `.mmdb` dans le dossier de données |
 
 ### Sécurité & confidentialité
 
 - **Jeton API** — chaque endpoint REST et le WebSocket exigent un jeton. Electron le génère à chaque lancement ; sous Docker/navigateur il est affiché une fois dans les logs du backend et stocké dans `data/api_token.txt`. Ouvrez l'UI via `http://localhost:8000/?token=<JETON>` (ou saisissez-le à l'invite).
 - **Loopback uniquement par défaut** — l'API écoute sur `127.0.0.1` dans tous les modes. Ne mettez `SNITCH_BIND=0.0.0.0` que pour un accès LAN explicite (le jeton reste exigé).
 - **Liste blanche CORS/Origin WebSocket** — seuls `localhost:5173`, l'origine propre du backend et les pages `file://` d'Electron peuvent se connecter.
-- **Géolocalisation hors ligne d'abord** — déposez `GeoLite2-City.mmdb` dans `data/` pour des recherches 100 % locales (compte MaxMind gratuit requis pour télécharger la base). Le repli ip-api.com est **désactivé par défaut** car il envoie les IP contactées à un tiers en HTTP clair ; ne l'activez que volontairement avec `SNITCH_ONLINE_GEO=1`.
-- **Toutes les données restent locales** — `snitch.db` (fenêtre glissante de 24 h) et `data/logs/snitch.log` ne quittent jamais la machine.
+- **Géolocalisation 100 % hors ligne** — il n'y a *aucune* recherche en ligne. Déposez `dbip-city-lite.mmdb` + `dbip-asn-lite.mmdb` ([DB-IP Lite](https://db-ip.com/db/lite.php), CC BY 4.0) ou `GeoLite2-City.mmdb`/`GeoLite2-ASN.mmdb` (MaxMind) dans `<data_dir>/geo/`. Sans base, les IP n'ont simplement pas de géo — rien n'est jamais envoyé à un tiers.
+- **Toutes les données restent locales** — `snitch.db` (fenêtre glissante de 24 h, configurable via le réglage `retention_hours`) et `data/logs/snitch.log` ne quittent jamais la machine. Pas de télémétrie, aucun appel sortant.
+- **Réglages persistés** — filtres de ports, processus exclus et whitelist IP sont stockés dans SQLite et restaurés au redémarrage.
+- **Appareils LAN** découverts passivement via la table ARP système — aucun scan broadcast actif.
 
 ### Docker (Linux)
 
@@ -239,10 +243,10 @@ cd frontend && npm test
 
 ```
 snitch/
-├── backend/       Moteur de capture Python FastAPI + Scapy
+├── backend/       Moteur de capture Python FastAPI + libpcap (ctypes, parseur maison)
 ├── frontend/      Interface React + D3.js (FR/EN)
 ├── electron/      Conteneur Electron (main, splash, preload)
-├── data/          Données d'exécution (SQLite, GeoLite2)
+├── data/          Données d'exécution (SQLite, bases .mmdb dans geo/)
 └── dist/          Sortie compilée (exe backend, installateur)
 ```
 
