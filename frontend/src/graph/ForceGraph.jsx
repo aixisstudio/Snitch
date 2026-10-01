@@ -51,12 +51,18 @@ const radius = d => d.id === 'local' ? 22 : d.category === 'lan_device' ? 18 : 1
 
 export default function ForceGraph({ nodes, edges, lanDevices, alertedNodes = new Set(), onNodeClick, filter }) {
   const svgRef   = useRef(null)
+  const gRef     = useRef(null)   // EN: root <g> (zoom target) / FR: <g> racine (cible du zoom)
+  const linkG    = useRef(null)   // EN: <g> layer for edges / FR: calque <g> des arêtes
+  const labelG   = useRef(null)   // EN: <g> layer for edge labels / FR: calque <g> des étiquettes d'arêtes
+  const nodeG    = useRef(null)   // EN: <g> layer for nodes / FR: calque <g> des nœuds
+  const simRef   = useRef(null)   // EN: the ONE persistent simulation / FR: LA simulation persistante unique
   const nodeSel  = useRef(null)   // EN: d3 selection of node <g>s / FR: sélection d3 des <g> nœuds
   const linkSel  = useRef(null)   // EN: d3 selection of edge <line>s / FR: sélection d3 des <line> arêtes
   const labelSel = useRef(null)   // EN: d3 selection of edge <text>s / FR: sélection d3 des <text> arêtes
   const posCache = useRef({})     // EN: { id: {x,y,fx,fy} } / FR: positions persistées
   const zoomTf   = useRef(null)   // EN: last user pan/zoom transform / FR: dernière transformation pan/zoom
   const dataRef  = useRef({ nodes: {}, edges: {}, lanDevices: {} })
+  const clickRef = useRef(null)   // EN: latest onNodeClick / FR: dernier onNodeClick
 
   const { t } = useT()
   // EN: Display name — `label_key` resolves through i18n (e.g. the "local"
@@ -70,6 +76,7 @@ export default function ForceGraph({ nodes, edges, lanDevices, alertedNodes = ne
   // EN: Always-latest data for effects that don't rebuild the sim.
   // FR: Données toujours à jour pour les effets qui ne reconstruisent pas la sim.
   dataRef.current = { nodes, edges, lanDevices }
+  clickRef.current = onNodeClick
 
   /**
    * EN: Structure signature — sorted node ids + sorted edge ids. The sim is
@@ -85,24 +92,17 @@ export default function ForceGraph({ nodes, edges, lanDevices, alertedNodes = ne
     return nids.join(',') + '|' + eids.join(',')
   }, [nodes, edges, lanDevices])
 
-  // ── Full simulation — rebuilds ONLY on structural change ─────────────────
-  // ── Simulation complète — reconstruite SEULEMENT sur changement structurel ─
+  // ── One-time scene setup — svg layers, zoom, defs. Never re-runs, so the
+  //    user's pan/zoom is bound once and never touched by data updates.
+  // ── Mise en place unique — calques svg, zoom, defs. Ne rejoue jamais, le
+  //    pan/zoom de l'utilisateur est lié une fois et jamais touché ensuite.
   useEffect(() => {
     const svg = d3.select(svgRef.current)
     svg.selectAll('*').remove()
 
-    const width  = svgRef.current.clientWidth
-    const height = svgRef.current.clientHeight
-
-    // EN: Persist the user's pan/zoom across sim rebuilds — without this,
-    //     rebinding d3.zoom on every structural change (new node, filter)
-    //     snaps the view back to identity: an unwanted "auto zoom".
-    // FR: Persister le pan/zoom de l'utilisateur entre deux reconstructions
-    //     — sinon, re-lier d3.zoom à chaque changement structurel (nouveau
-    //     nœud, filtre) ramène la vue à l'identité : un « zoom auto » gênant.
     const zoom = d3.zoom().scaleExtent([0.15, 6]).on('zoom', e => {
       zoomTf.current = e.transform
-      g.attr('transform', e.transform)
+      if (gRef.current) gRef.current.attr('transform', e.transform)
     })
     svg.call(zoom)
     // EN: Kill the default double-click→zoom-in — during a busy graph a
@@ -110,12 +110,6 @@ export default function ForceGraph({ nodes, edges, lanDevices, alertedNodes = ne
     // FR: Désactiver le double-clic→zoom par défaut — sur un graphe actif
     //     un dblclick perdu donne l'impression d'un zoom automatique.
     svg.on('dblclick.zoom', null)
-
-    const g = svg.append('g')
-    // EN: Reapply the saved transform — fires the handler, so it must run
-    //     after g exists. / FR: Réappliquer la transformée — déclenche le
-    //     handler, donc après l'existence de g.
-    if (zoomTf.current) svg.call(zoom.transform, zoomTf.current)
 
     // EN: Arrowhead marker for directed edges. / FR: Marqueur de flèche pour les arêtes dirigées.
     svg.append('defs').append('marker')
@@ -125,6 +119,36 @@ export default function ForceGraph({ nodes, edges, lanDevices, alertedNodes = ne
       .attr('markerWidth', 6).attr('markerHeight', 6)
       .attr('orient', 'auto')
       .append('path').attr('fill', '#475569').attr('d', 'M0,-5L10,0L0,5')
+
+    const g = svg.append('g')
+    gRef.current    = g
+    linkG.current   = g.append('g')
+    labelG.current  = g.append('g')
+    nodeG.current   = g.append('g')
+
+    // EN: Reapply the saved transform — fires the handler, so it must run
+    //     after g exists. / FR: Réappliquer la transformée — déclenche le
+    //     handler, donc après l'existence de g.
+    if (zoomTf.current) svg.call(zoom.transform, zoomTf.current)
+
+    return () => {
+      simRef.current?.stop()
+      svg.selectAll('*').remove()
+      svg.on('.zoom', null)
+      gRef.current = null
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // ── Structural update — INCREMENTAL keyed joins, no wipe, no re-zoom ─────
+  // ── Mise à jour structurelle — jointures incrémentales par clé, sans
+  //    effacer le SVG ni re-lier le zoom ────────────────────────────────────
+  useEffect(() => {
+    const g = gRef.current
+    if (!g) return
+
+    const width  = svgRef.current.clientWidth
+    const height = svgRef.current.clientHeight
 
     const allNodes = [...Object.values(nodes), ...Object.values(lanDevices)]
     const nodeIds = new Set(allNodes.map(n => n.id))
@@ -161,12 +185,10 @@ export default function ForceGraph({ nodes, edges, lanDevices, alertedNodes = ne
     //     pas. Les NOUVEAUX nœuds apparaissent SUR leur anneau (angle
     //     aléatoire) au lieu d'exploser depuis le centre — un départ du
     //     centre + réchauffe se lit comme un « zoom ».
-    let hasNew = false
     allNodes.forEach(n => {
       const c = posCache.current[n.id]
       if (c) { n.x = c.x; n.y = c.y; n.fx = c.fx; n.fy = c.fy }
       else {
-        hasNew = true
         const a = Math.random() * Math.PI * 2
         const r = ringOf(n)
         n.x = width / 2 + Math.cos(a) * r
@@ -174,24 +196,31 @@ export default function ForceGraph({ nodes, edges, lanDevices, alertedNodes = ne
       }
     })
 
-    const sim = d3.forceSimulation(allNodes)
-      .alpha(hasNew ? 0.4 : 0.05)    // EN: gentle reheat — new nodes already
-                                     // sit near their target, no big shuffle
-                                     // FR: réchauffe douce — les nouveaux sont
-                                     // déjà près de leur cible, pas de brassage
-      .alphaDecay(0.04)              // EN: settle ~2× faster / FR: stabilisation ~2× plus rapide
-      .velocityDecay(0.55)           // EN: more friction, less overshoot / FR: plus de friction, moins de dépassement
-      .force('link', d3.forceLink(allEdges).id(d => d.id).distance(d => d.dashed ? 130 : 200).strength(0.25))
-      .force('charge', d3.forceManyBody().strength(d => d.category === 'lan_device' ? -500 : -750))
-      .force('radial', d3.forceRadial(ringOf, width / 2, height / 2)
-        .strength(d => d.id === 'local' ? 1 : d.category === 'lan_device' ? 0.45 : 0.3))
-      // EN: Collision covers node + label (~90 px wide → half-width ~45-55).
-      // FR: La collision couvre nœud + étiquette (~90 px de large →
-      //     demi-largeur ~45-55).
-      .force('collision', d3.forceCollide(d => d.id === 'local' ? 62 : 55))
+    // EN: ONE persistent simulation — swap node/edge sets in place.
+    // FR: UNE simulation persistante — on remplace nœuds/arêtes sur place.
+    if (!simRef.current) {
+      simRef.current = d3.forceSimulation()
+        .alphaDecay(0.04)              // EN: settle ~2× faster / FR: stabilisation ~2× plus rapide
+        .velocityDecay(0.55)           // EN: more friction, less overshoot / FR: plus de friction, moins de dépassement
+    }
+    const sim = simRef.current
+    sim.nodes(allNodes)
+    sim.force('link', d3.forceLink(allEdges).id(d => d.id).distance(d => d.dashed ? 130 : 200).strength(0.25))
+    sim.force('charge', d3.forceManyBody().strength(d => d.category === 'lan_device' ? -500 : -750))
+    sim.force('radial', d3.forceRadial(ringOf, width / 2, height / 2)
+      .strength(d => d.id === 'local' ? 1 : d.category === 'lan_device' ? 0.45 : 0.3))
+    // EN: Collision covers node + label (~90 px wide → half-width ~45-55).
+    // FR: La collision couvre nœud + étiquette (~90 px de large →
+    //     demi-largeur ~45-55).
+    sim.force('collision', d3.forceCollide(d => d.id === 'local' ? 62 : 55))
 
-    const link = g.append('g').selectAll('line')
-      .data(allEdges)
+    // EN: Keyed joins — existing elements keep their DOM node (no flash,
+    //     no zoom disruption); only genuinely new nodes enter, dead ones exit.
+    // FR: Jointures par clé — les éléments existants gardent leur nœud DOM
+    //     (pas de flash, pas de rupture de zoom) ; seuls les vrais nouveaux
+    //     entrent, les morts sortent.
+    const link = linkG.current.selectAll('line')
+      .data(allEdges, d => d.id)
       .join('line')
       .attr('stroke', d => d.color || '#475569')
       .attr('stroke-opacity', d => d.dashed ? 0.35 : 0.55)
@@ -201,8 +230,8 @@ export default function ForceGraph({ nodes, edges, lanDevices, alertedNodes = ne
 
     linkSel.current = link
 
-    const linkLabel = g.append('g').selectAll('text')
-      .data(allEdges.filter(e => !e.dashed))
+    const linkLabel = labelG.current.selectAll('text')
+      .data(allEdges.filter(e => !e.dashed), d => d.id)
       .join('text')
       .attr('fill', '#475569')
       .attr('font-size', 9)
@@ -211,70 +240,78 @@ export default function ForceGraph({ nodes, edges, lanDevices, alertedNodes = ne
 
     labelSel.current = linkLabel
 
-    const node = g.append('g').selectAll('g')
-      .data(allNodes)
-      .join('g')
-      .attr('cursor', 'pointer')
-      .on('click', (_, d) => onNodeClick?.(d))
-      .call(d3.drag()
-        .on('start', (e, d) => { if (!e.active) sim.alphaTarget(0.15).restart(); d.fx = d.x; d.fy = d.y })
-        .on('drag',  (e, d) => { d.fx = e.x; d.fy = e.y })
-        .on('end',   (e, d) => {
-          if (!e.active) sim.alphaTarget(0)
-          // EN: Lock the node where the user dropped it.
-          // FR: Verrouiller le nœud là où l'utilisateur l'a déposé.
-          posCache.current[d.id] = { x: d.x, y: d.y, fx: d.x, fy: d.y }
-        })
+    const node = nodeG.current.selectAll('g.node')
+      .data(allNodes, d => d.id)
+      .join(
+        enter => {
+          const en = enter.append('g')
+            .attr('class', 'node')
+            .attr('cursor', 'pointer')
+            .on('click', (_, d) => clickRef.current?.(d))
+            .call(d3.drag()
+              .on('start', (e, d) => { if (!e.active) sim.alphaTarget(0.15).restart(); d.fx = d.x; d.fy = d.y })
+              .on('drag',  (e, d) => { d.fx = e.x; d.fy = e.y })
+              .on('end',   (e, d) => {
+                if (!e.active) sim.alphaTarget(0)
+                // EN: Lock the node where the user dropped it.
+                // FR: Verrouiller le nœud là où l'utilisateur l'a déposé.
+                posCache.current[d.id] = { x: d.x, y: d.y, fx: d.x, fy: d.y }
+              })
+            )
+
+          // EN: Soft halo behind local/LAN nodes.
+          // FR: Halo doux derrière les nœuds locaux/LAN.
+          en.filter(d => d.id === 'local' || d.category === 'lan_device')
+            .append('circle')
+            .attr('r', d => radius(d) + 6)
+            .attr('fill', d => d.color)
+            .attr('fill-opacity', 0.15)
+
+          en.append('circle')
+            .attr('r', radius)
+            .attr('fill', d => d.color || '#475569')
+            .attr('fill-opacity', d => d.online === false ? 0.35 : 0.85)
+            .attr('stroke', d => d.online === false ? '#475569' : '#0f0f0f')
+            .attr('stroke-width', d => d.category === 'lan_device' ? 2.5 : 1.5)
+            .attr('stroke-dasharray', d => d.online === false ? '4,3' : null)
+
+          // EN: White Lucide icon inside the circle, via data-URI SVG.
+          // FR: Icône Lucide blanche dans le cercle, via SVG en data-URI.
+          const iconSize = d => d.id === 'local' ? 20 : d.category === 'lan_device' ? 16 : 12
+          en.append('image')
+            .attr('href', d => nodeIconURI(d))
+            .attr('width',  d => iconSize(d))
+            .attr('height', d => iconSize(d))
+            .attr('x', d => -iconSize(d) / 2)
+            .attr('y', d => -iconSize(d) / 2)
+            .attr('pointer-events', 'none')
+            .attr('opacity', d => d.online === false ? 0.4 : 0.9)
+
+          en.append('text')
+            .attr('y', d => radius(d) + 11)
+            .attr('text-anchor', 'middle')
+            .attr('fill', d => d.category === 'lan_device' ? '#e2e8f0' : '#94a3b8')
+            .attr('font-size', d => d.category === 'lan_device' ? 10 : 9)
+            .attr('font-weight', d => d.category === 'lan_device' ? '600' : '400')
+            .text(d => nodeLabel(d, displayNameRef.current))
+
+          // EN: Native tooltip — kept fresh by the metrics effect below.
+          // FR: Infobulle native — maintenue à jour par l'effet métriques.
+          en.append('title').text(d => nodeTitle(d, displayNameRef.current))
+
+          return en
+        },
+        update => update,
+        exit => exit.remove(),
       )
 
     nodeSel.current = node
 
     // EN: Alert rings are added/removed by the lightweight metrics effect —
-    //     painted here too for freshly-built nodes.
+    //     painted here too for freshly-entered nodes.
     // FR: Les anneaux d'alerte sont gérés par l'effet métriques léger —
-    //     peints ici aussi pour les nœuds fraîchement créés.
+    //     peints ici aussi pour les nœuds fraîchement entrés.
     paintAlertRings(node, alertedNodes)
-
-    // EN: Soft halo behind local/LAN nodes. / FR: Halo doux derrière les nœuds locaux/LAN.
-    node.filter(d => d.id === 'local' || d.category === 'lan_device')
-      .append('circle')
-      .attr('r', d => radius(d) + 6)
-      .attr('fill', d => d.color)
-      .attr('fill-opacity', 0.15)
-
-    node.append('circle')
-      .attr('r', radius)
-      .attr('fill', d => d.color || '#475569')
-      .attr('fill-opacity', d => d.online === false ? 0.35 : 0.85)
-      .attr('stroke', d => d.online === false ? '#475569' : '#0f0f0f')
-      .attr('stroke-width', d => d.category === 'lan_device' ? 2.5 : 1.5)
-      .attr('stroke-dasharray', d => d.online === false ? '4,3' : null)
-
-    // EN: White Lucide icon inside the circle, via data-URI SVG.
-    // FR: Icône Lucide blanche dans le cercle, via SVG en data-URI.
-    const iconSize = d => d.id === 'local' ? 20 : d.category === 'lan_device' ? 16 : 12
-    node.append('image')
-      .attr('href', d => nodeIconURI(d))
-      .attr('width',  d => iconSize(d))
-      .attr('height', d => iconSize(d))
-      .attr('x', d => -iconSize(d) / 2)
-      .attr('y', d => -iconSize(d) / 2)
-      .attr('pointer-events', 'none')
-      .attr('opacity', d => d.online === false ? 0.4 : 0.9)
-
-    node.append('text')
-      .attr('y', d => radius(d) + 11)
-      .attr('text-anchor', 'middle')
-      .attr('fill', d => d.category === 'lan_device' ? '#e2e8f0' : '#94a3b8')
-      .attr('font-size', d => d.category === 'lan_device' ? 10 : 9)
-      .attr('font-weight', d => d.category === 'lan_device' ? '600' : '400')
-      .text(d => nodeLabel(d, displayNameRef.current))
-
-    // EN: Native tooltip with full detail on hover — kept fresh by the
-    //     metrics effect below.
-    // FR: Infobulle native avec le détail complet au survol — maintenue à jour
-    //     par l'effet métriques ci-dessous.
-    node.append('title').text(d => nodeTitle(d, displayNameRef.current))
 
     // EN: Named so the synchronous convergence below can paint once —
     //     d3's manual tick() does NOT dispatch events (only the RAF loop
@@ -294,17 +331,20 @@ export default function ForceGraph({ nodes, edges, lanDevices, alertedNodes = ne
     sim.on('tick', renderTick)
 
     // EN: Converge the sim SYNCHRONOUSLY — ~300 manual ticks before the
-    //     view is painted, then the RAF loop is dead. The graph appears
-    //     already in place: no drift, no shuffle, no visible physics.
+    //     view is painted, then the RAF loop is dead. Existing nodes are
+    //     pinned so they don't move; only new arrivals settle onto their
+    //     ring. No drift, no shuffle, no visible physics, no zoom touch.
     //     Manual ticks don't fire 'end', so pin + cache + paint by hand.
     //     Only a user drag briefly restarts the RAF loop.
     // FR: Faire converger la sim de façon SYNCHRONE — ~300 ticks manuels
     //     avant que la vue ne soit peinte, puis la boucle RAF est morte.
-    //     Le graphe apparaît déjà en place : pas de dérive, pas de
-    //     brassage, pas de physique visible. Les ticks manuels ne
-    //     déclenchent pas « end », on épingle + cache + peint à la main.
-    //     Seul un drag utilisateur relance brièvement la boucle RAF.
+    //     Les nœuds existants sont épinglés donc immobiles ; seuls les
+    //     nouveaux se placent sur leur anneau. Pas de dérive, pas de
+    //     brassage, pas de physique visible, le zoom n'est pas touché.
+    //     Les ticks manuels ne déclenchent pas « end », on épingle +
+    //     cache + peint à la main. Seul un drag relance brièvement la RAF.
     sim.stop()
+    sim.alpha(0.4)
     for (let i = 0; i < 300; i++) sim.tick()
     allNodes.forEach(n => {
       n.fx = n.x; n.fy = n.y
@@ -312,7 +352,6 @@ export default function ForceGraph({ nodes, edges, lanDevices, alertedNodes = ne
     })
     renderTick()
 
-    return () => sim.stop()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [structKey])
 
