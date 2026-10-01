@@ -64,6 +64,8 @@ import logging
 import os
 import queue
 import socket
+import subprocess
+import sys
 import threading
 import time
 from contextlib import asynccontextmanager
@@ -246,8 +248,43 @@ _gateway_cache: dict = {"ip": None, "ts": 0.0}
 
 
 def _local_hostname() -> str:
-    """EN: This machine's display name, minus the mDNS ".local" suffix.
-    FR: Le nom d'affichage de cette machine, sans le suffixe mDNS « .local »."""
+    """
+    EN: This machine's DISPLAY name — the one the user actually set:
+          macOS   : `scutil --get ComputerName`  ("MoneyLi$a")
+          Windows : COMPUTERNAME env var         ("DESKTOP-ABC")
+          Linux   : `hostnamectl --pretty`       (may hold spaces/unicode)
+        socket.gethostname() is the FALLBACK — it returns the DNS-sanitized
+        hostname (no $, no spaces), which is not what users recognize.
+    FR: Le nom d'AFFICHAGE de cette machine — celui que l'utilisateur a
+        réellement défini :
+          macOS   : `scutil --get ComputerName`  (« MoneyLi$a »)
+          Windows : variable d'env COMPUTERNAME  (« DESKTOP-ABC »)
+          Linux   : `hostnamectl --pretty`       (espaces/unicode possibles)
+        socket.gethostname() est le REPLI — il renvoie le hostname sanitisé
+        DNS (ni $ ni espaces), que l'utilisateur ne reconnaît pas.
+    """
+    try:
+        if sys.platform == "darwin":
+            out = subprocess.run(["scutil", "--get", "ComputerName"],
+                                 capture_output=True, text=True,
+                                 timeout=3).stdout.strip()
+            if out:
+                return out
+        elif sys.platform.startswith("win"):
+            name = os.environ.get("COMPUTERNAME", "").strip()
+            if name:
+                return name
+        elif sys.platform.startswith("linux"):
+            try:
+                out = subprocess.run(["hostnamectl", "--pretty"],
+                                     capture_output=True, text=True,
+                                     timeout=3).stdout.strip()
+                if out:
+                    return out
+            except (OSError, subprocess.TimeoutExpired):
+                pass
+    except (OSError, subprocess.TimeoutExpired):
+        pass
     try:
         return socket.gethostname().removesuffix(".local")
     except OSError:
