@@ -188,6 +188,15 @@ class PacketSniffer:
         self._conn_table = ConnectionTable()
         self._running = False
         self._thread: Optional[threading.Thread] = None
+        # EN: Drop accounting — every discarded frame is counted with its
+        #     reason and surfaced in /diagnostics. Security rule: no silent
+        #     skips — an unparsed frame could be the one that mattered.
+        # FR: Comptabilité des rejets — chaque trame écartée est comptée avec
+        #     sa raison et exposée dans /diagnostics. Règle de sécurité :
+        #     zéro rejet silencieux — une trame non lue pourrait être celle
+        #     qui comptait.
+        self.stats = {"frames": 0, "delivered": 0, "parse_failed": 0,
+                      "not_for_us": 0}
 
     @staticmethod
     def _default_iface() -> Optional[str]:
@@ -223,12 +232,24 @@ class PacketSniffer:
             paquets qui ne concernent pas cet hôte.
         """
         assert self._session is not None
+        self.stats["frames"] += 1
         parsed = parse_frame(self._session.linktype, buf)
         if parsed is None:
+            self.stats["parse_failed"] += 1
+            # EN: Warn at the 1st failure then each power of 10 — the count
+            #     matters (format drift, corruption), not each individual line.
+            # FR: Avertir à la 1re erreur puis à chaque puissance de 10 — c'est
+            #     le compte qui importe (dérive de format, corruption), pas
+            #     chaque ligne isolée.
+            n = self.stats["parse_failed"]
+            if n == 1 or n % 1000 == 0:
+                logger.warning("unparseable frame #%d (%d bytes, linktype=%d)",
+                               n, len(buf), self._session.linktype)
             return
 
         src, dst = parsed.src_ip, parsed.dst_ip
         if src not in self.local_ips and dst not in self.local_ips:
+            self.stats["not_for_us"] += 1
             return
 
         direction = "out" if src in self.local_ips else "in"
@@ -260,6 +281,7 @@ class PacketSniffer:
             dns=parsed.dns,
             dhcp=parsed.dhcp,
         ))
+        self.stats["delivered"] += 1
 
     def start(self) -> None:
         """EN: Launch the capture thread. / FR: Lancer le thread de capture."""

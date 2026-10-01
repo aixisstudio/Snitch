@@ -46,9 +46,21 @@ from scanner.oui import lookup, is_local_mac, DEVICE_TYPE_COLORS
 
 logger = logging.getLogger("snitch.scanner")
 
-# EN: MAC address matcher — handles both : and - separators.
-# FR: Reconnaisseur d'adresse MAC — gère les séparateurs : et -.
-MAC_RE = re.compile(r"([0-9a-fA-F]{2}[:\-]){5}[0-9a-fA-F]{2}")
+# EN: MAC address matcher — handles : and - separators AND macOS's
+#     non-zero-padded octets ("be:18:9d:a0:c1:3" — that trailing "3" is real:
+#     without {1,2} the entry is silently skipped).
+# FR: Reconnaisseur d'adresse MAC — gère les séparateurs : et - ET les octets
+#     non complétés de macOS (« be:18:9d:a0:c1:3 » — ce « 3 » final est réel :
+#     sans {1,2} l'entrée est silencieusement ignorée).
+MAC_RE = re.compile(r"([0-9a-fA-F]{1,2}[:\-]){5}[0-9a-fA-F]{1,2}")
+
+
+def _norm_mac(mac: str) -> str:
+    """EN: Canonical "AA:BB:CC:DD:EE:FF" — zero-pads single-digit octets
+    (macOS `arp -a` prints "…:c1:3" instead of "…:C1:03").
+    FR: « AA:BB:CC:DD:EE:FF » canonique — complète à zéro les octets à un
+    chiffre (`arp -a` de macOS affiche « …:c1:3 » au lieu de « …:C1:03 »)."""
+    return ":".join(p.zfill(2).upper() for p in mac.replace("-", ":").split(":"))
 IPV4_RE = re.compile(r"\b\d{1,3}(?:\.\d{1,3}){3}\b")
 
 
@@ -114,6 +126,8 @@ def _read_arp_table() -> list[tuple[str, str]]:
         Lecteur par plateforme ; renvoie [] en cas d'échec — le scanner reste
         vivant et réessaie à l'intervalle suivant.
     """
+    READ_STATS.update({"lines": 0, "parsed": 0, "incomplete": 0,
+                       "ip_no_mac": 0})
     if sys.platform.startswith("linux"):
         return _read_arp_linux()
     return _read_arp_cmd()
@@ -122,6 +136,8 @@ def _read_arp_table() -> list[tuple[str, str]]:
 def _read_arp_linux() -> list[tuple[str, str]]:
     """EN: Parse /proc/net/arp — flag 0x0 or 00:00:... means incomplete.
     FR: Analyser /proc/net/arp — flag 0x0 ou MAC 00:00:… signifie incomplet."""
+    READ_STATS.update({"lines": 0, "parsed": 0, "incomplete": 0,
+                       "ip_no_mac": 0})
     out = []
     try:
         lines = Path("/proc/net/arp").read_text().splitlines()[1:]
@@ -129,14 +145,37 @@ def _read_arp_linux() -> list[tuple[str, str]]:
         logger.debug("/proc/net/arp unreadable: %s", exc)
         return out
     for line in lines:
+        READ_STATS["lines"] += 1
         parts = line.split()
         if len(parts) < 6:
+            READ_STATS["ip_no_mac"] += 1
+            logger.warning("/proc/net/arp line unreadable — row SKIPPED: %r",
+                           line.strip())
             continue
         ip, _hwtype, flags, mac = parts[0], parts[1], parts[2], parts[3]
         if int(flags, 16) == 0 or mac == "00:00:00:00:00:00":
+            READ_STATS["incomplete"] += 1
             continue
-        out.append((ip, mac.upper()))
+        if not MAC_RE.fullmatch(mac):
+            READ_STATS["ip_no_mac"] += 1
+            logger.warning("/proc/net/arp MAC unreadable — device SKIPPED: %r",
+                           mac)
+            continue
+        out.append((ip, _norm_mac(mac)))
+        READ_STATS["parsed"] += 1
     return out
+
+
+# EN: Parse accounting for the last table read — reset on each call. A line
+#     that carries an IP but no MAC match is a FORMAT DRIFT signal (this is
+#     how macOS's unpadded octets once hid whole devices) — never silent.
+# FR: Comptabilité de la dernière lecture — remise à zéro à chaque appel.
+#     Une ligne avec une IP mais sans MAC reconnue signale une DÉRIVE DE
+#     FORMAT (c'est ainsi que les octets non complétés de macOS ont déjà
+#     caché des appareils entiers) — jamais silencieux.
+READ_STATS: dict[str, int] = {"lines": 0, "parsed": 0, "incomplete": 0,
+                              "ip_no_mac": 0}
+_warned_lines: set[str] = set()
 
 
 def _read_arp_cmd() -> list[tuple[str, str]]:
@@ -151,14 +190,27 @@ def _read_arp_cmd() -> list[tuple[str, str]]:
         logger.debug("arp -a failed: %s", exc)
         return []
 
+    READ_STATS.update({"lines": 0, "parsed": 0, "incomplete": 0,
+                       "ip_no_mac": 0})
     pairs = []
     for line in out_text.splitlines():
+        if not line.strip():
+            continue
+        READ_STATS["lines"] += 1
         if "incomplete" in line.lower():
+            READ_STATS["incomplete"] += 1
             continue
         ip_m = IPV4_RE.search(line)
         mac_m = MAC_RE.search(line)
         if ip_m and mac_m:
-            pairs.append((ip_m.group(0), mac_m.group(0).replace("-", ":").upper()))
+            pairs.append((ip_m.group(0), _norm_mac(mac_m.group(0))))
+            READ_STATS["parsed"] += 1
+        elif ip_m:
+            READ_STATS["ip_no_mac"] += 1
+            if line not in _warned_lines:
+                _warned_lines.add(line)
+                logger.warning("arp line has an IP but no readable MAC — "
+                               "device SKIPPED: %r", line.strip())
     return pairs
 
 

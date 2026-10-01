@@ -85,6 +85,7 @@ from classifier.traffic import classify
 from resolver.dns_geo import (enrich_ip, is_private, learn_dns_answers,
                               learn_sni, lookup_domain)
 from scanner.arp_scanner import ARPScanner, Device, default_gateway as _default_gateway
+from scanner.arp_scanner import READ_STATS as _arp_stats
 from detection.anomaly import AnomalyDetector
 import storage.db as db
 
@@ -119,6 +120,25 @@ _shutdown = False
 #     Pleine → on jette le plus ancien : une rafale périmée vaut moins que
 #     le trafic frais.
 _pkt_queue: queue.Queue = queue.Queue(maxsize=20_000)
+
+# EN: Drop accounting — every skipped/dropped packet is counted with its
+#     reason and exposed via /diagnostics. Security rule: nothing is ignored
+#     silently — a blind spot is a finding.
+# FR: Comptabilité des rejets — chaque paquet écarté/jeté est compté avec sa
+#     raison et exposé via /diagnostics. Règle de sécurité : rien n'est
+#     ignoré silencieusement — un angle mort est un problème.
+_drop_stats = {
+    "queue_oldest_dropped": 0,   # EN: full queue → stale packet evicted
+                                 # FR: file pleine → paquet périmé évincé
+    "queue_put_failed": 0,       # EN: queue still full after eviction
+                                 # FR: file encore pleine après éviction
+    "excluded_process": 0,       # EN: user-excluded process (settings)
+                                 # FR: processus exclu par l'utilisateur
+    "whitelisted_ip": 0,         # EN: trusted IP (e.g. the box)
+                                 # FR: IP de confiance (ex. la box)
+    "noise_filtered": 0,         # EN: multicast/broadcast/etc. noise
+                                 # FR: bruit multicast/broadcast/etc.
+}
 
 # EN: Hard caps so a long-running instance can't leak memory.
 # FR: Plafonds stricts pour qu'une instance longue durée ne fuie pas de mémoire.
@@ -385,9 +405,19 @@ def on_packet(pkt: Packet) -> None:
     except queue.Full:
         try:
             _pkt_queue.get_nowait()         # EN: drop oldest / FR: jeter le plus ancien
+            _drop_stats["queue_oldest_dropped"] += 1
             _pkt_queue.put_nowait(pkt)
+            # EN: Saturated queue = lost traffic — surface it at the 1st drop
+            #     and each power of 10 so bursts don't flood the log.
+            # FR: File saturée = trafic perdu — signaler au 1er rejet puis à
+            #     chaque puissance de 10 pour que les rafales ne noient pas
+            #     le journal.
+            n = _drop_stats["queue_oldest_dropped"]
+            if n == 1 or n % 1000 == 0:
+                logger.warning("packet queue saturated — %d stale packets "
+                               "dropped so far", n)
         except (queue.Empty, queue.Full):
-            pass
+            _drop_stats["queue_put_failed"] += 1
 
 
 def _request_enrichment(ip: str) -> None:
@@ -464,6 +494,7 @@ def _process_batch(packets: list[Packet]) -> None:
 
     for pkt in packets:
         if pkt.process_name and pkt.process_name in _excluded_processes:
+            _drop_stats["excluded_process"] += 1
             continue
 
         remote_ip = pkt.dst_ip if pkt.direction == "out" else pkt.src_ip
@@ -504,7 +535,11 @@ def _process_batch(packets: list[Packet]) -> None:
         if pkt.dhcp:
             _learn_dhcp_name(*pkt.dhcp, touched_devices)
 
-        if remote_ip in _whitelisted_ips or _is_noise_ip(remote_ip):
+        if remote_ip in _whitelisted_ips:
+            _drop_stats["whitelisted_ip"] += 1
+            continue
+        if _is_noise_ip(remote_ip):
+            _drop_stats["noise_filtered"] += 1
             continue
 
         if pkt.sni:
@@ -1245,6 +1280,16 @@ async def get_diagnostics() -> dict:
         "counts": {"nodes": len(nodes), "edges": len(edges),
                    "lan_devices": len(lan_devices),
                    "alerts_memory": len(detector.history)},
+        # EN: Drop accounting — every ignored/skipped packet, frame and ARP
+        #     row, with its reason. Security: no silent blind spots.
+        # FR: Comptabilité des rejets — chaque paquet, trame et ligne ARP
+        #     ignorée/écartée, avec sa raison. Sécurité : aucun angle mort
+        #     silencieux.
+        "dropped": {
+            **dict(_drop_stats),
+            "capture": dict(_sniffer.stats) if _sniffer else {},
+            "arp_read": dict(_arp_stats),
+        },
         "db_bytes": db_file.stat().st_size if db_file.exists() else 0,
         "log_tail": log_tail,
     }
