@@ -1,0 +1,291 @@
+/**
+ * Snitch — left sidebar.
+ *
+ * EN: Column layout: brand header + bandwidth sparkline, quick stats,
+ *     privacy score, selected-node detail card, search bar, scrollable
+ *     LAN-device + external-host lists, and the recent-packet feed.
+ * FR: Colonne : en-tête de marque + sparkline de débit, stats rapides, score
+ *     de confidentialité, fiche du nœud sélectionné, barre de recherche,
+ *     listes déroulantes appareils LAN + hôtes externes, et le flux de
+ *     paquets récents.
+ */
+import { Wifi, Smartphone, Monitor, Tv, Cpu, HelpCircle, ShieldOff } from 'lucide-react'
+import PrivacyScore from './PrivacyScore'
+import BandwidthChart from './BandwidthChart'
+import SearchBar from './SearchBar'
+import { useT } from '../i18n'
+
+// EN: Lucide icon per LAN device type. / FR: Icône Lucide par type d'appareil LAN.
+const DEVICE_ICONS = {
+  router:  Wifi,
+  phone:   Smartphone,
+  pc:      Monitor,
+  tv:      Tv,
+  iot:     Cpu,
+  unknown: HelpCircle,
+}
+
+// EN: Dot color per traffic category — mirrors the backend classifier.
+// FR: Couleur de point par catégorie de trafic — reflète le classifieur backend.
+const CATEGORY_COLORS = {
+  safe: '#22c55e', tracking: '#f59e0b', cdn: '#6366f1',
+  dns: '#38bdf8', admin: '#fb923c', unknown: '#94a3b8', local: '#3b82f6',
+}
+
+/** EN: Human-readable byte size. / FR: Taille en octets lisible. */
+function fmt(bytes) {
+  if (!bytes) return '0 B'
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / 1024 / 1024).toFixed(2)} MB`
+}
+
+/**
+ * EN: Does a node match the active search filter? The "local" node and any
+ *     node matching the category always pass unless the text fails.
+ * FR: Un nœud correspond-il au filtre de recherche actif ? Le nœud « local »
+ *     et tout nœud de la bonne catégorie passent sauf si le texte échoue.
+ */
+function matchesFilter(node, filter) {
+  if (!filter || (filter.category === 'all' && !filter.text)) return true
+  if (filter.category !== 'all' && node.category !== filter.category) return false
+  if (filter.text) {
+    const t = filter.text.toLowerCase()
+    return (node.label   || '').toLowerCase().includes(t)
+        || (node.ip      || '').toLowerCase().includes(t)
+        || (node.country || '').toLowerCase().includes(t)
+        || (node.org     || '').toLowerCase().includes(t)
+  }
+  return true
+}
+
+export default function Sidebar({ nodes, lanDevices, packets, selected, onClose, privacyScore, bandwidth, filter, onFilterChange, onWhitelist }) {
+  const { t } = useT()
+  const extNodes = Object.values(nodes).filter(n => n.id !== 'local')
+  const devList  = Object.values(lanDevices)
+  const totalBytes = extNodes.reduce((a, n) => a + (n.bytes || 0), 0)
+
+  const filteredNodes = extNodes.filter(n => matchesFilter(n, filter))
+  const hiddenCount = filteredNodes.length < extNodes.length ? extNodes.length : null
+
+  return (
+    <div style={{
+      width: 300, height: '100vh', background: '#1e293b',
+      borderRight: '1px solid #334155', display: 'flex',
+      flexDirection: 'column', overflow: 'hidden',
+    }}>
+      {/* EN: Brand + live bandwidth / FR: Marque + débit en direct */}
+      <div style={{ padding: '14px 20px 8px', borderBottom: '1px solid #334155' }}>
+        <div style={{ marginBottom: 6 }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 7, marginBottom: 2 }}>
+            <span style={{ fontSize: 9, fontFamily: 'monospace', color: '#f7b016', letterSpacing: 3, fontWeight: 600 }}>NET</span>
+            <span style={{ fontSize: 17, fontWeight: 800, color: '#f1f5f9', letterSpacing: 1 }}>{t('app_name')}</span>
+          </div>
+          <span style={{ fontSize: 10, color: '#475569', letterSpacing: 1 }}>{t('tagline')}</span>
+        </div>
+        <BandwidthChart data={bandwidth || []} />
+      </div>
+
+      {/* EN: Quick counters / FR: Compteurs rapides */}
+      <div style={{ padding: '10px 20px', borderBottom: '1px solid #334155' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+          <Stat label={t('stat_lan')}     value={devList.length}      color="#f97316" />
+          <Stat label={t('stat_ext')}     value={extNodes.length} />
+          <Stat label={t('stat_traffic')} value={fmt(totalBytes)} />
+        </div>
+      </div>
+
+      {privacyScore && (
+        <PrivacyScore
+          score={privacyScore.score}
+          grade={privacyScore.grade}
+          color={privacyScore.color}
+          labelKey={privacyScore.labelKey}
+          factors={privacyScore.factors}
+        />
+      )}
+
+      {/* EN: Detail card for the clicked node. / FR: Fiche détail du nœud cliqué. */}
+      {selected && (
+        <div style={{ padding: '12px 20px', borderBottom: '1px solid #334155', background: '#0f172a' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: '#f1f5f9' }}>
+              {selected.label || selected.ip}
+            </span>
+            <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: 16 }}>x</button>
+          </div>
+          <NodeDetail node={selected} onWhitelist={onWhitelist} />
+        </div>
+      )}
+
+      <SearchBar filter={filter} onChange={onFilterChange} />
+
+      <div style={{ flex: 1, overflowY: 'auto' }}>
+        {devList.length > 0 && (
+          <>
+            <SectionTitle label={t('section_lan', devList.length)} />
+            {devList.map(d => <DeviceRow key={d.id} device={d} />)}
+          </>
+        )}
+
+        <SectionTitle label={t('section_ext', filteredNodes.length, hiddenCount)} />
+        {filteredNodes
+          .sort((a, b) => (b.bytes || 0) - (a.bytes || 0))
+          .map(n => <NodeRow key={n.id} node={n} />)}
+      </div>
+
+      {/* EN: Recent packet feed / FR: Flux de paquets récents */}
+      <div style={{ borderTop: '1px solid #334155', maxHeight: 160, overflowY: 'auto' }}>
+        <SectionTitle label={t('section_packets')} />
+        {packets.slice(0, 25).map((p, i) => <PacketRow key={i} packet={p} />)}
+      </div>
+    </div>
+  )
+}
+
+/** EN: Sticky list section header. / FR: En-tête de section de liste collant. */
+function SectionTitle({ label }) {
+  return (
+    <div style={{ padding: '5px 20px', fontSize: 10, color: '#64748b', textTransform: 'uppercase', letterSpacing: 1, background: '#1e293b', position: 'sticky', top: 0 }}>
+      {label}
+    </div>
+  )
+}
+
+function Stat({ label, value, color }) {
+  return (
+    <div style={{ textAlign: 'center' }}>
+      <div style={{ fontSize: 16, fontWeight: 700, color: color || '#f1f5f9' }}>{value}</div>
+      <div style={{ fontSize: 10, color: '#64748b' }}>{label}</div>
+    </div>
+  )
+}
+
+/** EN: One row of the LAN device list. / FR: Une ligne de la liste d'appareils LAN. */
+function DeviceRow({ device }) {
+  const { t } = useT()
+  const Icon = DEVICE_ICONS[device.device_type] || HelpCircle
+  return (
+    <div style={{
+      padding: '7px 20px', display: 'flex', alignItems: 'center', gap: 8,
+      borderBottom: '1px solid #1e293b',
+      opacity: device.online === false ? 0.45 : 1,
+    }}>
+      <Icon size={16} color={device.color} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 11, fontWeight: 600, color: '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {device.hostname || device.vendor || device.ip}
+        </div>
+        <div style={{ fontSize: 9, color: '#64748b', fontFamily: 'monospace' }}>
+          {device.ip} · {device.mac}
+        </div>
+      </div>
+      <div style={{ fontSize: 9, color: device.online === false ? '#ef4444' : '#22c55e', flexShrink: 0 }}>
+        {device.online === false ? t('offline') : t('online')}
+      </div>
+    </div>
+  )
+}
+
+/** EN: One row of the external-host list. / FR: Une ligne de la liste d'hôtes externes. */
+function NodeRow({ node }) {
+  return (
+    <div style={{ padding: '6px 20px', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid #1e293b' }}>
+      <div style={{ width: 7, height: 7, borderRadius: '50%', background: CATEGORY_COLORS[node.category] || '#94a3b8', flexShrink: 0 }} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 11, color: '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {node.label || node.ip}
+        </div>
+        <div style={{ fontSize: 9, color: '#64748b' }}>{node.country || '-'} · {node.packets || 0} pkt</div>
+      </div>
+      <div style={{ fontSize: 10, color: '#94a3b8', flexShrink: 0 }}>{fmt(node.bytes || 0)}</div>
+    </div>
+  )
+}
+
+/** EN: Selected-node fields + top processes + whitelist action.
+ *  FR: Champs du nœud sélectionné + top processus + action de whitelist. */
+function NodeDetail({ node, onWhitelist }) {
+  const { t } = useT()
+  const fields = [
+    [t('field_ip'),       node.ip],
+    [t('field_mac'),      node.mac],
+    [t('field_hostname'), node.hostname],
+    [t('field_vendor'),   node.vendor],
+    [t('field_type'),     node.device_type],
+    [t('field_country'),  node.country],
+    [t('field_city'),     node.city],
+    [t('field_org'),      node.org],
+    [t('field_category'), node.category],
+    [t('field_traffic'),  fmt(node.bytes || 0)],
+    [t('field_packets'),  node.packets],
+  ]
+
+  // EN: Top-5 processes by bytes on this node.
+  // FR: Top 5 des processus par octets sur ce nœud.
+  const processes = node.processes
+    ? Object.entries(node.processes).sort(([, a], [, b]) => b.bytes - a.bytes).slice(0, 5)
+    : []
+
+  return (
+    <div>
+      {fields.filter(([, v]) => v != null && v !== '').map(([k, v]) => (
+        <div key={k} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
+          <span style={{ fontSize: 10, color: '#64748b' }}>{k}</span>
+          <span style={{ fontSize: 10, color: '#e2e8f0', maxWidth: 170, textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v}</span>
+        </div>
+      ))}
+
+      {processes.length > 0 && (
+        <>
+          <div style={{ fontSize: 9, color: '#475569', textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 8, marginBottom: 4 }}>
+            {t('processes')}
+          </div>
+          {processes.map(([name, stats]) => (
+            <div key={name} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3, alignItems: 'center' }}>
+              <span style={{ fontSize: 10, color: '#94a3b8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 150 }}>
+                {name}
+              </span>
+              <span style={{ fontSize: 9, color: '#475569', flexShrink: 0 }}>{fmt(stats.bytes)}</span>
+            </div>
+          ))}
+        </>
+      )}
+
+      {/* EN: "Mark as trusted" — sends the IP to the whitelist endpoint.
+          FR: « Marquer comme fiable » — envoie l'IP à l'endpoint de whitelist. */}
+      {node.id !== 'local' && node.ip && onWhitelist && (
+        <button onClick={() => onWhitelist(node.ip)} style={{
+          marginTop: 10, width: '100%', display: 'flex', alignItems: 'center',
+          justifyContent: 'center', gap: 6,
+          background: 'none', border: '1px solid #22c55e', borderRadius: 6,
+          padding: '5px 0', color: '#86efac', fontSize: 10, cursor: 'pointer',
+        }}>
+          <ShieldOff size={11} />
+          {t('whitelist_action')}
+        </button>
+      )}
+    </div>
+  )
+}
+
+/** EN: One row of the packet feed — direction arrow, process, dst, size.
+ *  FR: Une ligne du flux de paquets — flèche de direction, processus, dst, taille. */
+function PacketRow({ packet }) {
+  const out   = packet.direction === 'out'
+  const color = out ? '#22c55e' : '#3b82f6'
+  return (
+    <div style={{ padding: '3px 20px', display: 'flex', alignItems: 'center', gap: 6 }}>
+      <span style={{ color, fontSize: 10, flexShrink: 0 }}>{out ? '>' : '<'}</span>
+      {packet.process && (
+        <span style={{ fontSize: 9, color: '#f59e0b', flexShrink: 0, maxWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {packet.process}
+        </span>
+      )}
+      <span style={{ fontSize: 9, color: '#94a3b8', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        {packet.dst} · {packet.protocol}
+      </span>
+      <span style={{ fontSize: 9, color: '#475569', flexShrink: 0 }}>{packet.size}B</span>
+    </div>
+  )
+}

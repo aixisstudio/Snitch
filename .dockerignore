@@ -1,0 +1,17 @@
+# EN: Files and folders excluded from the Docker build context.
+# FR: Fichiers et dossiers exclus du contexte de build Docker.
+
+.git
+.devin
+.claude
+backend/.venv
+backend/__pycache__
+backend/**/__pycache__
+frontend/node_modules
+frontend/dist
+electron
+dist
+docs
+resources
+data
+*.log

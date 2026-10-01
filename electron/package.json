@@ -1,0 +1,58 @@
+{
+  "name": "snitch",
+  "version": "1.0.0",
+  "description": "Snitch — real-time network traffic visualizer / visualiseur de trafic réseau en temps réel",
+  "main": "main.js",
+  "license": "AGPL-3.0-or-later",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --win --x64",
+    "build:dir": "electron-builder --win --x64 --dir"
+  },
+  "devDependencies": {
+    "electron": "^28.3.3",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.snitch.app",
+    "productName": "Snitch",
+    "directories": {
+      "output": "../dist/installer"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "splash.html",
+      "icon.png"
+    ],
+    "extraResources": [
+      {
+        "from": "icon.png",
+        "to": "icon.png"
+      },
+      {
+        "from": "../dist/backend/snitch-backend.exe",
+        "to": "snitch-backend.exe"
+      },
+      {
+        "from": "../frontend/dist",
+        "to": "frontend_dist"
+      },
+      {
+        "from": "../resources/npcap-installer.exe",
+        "to": "npcap-installer.exe"
+      }
+    ],
+    "win": {
+      "target": "nsis",
+      "requestedExecutionLevel": "requireAdministrator"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Snitch"
+    }
+  }
+}

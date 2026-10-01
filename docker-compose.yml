@@ -1,0 +1,28 @@
+# Snitch — Docker Compose
+# EN: Runs the full Snitch stack (backend + compiled frontend) with host networking.
+#     Host networking is required so Scapy can capture traffic on real host interfaces.
+#     Linux only — Docker Desktop (Mac/Windows) uses a VM and cannot capture host traffic.
+# FR: Lance toute la stack Snitch (backend + frontend compilé) en réseau hôte.
+#     Le réseau hôte est requis pour que Scapy capture le trafic des vraies interfaces.
+#     Linux uniquement — Docker Desktop (Mac/Windows) utilise une VM et ne peut pas
+#     capturer le trafic de l'hôte.
+
+services:
+  snitch:
+    build: .
+    network_mode: host
+    cap_add:
+      - NET_ADMIN   # EN: promiscuous mode / FR: mode promiscuité
+      - NET_RAW     # EN: raw socket / packet capture / FR: socket brut / capture de paquets
+    environment:
+      # EN: Bind address for the API (0.0.0.0 = all interfaces inside the container)
+      # FR: Adresse d'écoute de l'API (0.0.0.0 = toutes les interfaces du conteneur)
+      - SNITCH_BIND=0.0.0.0
+      - SNITCH_PORT=8000
+    volumes:
+      # EN: data/GeoLite2-City.mmdb — optional, for offline geolocation
+      #     data/snitch.db         — created automatically at runtime
+      # FR: data/GeoLite2-City.mmdb — optionnel, pour la géolocalisation hors ligne
+      #     data/snitch.db         — créé automatiquement au démarrage
+      - ./data:/app/data
+    restart: unless-stopped

@@ -1,0 +1,246 @@
+/**
+ * Snitch — D3 force-directed graph view.
+ *
+ * EN: The main visualization. Every remote host and LAN device is a node,
+ *     every connection an edge anchored on the central "local" node. The
+ *     simulation is rebuilt whenever the data changes, but node positions
+ *     are cached in `posCache` so the layout stays stable across updates —
+ *     the sim only reheats when new nodes appear. Once cooled, every node is
+ *     pinned (fx/fy) so the graph never drifts.
+ *     A second lightweight effect dims non-matching nodes/links when the
+ *     search filter is active, without restarting the simulation.
+ *
+ * FR: La visualisation principale. Chaque hôte distant et appareil LAN est un
+ *     nœud, chaque connexion une arête ancrée sur le nœud central « local ».
+ *     La simulation est reconstruite à chaque changement de données, mais les
+ *     positions des nœuds sont mises en cache dans `posCache` pour garder une
+ *     mise en page stable — la sim ne se réchauffe que quand de nouveaux nœuds
+ *     apparaissent. Une fois refroidie, chaque nœud est épinglé (fx/fy) pour
+ *     que le graphe ne dérive jamais.
+ *     Un second effet léger estompe les nœuds/liens non correspondants quand
+ *     le filtre de recherche est actif, sans relancer la simulation.
+ */
+import { useEffect, useRef } from 'react'
+import * as d3 from 'd3'
+import { nodeIconURI } from './icons'
+
+export default function ForceGraph({ nodes, edges, lanDevices, alertedNodes = new Set(), onNodeClick, filter }) {
+  const svgRef   = useRef(null)
+  const nodeRef  = useRef(null)
+  const linkRef  = useRef(null)
+  // EN: { nodeId: {x, y, fx, fy} } — persists positions across re-renders.
+  // FR: { nodeId: {x, y, fx, fy} } — conserve les positions entre les rendus.
+  const posCache = useRef({})
+
+  // ── Full simulation — reruns when data changes ────────────────────────────
+  // ── Simulation complète — relancée à chaque changement de données ─────────
+  useEffect(() => {
+    const svg = d3.select(svgRef.current)
+    svg.selectAll('*').remove()
+
+    const width  = svgRef.current.clientWidth
+    const height = svgRef.current.clientHeight
+
+    const zoom = d3.zoom().scaleExtent([0.15, 6]).on('zoom', e => g.attr('transform', e.transform))
+    svg.call(zoom)
+
+    const g = svg.append('g')
+
+    // EN: Arrowhead marker for directed edges. / FR: Marqueur de flèche pour les arêtes dirigées.
+    svg.append('defs').append('marker')
+      .attr('id', 'arrow')
+      .attr('viewBox', '0 -5 10 10')
+      .attr('refX', 22).attr('refY', 0)
+      .attr('markerWidth', 6).attr('markerHeight', 6)
+      .attr('orient', 'auto')
+      .append('path').attr('fill', '#475569').attr('d', 'M0,-5L10,0L0,5')
+
+    const allNodes = [...Object.values(nodes), ...Object.values(lanDevices)]
+    const nodeIds = new Set(allNodes.map(n => n.id))
+    // EN: D3 may have already replaced source/target with node objects —
+    //     normalize both shapes before filtering.
+    // FR: D3 peut avoir déjà remplacé source/target par des objets nœud —
+    //     normaliser les deux formes avant de filtrer.
+    const allEdges = Object.values(edges).filter(e => {
+      const src = typeof e.source === 'object' ? e.source.id : e.source
+      const tgt = typeof e.target === 'object' ? e.target.id : e.target
+      return nodeIds.has(src) && nodeIds.has(tgt)
+    })
+
+    // EN: Restore cached positions — pinned nodes won't move at all.
+    // FR: Restaurer les positions en cache — les nœuds épinglés ne bougent pas.
+    let hasNew = false
+    allNodes.forEach(n => {
+      const c = posCache.current[n.id]
+      if (c) { n.x = c.x; n.y = c.y; n.fx = c.fx; n.fy = c.fy }
+      else    { hasNew = true }
+    })
+
+    const sim = d3.forceSimulation(allNodes)
+      .alpha(hasNew ? 0.6 : 0.05)    // EN: barely reheat if nothing new
+                                     // FR: réchauffer à peine si rien de nouveau
+      .alphaDecay(0.04)              // EN: settle ~2× faster / FR: stabilisation ~2× plus rapide
+      .velocityDecay(0.55)           // EN: more friction, less overshoot / FR: plus de friction, moins de dépassement
+      .force('link', d3.forceLink(allEdges).id(d => d.id).distance(d => d.dashed ? 80 : 130).strength(0.4))
+      .force('charge', d3.forceManyBody().strength(d => d.category === 'lan_device' ? -300 : -400))
+      .force('center', d3.forceCenter(width / 2, height / 2).strength(0.03))
+      .force('collision', d3.forceCollide(d => d.id === 'local' ? 30 : 20))
+      // EN: Gentle pull toward center for LAN devices so they orbit "local".
+      // FR: Légère attraction centrale pour les appareils LAN afin qu'ils orbitent « local ».
+      .force('lan_x', d3.forceX(width / 2).strength(d => d.category === 'lan_device' ? 0.15 : 0))
+      .force('lan_y', d3.forceY(height / 2).strength(d => d.category === 'lan_device' ? 0.15 : 0))
+
+    const link = g.append('g').selectAll('line')
+      .data(allEdges)
+      .join('line')
+      .attr('stroke', d => d.color || '#475569')
+      .attr('stroke-opacity', d => d.dashed ? 0.35 : 0.55)
+      .attr('stroke-width', d => d.dashed ? 1 : Math.min(1 + Math.log1p((d.bytes || 0) / 1024), 6))
+      .attr('stroke-dasharray', d => d.dashed ? '5,4' : null)
+      .attr('marker-end', d => d.dashed ? null : 'url(#arrow)')
+
+    linkRef.current = link
+
+    const linkLabel = g.append('g').selectAll('text')
+      .data(allEdges.filter(e => !e.dashed))
+      .join('text')
+      .attr('fill', '#475569')
+      .attr('font-size', 9)
+      .attr('text-anchor', 'middle')
+      .text(d => d.label)
+
+    const node = g.append('g').selectAll('g')
+      .data(allNodes)
+      .join('g')
+      .attr('cursor', 'pointer')
+      .on('click', (_, d) => onNodeClick?.(d))
+      .call(d3.drag()
+        .on('start', (e, d) => { if (!e.active) sim.alphaTarget(0.15).restart(); d.fx = d.x; d.fy = d.y })
+        .on('drag',  (e, d) => { d.fx = e.x; d.fy = e.y })
+        .on('end',   (e, d) => {
+          if (!e.active) sim.alphaTarget(0)
+          // EN: Lock the node where the user dropped it.
+          // FR: Verrouiller le nœud là où l'utilisateur l'a déposé.
+          posCache.current[d.id] = { x: d.x, y: d.y, fx: d.x, fy: d.y }
+        })
+      )
+
+    nodeRef.current = node
+
+    const radius = d => d.id === 'local' ? 22 : d.category === 'lan_device' ? 18 : 13
+
+    // EN: Pulsing red ring on alerted nodes.
+    // FR: Anneau rouge pulsant sur les nœuds en alerte.
+    node.filter(d => alertedNodes.has(d.id) || d.alerted)
+      .append('circle')
+      .attr('r', d => radius(d) + 9)
+      .attr('fill', 'none')
+      .attr('stroke', '#ef4444')
+      .attr('stroke-width', 1.5)
+      .attr('stroke-opacity', 0.7)
+      .each(function () {
+        d3.select(this).append('animate')
+          .attr('attributeName', 'stroke-opacity')
+          .attr('values', '0.7;0.1;0.7')
+          .attr('dur', '1.5s').attr('repeatCount', 'indefinite')
+      })
+
+    // EN: Soft halo behind local/LAN nodes. / FR: Halo doux derrière les nœuds locaux/LAN.
+    node.filter(d => d.id === 'local' || d.category === 'lan_device')
+      .append('circle')
+      .attr('r', d => radius(d) + 6)
+      .attr('fill', d => d.color)
+      .attr('fill-opacity', 0.15)
+
+    node.append('circle')
+      .attr('r', radius)
+      .attr('fill', d => d.color || '#475569')
+      .attr('fill-opacity', d => d.online === false ? 0.35 : 0.85)
+      .attr('stroke', d => d.online === false ? '#475569' : '#1e293b')
+      .attr('stroke-width', d => d.category === 'lan_device' ? 2.5 : 1.5)
+      .attr('stroke-dasharray', d => d.online === false ? '4,3' : null)
+
+    // EN: White Lucide icon inside the circle, via data-URI SVG.
+    // FR: Icône Lucide blanche dans le cercle, via SVG en data-URI.
+    const iconSize = d => d.id === 'local' ? 20 : d.category === 'lan_device' ? 16 : 12
+    node.append('image')
+      .attr('href', d => nodeIconURI(d))
+      .attr('width',  d => iconSize(d))
+      .attr('height', d => iconSize(d))
+      .attr('x', d => -iconSize(d) / 2)
+      .attr('y', d => -iconSize(d) / 2)
+      .attr('pointer-events', 'none')
+      .attr('opacity', d => d.online === false ? 0.4 : 0.9)
+
+    node.append('text')
+      .attr('y', d => radius(d) + 11)
+      .attr('text-anchor', 'middle')
+      .attr('fill', d => d.category === 'lan_device' ? '#e2e8f0' : '#94a3b8')
+      .attr('font-size', d => d.category === 'lan_device' ? 10 : 9)
+      .attr('font-weight', d => d.category === 'lan_device' ? '600' : '400')
+      .text(d => {
+        const label = d.label || d.ip || ''
+        return label.length > 20 ? label.slice(0, 18) + '…' : label
+      })
+
+    // EN: Native tooltip with full detail on hover.
+    // FR: Infobulle native avec le détail complet au survol.
+    node.append('title').text(d =>
+      [d.label || d.ip, d.vendor, d.mac, d.country, d.org, `${d.packets || 0} pkts`]
+        .filter(Boolean).join('\n')
+    )
+
+    sim.on('tick', () => {
+      link
+        .attr('x1', d => d.source.x).attr('y1', d => d.source.y)
+        .attr('x2', d => d.target.x).attr('y2', d => d.target.y)
+      linkLabel
+        .attr('x', d => (d.source.x + d.target.x) / 2)
+        .attr('y', d => (d.source.y + d.target.y) / 2)
+      node.attr('transform', d => `translate(${d.x},${d.y})`)
+    })
+
+    // EN: Once the sim cools down, pin every node and cache its position.
+    // FR: Une fois la sim refroidie, épingler chaque nœud et cacher sa position.
+    sim.on('end', () => {
+      allNodes.forEach(n => {
+        n.fx = n.x; n.fy = n.y
+        posCache.current[n.id] = { x: n.x, y: n.y, fx: n.x, fy: n.y }
+      })
+    })
+
+    return () => sim.stop()
+  }, [nodes, edges, lanDevices, alertedNodes])
+
+  // ── Filter dimming — no simulation restart ────────────────────────────────
+  // ── Estompage par filtre — sans relancer la simulation ────────────────────
+  useEffect(() => {
+    if (!nodeRef.current || !linkRef.current) return
+
+    function matches(d) {
+      if (!filter || (filter.category === 'all' && !filter.text)) return true
+      if (d.id === 'local') return true
+      const { text, category } = filter
+      if (category !== 'all' && d.category !== category) return false
+      if (text) {
+        const t = text.toLowerCase()
+        return (d.label   || '').toLowerCase().includes(t)
+            || (d.ip      || '').toLowerCase().includes(t)
+            || (d.country || '').toLowerCase().includes(t)
+            || (d.org     || '').toLowerCase().includes(t)
+            || (d.hostname|| '').toLowerCase().includes(t)
+      }
+      return true
+    }
+
+    nodeRef.current.attr('opacity', d => matches(d) ? 1 : 0.1)
+
+    linkRef.current.attr('stroke-opacity', d => {
+      const src = typeof d.source === 'object' ? d.source : { id: d.source, category: '' }
+      const tgt = typeof d.target === 'object' ? d.target : { id: d.target, category: '' }
+      return (matches(src) || matches(tgt)) ? (d.dashed ? 0.35 : 0.55) : 0.04
+    })
+  }, [filter])
+
+  return <svg ref={svgRef} style={{ width: '100%', height: '100%', background: '#0f172a' }} />
+}

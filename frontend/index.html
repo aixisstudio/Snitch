@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<!--
+  Snitch — HTML shell.
+
+  EN: Single entry point for the Vite/React app. The #root div is where React
+      mounts; everything else lives in src/.
+  FR: Point d'entrée unique de l'app Vite/React. Le div #root est l'endroit où
+      React se monte ; tout le reste vit dans src/.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+    <title>Snitch — Know who's talking.</title>
+    <style>
+      /* EN: Global reset + dark base theme.
+         FR: Reset global + thème sombre de base. */
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+      body { background: #0f172a; color: #e2e8f0; font-family: 'Inter', system-ui, sans-serif; overflow: hidden; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

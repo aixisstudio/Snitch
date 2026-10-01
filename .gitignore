@@ -1,0 +1,28 @@
+# EN: Python artifacts / FR: Artefacts Python
+__pycache__/
+*.py[cod]
+.venv/
+*.spec.bak
+
+# EN: Node artifacts / FR: Artefacts Node
+node_modules/
+frontend/dist/
+
+# EN: Build output / FR: Sortie de build
+dist/
+build/
+
+# EN: Runtime data (SQLite DB, GeoLite2) / FR: Données d'exécution (SQLite, GeoLite2)
+data/
+*.db
+*.db-wal
+*.db-shm
+*.mmdb
+
+# EN: Electron generated files / FR: Fichiers générés Electron
+electron/icon.png
+
+# EN: OS / editor noise / FR: Fichiers système et éditeur
+.DS_Store
+*.log
+.env
