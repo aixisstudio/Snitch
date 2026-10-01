@@ -16,7 +16,8 @@ import struct
 
 from capture.parser import (
     DLT_EN10MB, DLT_LINUX_SLL, DLT_LINUX_SLL2, DLT_NULL, DLT_RAW,
-    parse_frame, parse_dns, parse_mdns, parse_tls_sni,
+    parse_frame, parse_dns, parse_mdns, parse_nbns, parse_dhcp,
+    parse_tls_sni,
 )
 
 ETH = DLT_EN10MB
@@ -269,7 +270,11 @@ def test_mdns_additional_section():
     FR: Enregistrement A en ADDITIONNELLE sous une réponse PTR — le cas réel
     le plus courant."""
     res = parse_mdns(mdns_frame("MacBook-Pro", b"\xc0\xa8\x01\x2a", "additional"))
-    assert res == [("MacBook-Pro.local", "192.168.1.42", 120)]
+    # EN: the PTR answer yields a sender-claimed name (empty ip) AND the
+    #     additional A record yields the explicit binding.
+    # FR: la réponse PTR donne un nom revendiqué par l'émetteur (ip vide) ET
+    #     le A en additionnelle donne la liaison explicite.
+    assert res == [("ptr.local", "", 0), ("MacBook-Pro.local", "192.168.1.42", 120)]
 
 
 def test_mdns_udp_5353_flows_through_parser():
@@ -290,3 +295,65 @@ def test_mdns_udp_5353_flows_through_parser():
 def test_mdns_malformed():
     assert parse_mdns(b"\x00") == []
     assert parse_mdns(b"\x00" * 12) == []
+
+
+# ── Device-name protocols: mDNS PTR / NBNS / DHCP ────────────────────────────
+# ── Protocoles de nommage : PTR mDNS / NBNS / DHCP ────────────────────────────
+
+def mdns_ptr_frame(instance: str) -> bytes:
+    """EN: mDNS with a PTR answer: _device-info._tcp.local → instance.
+    FR: mDNS avec réponse PTR : _device-info._tcp.local → instance."""
+    def w(n):
+        return b"".join(bytes([len(x)]) + x.encode() for x in n.split(".")) + b"\x00"
+    rdata = w(instance)
+    rec = w("_device-info._tcp.local") + struct.pack("!HHIH", 12, 1, 120, len(rdata)) + rdata
+    return struct.pack("!HHHHHH", 0, 0x8400, 0, 1, 0, 0) + rec
+
+
+def test_mdns_ptr_instance_name():
+    res = parse_mdns(mdns_ptr_frame("iPhone-de-Lisa._device-info._tcp.local"))
+    assert res == [("iPhone-de-Lisa._device-info._tcp.local", "", 0)]
+
+
+def nb_name_wire(name: str, suffix: int = 0x00) -> bytes:
+    """EN: NetBIOS first-level encoding: 15-char padded name + suffix byte,
+        each byte as two letters 'A'..'P'.
+    FR: Encodage NetBIOS de premier niveau : nom sur 15 caractères + octet
+        de suffixe, chaque octet en deux lettres 'A'..'P'."""
+    raw = name.encode().ljust(15, b" ")[:15] + bytes([suffix])
+    enc = b"".join(bytes([0x41 + (b >> 4), 0x41 + (b & 15)]) for b in raw)
+    return b"\x20" + enc + b"\x00"
+
+
+def test_nbns_registration():
+    """EN: Name registration (QR=0, opcode 5) carries the sender's name.
+    FR: L'enregistrement de nom (QR=0, opcode 5) porte le nom de l'émetteur."""
+    q = nb_name_wire("PC-DE-LISA") + struct.pack("!HH", 0x20, 1)
+    msg = struct.pack("!HHHHHH", 1, 5 << 11, 1, 0, 0, 0) + q
+    assert parse_nbns(msg) == [("PC-DE-LISA", "", 0)]
+
+
+def dhcp_request(hostname: str, req_ip: bytes, mac: bytes) -> bytes:
+    """EN: Minimal BOOTP REQUEST: 236B header + cookie + options 12/50/end.
+    FR: BOOTP REQUEST minimal : en-tête 236 o + cookie + options 12/50/fin."""
+    hdr = struct.pack("!BBBBIHH", 1, 1, 6, 0, 0x1234, 0, 0x8000)
+    hdr += b"\x00" * 4 * 4                     # ciaddr/yiaddr/siaddr/giaddr
+    hdr += mac + b"\x00" * (16 - len(mac))     # chaddr
+    hdr += b"\x00" * (64 + 128)                # sname + file
+    opts = bytes([12, len(hostname)]) + hostname.encode()
+    opts += bytes([50, 4]) + req_ip
+    return hdr + b"\x63\x82\x53\x63" + opts + b"\xff"
+
+
+def test_dhcp_hostname():
+    res = parse_dhcp(dhcp_request("DESKTOP-ABC", b"\xc0\xa8\x01\xc6",
+                                  b"\x58\xa0\x23\xe9\xe3\xb4"))
+    assert res == ("DESKTOP-ABC", "192.168.1.198", "58:A0:23:E9:E3:B4")
+
+
+def test_dhcp_server_reply_ignored():
+    """EN: op=2 (server reply) returns None — no hostname to learn.
+    FR: op=2 (réponse serveur) renvoie None — pas de nom à apprendre."""
+    reply = bytearray(dhcp_request("X", b"\x0a\x00\x00\x01", b"\x01" * 6))
+    reply[0] = 2
+    assert parse_dhcp(bytes(reply)) is None

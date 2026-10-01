@@ -75,6 +75,11 @@ class Packet:
     tcp_flags: int = 0
     sni: Optional[str] = None
     dns: list = field(default_factory=list)
+    # EN: (hostname, requested_ip|None, mac) learned from a client DHCP
+    #     message — names the device before mDNS/LLMNR ever do.
+    # FR: (nom d'hôte, ip demandée|None, mac) appris d'un message DHCP
+    #     client — nomme l'appareil avant même mDNS/LLMNR.
+    dhcp: Optional[tuple] = None
 
 
 def get_local_ips() -> set[str]:
@@ -253,6 +258,7 @@ class PacketSniffer:
             tcp_flags=parsed.tcp_flags,
             sni=parsed.sni,
             dns=parsed.dns,
+            dhcp=parsed.dhcp,
         ))
 
     def start(self) -> None:

@@ -257,13 +257,14 @@ def _gateway() -> Optional[str]:
 def _learn_lan_hostname(ip: str, name: str,
                        touched_devices: dict) -> None:
     """
-    EN: An mDNS "*.local" announcement named this LAN device — store the
-        hostname on the entry (stub or real) so the UI shows "iPhone-de-Lisa"
-        instead of a bare IP. Never overwrites an existing name.
-    FR: Une annonce mDNS « *.local » a nommé cet appareil LAN — stocker le
-        nom d'hôte sur l'entrée (stub ou réelle) pour que l'UI affiche
-        « iPhone-de-Lisa » au lieu d'une IP nue. N'écrase jamais un nom
-        existant.
+    EN: A passive announcement (mDNS "*.local", LLMNR, NBNS) named this LAN
+        device — store the hostname on the entry (stub or real) so the UI
+        shows "iPhone-de-Lisa" instead of a bare IP. Never overwrites an
+        existing name.
+    FR: Une annonce passive (mDNS « *.local », LLMNR, NBNS) a nommé cet
+        appareil LAN — stocker le nom d'hôte sur l'entrée (stub ou réelle)
+        pour que l'UI affiche « iPhone-de-Lisa » au lieu d'une IP nue.
+        N'écrase jamais un nom existant.
     """
     dev = _ensure_lan_device(ip)
     if dev.get("hostname"):
@@ -272,6 +273,54 @@ def _learn_lan_hostname(ip: str, name: str,
     if dev.get("label") == dev.get("ip"):
         dev["label"] = name
     touched_devices[dev["id"]] = dev
+
+
+def _devname(dns_name: str) -> Optional[str]:
+    """
+    EN: Extract a device display name from a DNS-style name:
+          "iPhone-de-Lisa._device-info._tcp.local" → "iPhone-de-Lisa"
+          "MacBook-Pro.local"                      → "MacBook-Pro"
+          "DESKTOP-ABC"                            → "DESKTOP-ABC"
+    FR: Extraire le nom d'affichage d'un appareil d'un nom DNS :
+          « iPhone-de-Lisa._device-info._tcp.local » → « iPhone-de-Lisa »
+          « MacBook-Pro.local »                      → « MacBook-Pro »
+          « DESKTOP-ABC »                            → « DESKTOP-ABC »
+    """
+    n = dns_name.strip()
+    if n.lower().endswith(".local"):
+        n = n[:-len(".local")]
+    if "._" in n:                    # EN: mDNS service instance
+        n = n.split("._", 1)[0]      # FR: instance de service mDNS
+    return n.strip() or None
+
+
+# EN: DHCP-learned names waiting for their device: a client announces its
+#     hostname (option 12) with its MAC, possibly before we know the IP the
+#     server will assign. Keyed by MAC, applied when the device appears.
+# FR: Noms appris via DHCP en attente de leur appareil : un client annonce
+#     son nom (option 12) avec sa MAC, parfois avant que l'IP assignée ne
+#     soit connue. Indexés par MAC, appliqués quand l'appareil apparaît.
+_pending_mac_names: dict[str, str] = {}
+
+
+def _learn_dhcp_name(hostname: str, req_ip: Optional[str], mac: str,
+                     touched_devices: dict) -> None:
+    """
+    EN: A client DHCP message revealed "this MAC is called <hostname>".
+        If we already know the device (by requested IP or MAC), name it;
+        otherwise remember the MAC→name pair for the next discovery.
+    FR: Un message DHCP client révèle « cette MAC s'appelle <hostname> ».
+        Si l'appareil est déjà connu (par IP demandée ou MAC), on le nomme ;
+        sinon on retient le couple MAC→nom pour la prochaine découverte.
+    """
+    if req_ip and is_private(req_ip):
+        _learn_lan_hostname(req_ip, hostname, touched_devices)
+        return
+    for dev in lan_devices.values():
+        if dev.get("mac") == mac:
+            _learn_lan_hostname(dev["ip"], hostname, touched_devices)
+            return
+    _pending_mac_names[mac] = hostname
 
 
 # ── Packet handling / Traitement des paquets ─────────────────────────────────
@@ -379,13 +428,34 @@ def _process_batch(packets: list[Packet]) -> None:
         #     les réponses mDNS visent le multicast 224.0.0.251, qui ne doit
         #     jamais devenir un nœud mais porte les noms « *.local » utiles.
         if pkt.dns:
-            dns53 = [a for a in pkt.dns if not a[0].lower().endswith(".local")]
+            dns53 = []
+            for name, ip, _ttl in pkt.dns:
+                low = name.lower()
+                if ip == "":
+                    # EN: Name CLAIMED BY THE SENDER (mDNS service instance,
+                    #     NBNS registration) — the device is pkt.src_ip.
+                    # FR: Nom REVENDIQUÉ PAR L'ÉMETTEUR (instance de service
+                    #     mDNS, enregistrement NBNS) — l'appareil est
+                    #     pkt.src_ip.
+                    dev = _devname(name)
+                    if dev and is_private(pkt.src_ip):
+                        _learn_lan_hostname(pkt.src_ip, dev, touched_devices)
+                elif low.endswith(".local"):
+                    # EN: Explicit "x.local → ip" binding from an mDNS A/AAAA.
+                    # FR: Liaison explicite « x.local → ip » d'un A/AAAA mDNS.
+                    if is_private(ip):
+                        _learn_lan_hostname(ip, name[:-len(".local")],
+                                            touched_devices)
+                elif is_private(ip) and "." not in name:
+                    # EN: LLMNR "PC-NAME → ip" — Windows name claims.
+                    # FR: LLMNR « PC-NAME → ip » — revendications Windows.
+                    _learn_lan_hostname(ip, name, touched_devices)
+                else:
+                    dns53.append((name, ip, _ttl))
             if dns53:
                 learn_dns_answers(dns53)
-            for name, ip, _ttl in pkt.dns:
-                if name.lower().endswith(".local") and is_private(ip):
-                    _learn_lan_hostname(ip, name[:-len(".local")],
-                                        touched_devices)
+        if pkt.dhcp:
+            _learn_dhcp_name(*pkt.dhcp, touched_devices)
 
         if remote_ip in _whitelisted_ips or _is_noise_ip(remote_ip):
             continue
@@ -577,6 +647,14 @@ async def _handle_device(device: Device, is_new: bool) -> None:
         if not device.hostname and prev.get("hostname"):
             node["hostname"] = prev["hostname"]
             node["label"] = prev["hostname"]
+        # EN: A DHCP-learned name waiting for this MAC — applies even when
+        #     the stub didn't exist yet.
+        # FR: Un nom appris via DHCP en attente de cette MAC — s'applique
+        #     même quand le stub n'existait pas encore.
+        pending = _pending_mac_names.pop(device.mac, None)
+        if pending and not node["hostname"]:
+            node["hostname"] = pending
+            node["label"] = pending
     else:
         node["alerted"] = False
     lan_devices[node["id"]] = node

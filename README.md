@@ -61,7 +61,7 @@ The entire interface is available in **English and French**: use the `EN / FR` t
 - **Alert suppression** — each alert has an "Ignore this type/host" action; suppression rules are persisted (`alert_suppressions` table), applied before alerts are emitted or logged, and survivable across restarts via `POST /alerts/ignore` / `DELETE /alerts/ignore` / `GET /alerts/ignore`.
 - **History** — per-minute per-host and per-process byte/packet aggregates are kept in SQLite (`host_history`, `process_history`) for the retention window, powering the per-application view and `GET /history/host/{ip}` / `GET /history/process/{name}`.
 - **Diagnostics** — `GET /diagnostics` returns a JSON snapshot of the runtime (capture state, geo DB status, interface, versions, paths) with no secrets; the Settings panel can export it or open the log directory (Electron).
-- **LAN devices** are discovered passively from the system ARP table — no active broadcast scanning.
+- **LAN devices** are discovered passively from the system ARP table — no active broadcast scanning. Device names are learned from what devices broadcast themselves: mDNS `*.local` (Apple/Linux), LLMNR & NetBIOS names (Windows), DHCP hostname options, plus the full offline IEEE OUI vendor table, and your gateway is auto-detected as the router.
 - See [docs/threat-model.md](docs/threat-model.md) for the full threat model.
 
 ### Docker (Linux)
@@ -203,7 +203,7 @@ Toute l'interface est disponible en **français et en anglais** : utilisez le s�
 - **Suppression d'alertes** — chaque alerte offre « Ignorer ce type/cet hôte » ; les règles sont persistées (`alert_suppressions`), appliquées avant émission, et gérables via `POST /alerts/ignore`, `DELETE /alerts/ignore`, `GET /alerts/ignore`.
 - **Historique** — les agrégats octets/paquets par minute, par hôte et par processus sont conservés dans SQLite (`host_history`, `process_history`) sur la fenêtre de rétention, et alimentent la vue par application ainsi que `GET /history/host/{ip}` et `GET /history/process/{nom}`.
 - **Diagnostic** — `GET /diagnostics` renvoie un instantané JSON du runtime (état de capture, géo, interface, versions, chemins) sans secrets ; le panneau Réglages peut l'exporter ou ouvrir le dossier des logs (Electron).
-- **Appareils LAN** découverts passivement via la table ARP système — aucun scan broadcast actif.
+- **Appareils LAN** découverts passivement via la table ARP système — aucun scan broadcast actif. Les noms sont appris de ce que les appareils diffusent eux-mêmes : mDNS `*.local` (Apple/Linux), LLMNR et noms NetBIOS (Windows), option hostname DHCP, plus la table de fabricants IEEE OUI complète hors ligne ; votre passerelle est détectée automatiquement comme routeur.
 - Voir [docs/threat-model.md](docs/threat-model.md) pour le modèle de menace complet.
 
 ### Docker (Linux)

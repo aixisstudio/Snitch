@@ -79,6 +79,9 @@ class ParsedPacket:
     tcp_flags: int = 0
     dns: list[tuple[str, str, int]] = field(default_factory=list)
     sni: Optional[str] = None
+    # EN: (hostname, requested_ip|None, mac) from a client DHCP message.
+    # FR: (nom d'hôte, ip demandée|None, mac) d'un message DHCP client.
+    dhcp: Optional[tuple] = None
 
 
 def parse_frame(linktype: int, buf: bytes) -> Optional[ParsedPacket]:
@@ -266,6 +269,7 @@ def _parse_transport(payload: bytes, proto: int, src: str, dst: str,
             return None
         sport, dport = struct.unpack("!HH", payload[:4])
         udp_payload = payload[8:]
+        dhcp = None
         if sport == 53 or dport == 53:
             dns = parse_dns(udp_payload)
         elif sport == 5353 or dport == 5353:
@@ -274,9 +278,26 @@ def _parse_transport(payload: bytes, proto: int, src: str, dst: str,
             # FR: mDNS — les appareils annoncent « <nom>.local → <ip> » ici ;
             #     c'est ainsi qu'on apprend les noms sans jamais émettre.
             dns = parse_mdns(udp_payload)
+        elif sport == 5355 or dport == 5355:
+            # EN: LLMNR — Windows' name protocol; same wire format as DNS.
+            #     Responses carry "PC-NAME → ip" for the responding machine.
+            # FR: LLMNR — protocole de nommage Windows ; même format fil que
+            #     DNS. Les réponses portent « PC-NAME → ip » du répondant.
+            dns = parse_dns(udp_payload)
+        elif sport == 137 or dport == 137:
+            # EN: NetBIOS NS — classic Windows name claims/registrations.
+            # FR: NetBIOS NS — déclarations d'enregistrement de nom Windows.
+            dns = parse_nbns(udp_payload)
+        elif sport in (67, 68) or dport in (67, 68):
+            # EN: DHCP — every device tells its hostname (option 12) when
+            #     joining/renewing; mapped to the device via MAC/requested-IP.
+            # FR: DHCP — chaque appareil donne son nom d'hôte (option 12) en
+            #     rejoignant/renouvelant ; mappé via MAC/IP demandée.
+            dns = []
+            dhcp = parse_dhcp(udp_payload)
         else:
             dns = []
-        return ParsedPacket(src, dst, "UDP", wire_len, sport, dport, 0, dns, None)
+        return ParsedPacket(src, dst, "UDP", wire_len, sport, dport, 0, dns, None, dhcp)
 
     if proto in (IPPROTO_ICMP, IPPROTO_ICMPV6):
         return ParsedPacket(src, dst, "ICMP", wire_len)
@@ -365,18 +386,27 @@ def parse_dns(payload: bytes) -> list[tuple[str, str, int]]:
 
 def parse_mdns(payload: bytes) -> list[tuple[str, str, int]]:
     """
-    EN: Parse an mDNS message (UDP/5353). Same wire format as DNS, but device
-        A/AAAA records often live in the ADDITIONAL section — so we walk all
-        three record sections, not just answers, and we don't require the QR
-        bit (mDNS announcements and responses both carry records). Only
-        "*.local" names are returned, as (hostname, ip, ttl) — hostname with
-        the .local suffix stripped.
+    EN: Parse an mDNS message (UDP/5353). Same wire format as DNS, but the
+        useful records hide everywhere, so we walk all three record sections
+        and don't require the QR bit:
+
+          - A/AAAA "*.local → ip" records  → (name.local, ip, ttl)
+          - PTR/SRV records                → (instance_or_host_name, "", 0)
+            the ip is EMPTY on purpose: it marks "the SENDER of this packet
+            claims this name" — main.py maps it to pkt.src_ip. An instance
+            like "iPhone-de-Lisa._device-info._tcp.local" carries the device
+            display name before the first "._".
+
     FR: Analyser un message mDNS (UDP/5353). Même format fil que DNS, mais les
-        enregistrements A/AAAA des appareils vivent souvent dans la section
-        ADDITIONNELLE — on parcourt donc les trois sections, pas seulement
-        les réponses, et le bit QR n'est pas exigé (annonces et réponses
-        portent des enregistrements). Seuls les noms « *.local » sont
-        renvoyés, en (nom d'hôte, ip, ttl) — suffixe .local retiré.
+        enregistrements utiles sont partout : on parcourt les trois sections
+        et le bit QR n'est pas exigé :
+
+          - A/AAAA « *.local → ip »  → (nom.local, ip, ttl)
+          - PTR/SRV                  → (nom_instance_ou_hôte, "", 0)
+            l'ip est volontairement VIDE : elle marque « l'ÉMETTEUR de ce
+            paquet revendique ce nom » — main.py le mappe sur pkt.src_ip.
+            Une instance « iPhone-de-Lisa._device-info._tcp.local » porte le
+            nom d'affichage de l'appareil avant le premier « ._ ».
     """
     try:
         if len(payload) < 12:
@@ -398,19 +428,145 @@ def parse_mdns(payload: bytes) -> list[tuple[str, str, int]]:
             if rdata_off + rdlen > len(payload):
                 break
             rdata = payload[rdata_off:rdata_off + rdlen]
-            # EN: Keep the ".local" suffix — main.py uses it to tell mDNS
-            #     device names apart from regular DNS answers.
-            # FR: Garder le suffixe « .local » — main.py s'en sert pour
-            #     distinguer les noms d'appareils mDNS des réponses DNS normales.
-            if name.lower().endswith(".local"):
-                if rtype == 1 and rdlen == 4:                # EN: A / FR: A
-                    answers.append((name, socket.inet_ntop(socket.AF_INET, rdata), ttl))
-                elif rtype == 28 and rdlen == 16:            # EN: AAAA / FR: AAAA
-                    answers.append((name, socket.inet_ntop(socket.AF_INET6, rdata), ttl))
+            if rtype == 1 and rdlen == 4 and name.lower().endswith(".local"):
+                answers.append((name, socket.inet_ntop(socket.AF_INET, rdata), ttl))
+            elif rtype == 28 and rdlen == 16 and name.lower().endswith(".local"):
+                answers.append((name, socket.inet_ntop(socket.AF_INET6, rdata), ttl))
+            elif rtype in (12, 33):          # EN: PTR / SRV — target is a name
+                target, _ = _dns_name(payload, rdata_off + (6 if rtype == 33 else 0))
+                if target.lower().endswith(".local"):
+                    answers.append((target, "", 0))
             off = rdata_off + rdlen
         return answers
     except (IndexError, struct.error, ValueError):
         return []
+
+
+def _nbns_name(buf: bytes, off: int) -> tuple[Optional[str], int]:
+    """
+    EN: Decode one NetBIOS-encoded name at `off`: a 0x20 length byte, then
+        32 bytes of "first-level encoding" (each nibble as 'A'..'P'), then a
+        null root label. The decoded value is 15 name chars + 1 suffix byte.
+        Returns (display_name, end_offset) or (None, off) if not a NB name.
+    FR: Décoder un nom NetBIOS à `off` : octet de longueur 0x20, puis
+        32 octets d'« encodage de premier niveau » (chaque quartet en
+        'A'..'P'), puis un label racine nul. La valeur décodée est 15
+        caractères de nom + 1 octet de suffixe.
+        Renvoie (nom_affiché, offset_fin) ou (None, off) si pas un nom NB.
+    """
+    if off >= len(buf) or buf[off] != 0x20:
+        return None, off
+    enc = buf[off + 1:off + 33]
+    if len(enc) < 32:
+        return None, off
+    try:
+        raw = bytes(((enc[i] - 0x41) << 4) | (enc[i + 1] - 0x41)
+                    for i in range(0, 32, 2))
+    except (TypeError, ValueError):
+        return None, off
+    name = raw[:15].rstrip(b" \x00").decode("ascii", errors="replace")
+    end = off + 33
+    while end < len(buf) and buf[end] != 0:      # EN: skip scope suffix
+        end += buf[end] + 1                      # FR: sauter le suffixe de scope
+    return name, min(end + 1, len(buf))
+
+
+def parse_nbns(payload: bytes) -> list[tuple[str, str, int]]:
+    """
+    EN: Parse a NetBIOS Name Service message (UDP/137). We learn names in
+        two situations — both mean "the SENDER claims this name":
+          - QR=0 with opcode 5 (registration) or 8 (refresh): the question
+            section carries the sender's own name
+          - QR=1 responses: answer/authority/additional RRs carry the
+            responder's name (and its NB address in rdata)
+        Returns (name, "", 0) tuples — empty ip = "claim by packet source".
+    FR: Analyser un message NetBIOS Name Service (UDP/137). On apprend des
+        noms dans deux cas — qui signifient tous deux « l'ÉMETTEUR revendique
+        ce nom » :
+          - QR=0 avec opcode 5 (enregistrement) ou 8 (rafraîchissement) : la
+            section question porte le nom de l'émetteur
+          - réponses QR=1 : les RR réponse/autorité/additionnels portent le
+            nom du répondant (et son adresse NB dans rdata)
+        Renvoie des tuples (nom, "", 0) — ip vide = « revendiqué par la
+        source du paquet ».
+    """
+    try:
+        if len(payload) < 12:
+            return []
+        _, flags, qd, an, ns, ar = struct.unpack("!HHHHHH", payload[:12])
+        qr = flags & 0x8000
+        opcode = (flags >> 11) & 0xF
+        off = 12
+        claimed = []
+        if not qr and opcode in (5, 8):               # EN: name registration / refresh
+            for _ in range(min(qd, 4)):               # FR: enregistrement / rafraîchissement
+                name, off = _nbns_name(payload, off)
+                if name is None:
+                    break
+                claimed.append((name, "", 0))
+                off += 4                              # EN: qtype + qclass / FR: qtype + qclass
+        elif qr:                                      # EN: response / FR: réponse
+            for _ in range(qd):                       # EN: skip questions / FR: sauter les questions
+                _, off = _nbns_name(payload, off)
+                off += 4
+            for _ in range(min(an + ns + ar, 8)):
+                name, off = _nbns_name(payload, off)
+                if name is None or off + 10 > len(payload):
+                    break
+                _rt, _rc, _ttl, rdlen = struct.unpack("!HHIH", payload[off:off + 10])
+                claimed.append((name, "", 0))
+                off += 10 + rdlen
+        return claimed[:8]
+    except (IndexError, struct.error, ValueError):
+        return []
+
+
+def parse_dhcp(payload: bytes) -> Optional[tuple]:
+    """
+    EN: Parse a client DHCP/BOOTP message (UDP 67/68). Layout: fixed header
+        (236 B, chaddr = client MAC at offset 28) + magic cookie 63 82 53 63
+        + TLV options. We want option 12 (hostname — what the user named the
+        device) and option 50 (requested IP — binds name→ip directly).
+        Returns (hostname, requested_ip|None, mac) or None. Server→client
+        replies (op=2) carry no hostname, so they're skipped.
+    FR: Analyser un message DHCP/BOOTP client (UDP 67/68). Structure :
+        en-tête fixe (236 o, chaddr = MAC client à l'offset 28) + cookie
+        magique 63 82 53 63 + options TLV. On veut l'option 12 (nom d'hôte —
+        ce que l'utilisateur a nommé) et l'option 50 (IP demandée — lie
+        nom→ip directement). Renvoie (nom, ip_demandée|None, mac) ou None.
+        Les réponses serveur→client (op=2) ne portent pas de nom d'hôte,
+        elles sont ignorées.
+    """
+    try:
+        if len(payload) < 240 or payload[0] != 1:
+            return None                               # EN: BOOTREQUEST only
+        hlen = min(payload[2], 6)                     # FR: BOOTREQUEST seul
+        mac = ":".join(f"{b:02X}" for b in payload[28:28 + hlen])
+        if payload[236:240] != b"\x63\x82\x53\x63":   # EN: magic cookie
+            return None                               # FR: cookie magique
+        hostname = None
+        req_ip = None
+        off = 240
+        while off < len(payload):
+            tag = payload[off]
+            off += 1
+            if tag == 0:                              # EN: pad / FR: bourrage
+                continue
+            if tag == 255 or off >= len(payload):     # EN: end / FR: fin
+                break
+            ln = payload[off]
+            off += 1
+            val = payload[off:off + ln]
+            off += ln
+            if tag == 12:                             # EN: hostname / FR: nom d'hôte
+                hostname = val.decode("ascii", errors="replace").strip("\x00 ")
+            elif tag == 50 and ln == 4:               # EN: requested IP / FR: IP demandée
+                req_ip = socket.inet_ntoa(val)
+        if not hostname:
+            return None
+        return (hostname, req_ip, mac)
+    except (IndexError, struct.error, ValueError):
+        return None
 
 
 # ── TLS SNI / SNI TLS ────────────────────────────────────────────────────────
