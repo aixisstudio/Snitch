@@ -98,21 +98,22 @@ export default function Sidebar({ nodes, lanDevices, packets, selected, onClose,
       flexDirection: 'column', overflow: 'hidden',
       padding: 8, gap: 8, boxSizing: 'border-box',
     }}>
-      {/* EN: Brand + live bandwidth / FR: Marque + débit en direct */}
-      <div style={{ ...CARD, padding: '14px 16px 8px' }}>
-        <div style={{ marginBottom: 6 }}>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 7, marginBottom: 2 }}>
-            <span style={{ fontSize: 9, fontFamily: 'monospace', color: '#f7b016', letterSpacing: 3, fontWeight: 600 }}>NET</span>
-            <span style={{ fontSize: 17, fontWeight: 800, color: '#f1f5f9', letterSpacing: 1 }}>{t('app_name')}</span>
-          </div>
-          <span style={{ fontSize: 10, color: '#475569', letterSpacing: 1 }}>{t('tagline')}</span>
+      {/* EN: Brand floats free on the rail — the bento cards start below.
+          FR: La marque flotte librement sur le rail — les cartes bento
+              commencent en dessous. */}
+      <div style={{ padding: '8px 8px 0' }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 7, marginBottom: 2 }}>
+          <span style={{ fontSize: 9, fontFamily: 'monospace', color: '#f7b016', letterSpacing: 3, fontWeight: 600 }}>NET</span>
+          <span style={{ fontSize: 17, fontWeight: 800, color: '#f1f5f9', letterSpacing: 1 }}>{t('app_name')}</span>
         </div>
-        <BandwidthChart data={bandwidth || []} />
+        <span style={{ fontSize: 10, color: '#475569', letterSpacing: 1 }}>{t('tagline')}</span>
       </div>
 
-      {/* EN: Quick counters / FR: Compteurs rapides */}
+      {/* EN: Quick counters + live bandwidth sparkline.
+          FR: Compteurs rapides + sparkline de débit en direct. */}
       <div style={{ ...CARD, padding: '10px 16px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+        <BandwidthChart data={bandwidth || []} />
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8 }}>
           <Stat label={t('stat_lan')}     value={devList.length}      color="#f97316" />
           <Stat label={t('stat_ext')}     value={extNodes.length} />
           <Stat label={t('stat_traffic')} value={fmt(totalBytes)} />
