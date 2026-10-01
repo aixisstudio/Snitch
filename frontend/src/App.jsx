@@ -223,7 +223,7 @@ export default function App() {
                   flotte AU-DESSUS de la carte légende, sur le graphe. */}
           {view === 'graph' && (
             <div style={{
-              position: 'absolute', bottom: 16, right: 16,
+              position: 'absolute', bottom: 16, right: 8,
               display: 'flex', flexDirection: 'column', gap: 8,
               alignItems: 'stretch', width: 230,
             }}>
