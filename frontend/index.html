@@ -19,14 +19,23 @@
       *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
       body { background: #000000; color: #e2e8f0; font-family: 'Inter', system-ui, sans-serif; overflow: hidden; }
 
-      /* EN: Scrollbars on black — thin dark track, subtle gray thumb.
-         FR: Barres de défilement sur noir — piste sombre fine, curseur gris discret. */
-      * { scrollbar-width: thin; scrollbar-color: #2a2a2a #000000; }
-      ::-webkit-scrollbar { width: 8px; height: 8px; }
-      ::-webkit-scrollbar-track { background: #000000; }
-      ::-webkit-scrollbar-thumb { background: #2a2a2a; border-radius: 4px; }
-      ::-webkit-scrollbar-thumb:hover { background: #404040; }
-      ::-webkit-scrollbar-corner { background: #000000; }
+      /* EN: Pill scrollbars to match the bento cards — fully rounded thumb
+         floating on a transparent track, inset by a transparent border so
+         it reads as a soft capsule, not a hard-edged bar.
+         FR: Barres de défilement « pilule » assorties aux cartes bento —
+         curseur entièrement arrondi flottant sur piste transparente, rentré
+         par une bordure transparente pour un rendu capsule douce. */
+      * { scrollbar-width: thin; scrollbar-color: #333333 transparent; }
+      ::-webkit-scrollbar { width: 10px; height: 10px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb {
+        background: #333333;
+        border-radius: 8px;
+        border: 2px solid transparent;
+        background-clip: padding-box;
+      }
+      ::-webkit-scrollbar-thumb:hover { background: #4a4a4a; border: 2px solid transparent; background-clip: padding-box; }
+      ::-webkit-scrollbar-corner { background: transparent; }
     </style>
   </head>
   <body>
