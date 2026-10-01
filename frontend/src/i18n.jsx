@@ -167,6 +167,39 @@ const en = {
   score_warnings: n => `${n} warnings`,
   score_https_ratio: pct => `${pct}% HTTPS traffic`,
   score_no_trackers: 'No trackers detected',
+
+  // Settings / Réglages
+  settings_title: 'Settings',
+  settings_saved: 'Saved',
+  close: 'Close',
+  settings_language: 'Language / Langue',
+  settings_retention: 'History retention',
+  settings_retention_hint: 'How long traffic & alert history is kept',
+  geo_title: 'Geolocation database',
+  geo_present: dbs => `Installed: ${dbs}`,
+  geo_none: 'Not installed — IPs are not geolocated',
+  geo_download_btn: 'Download DB-IP Lite (free)',
+  geo_consent: 'Downloads ~50 MB from db-ip.com (CC BY 4.0). This is the only outbound call Snitch can make.',
+  geo_downloading: 'Downloading…',
+  geo_done: n => `Downloaded ${n} database(s)`,
+  geo_failed: 'Download failed — check your connection',
+  diag_title: 'Diagnostics',
+  diag_hint: 'Logs and system info for bug reports',
+  diag_open_logs: 'Logs',
+  diag_export: 'Export',
+  settings_note: 'All settings are stored locally. Snitch never sends data to third parties.',
+  nav_apps: 'Apps',
+  ignore_alert: 'Ignore this alert type/host',
+
+  // Apps view / Vue applications
+  apps_empty: 'No process attributed yet',
+  apps_process: 'Process',
+  apps_destinations: 'Hosts',
+  apps_packets: 'Packets',
+  apps_volume: 'Volume',
+  apps_top_dest: 'Top destinations',
+  apps_history_60m: 'Last hour (bytes/min)',
+  alertmsg_NEW_HOSTS: n => `${n} new host${n > 1 ? 's' : ''} contacted`,
 }
 
 // ── Dictionnaire français / French dictionary ────────────────────────────────
@@ -320,6 +353,39 @@ const fr = {
   score_warnings: n => `${n} alertes`,
   score_https_ratio: pct => `${pct}% de trafic HTTPS`,
   score_no_trackers: 'Aucun tracker détecté',
+
+  // Réglages / Settings
+  settings_title: 'Réglages',
+  settings_saved: 'Enregistré',
+  close: 'Fermer',
+  settings_language: 'Langue / Language',
+  settings_retention: 'Rétention de l\'historique',
+  settings_retention_hint: 'Durée de conservation du trafic et des alertes',
+  geo_title: 'Base de géolocalisation',
+  geo_present: dbs => `Installée : ${dbs}`,
+  geo_none: 'Non installée — les IP ne sont pas géolocalisées',
+  geo_download_btn: 'Télécharger DB-IP Lite (gratuit)',
+  geo_consent: 'Télécharge ~50 Mo depuis db-ip.com (CC BY 4.0). C\'est le seul appel sortant possible de Snitch.',
+  geo_downloading: 'Téléchargement…',
+  geo_done: n => `${n} base(s) téléchargée(s)`,
+  geo_failed: 'Échec du téléchargement — vérifiez la connexion',
+  diag_title: 'Diagnostic',
+  diag_hint: 'Logs et infos système pour les rapports de bug',
+  diag_open_logs: 'Logs',
+  diag_export: 'Exporter',
+  settings_note: 'Tous les réglages sont stockés localement. Snitch n\'envoie rien à des tiers.',
+  nav_apps: 'Apps',
+  ignore_alert: 'Ignorer ce type/cet hôte',
+
+  // Vue applications / Apps view
+  apps_empty: 'Aucun processus attribué pour l\'instant',
+  apps_process: 'Processus',
+  apps_destinations: 'Hôtes',
+  apps_packets: 'Paquets',
+  apps_volume: 'Volume',
+  apps_top_dest: 'Destinations principales',
+  apps_history_60m: 'Dernière heure (octets/min)',
+  alertmsg_NEW_HOSTS: n => `${n} nouvel${n > 1 ? 'x' : ''} hôte${n > 1 ? 's' : ''} contacté${n > 1 ? 's' : ''}`,
 }
 
 // ── Context / Contexte ───────────────────────────────────────────────────────

@@ -271,10 +271,37 @@ class AnomalyDetector:
         self._byte_window: dict[str, deque] = defaultdict(lambda: deque(maxlen=5000))
         self._byte_baseline: dict[str, deque] = defaultdict(lambda: deque(maxlen=10))
         self._byte_last_fold: dict[str, float] = {}
+
+        # EN: User suppressions — persisted in the settings table, loaded at
+        #     startup. An entry is {"type": "BEACON"|None, "ip": "1.2.3.4"|None};
+        #     a packet is suppressed when BOTH non-None fields match.
+        # FR: Suppressions utilisateur — persistées dans la table settings,
+        #     chargées au démarrage. Une entrée vaut
+        #     {"type": "BEACON"|None, "ip": "1.2.3.4"|None} ; un paquet est
+        #     supprimé quand les DEUX champs non-None correspondent.
+        self._suppressions: list[dict] = []
         self._cooldowns: dict[str, float] = {}
         self.history: list[dict] = []
         self._mic_procs: set[str] = set()
         self._cam_procs: set[str] = set()
+
+    def load_suppressions(self, items: list[dict]) -> None:
+        """EN: Replace the suppression list (from persisted settings).
+        FR: Remplacer la liste de suppression (depuis les réglages persistés)."""
+        with self._lock:
+            self._suppressions = [
+                {"type": s.get("type"), "ip": s.get("ip")}
+                for s in items if isinstance(s, dict)
+            ]
+
+    def _suppressed(self, alert_type: str, ip: str) -> bool:
+        """EN: True when a suppression rule covers (type, ip) — either field
+        may be None (=match all). / FR: True quand une règle de suppression
+        couvre (type, ip) — chaque champ peut être None (= tout)."""
+        for s in self._suppressions:
+            if s["type"] in (None, alert_type) and s["ip"] in (None, ip):
+                return True
+        return False
 
     def update_media_state(self, mic: list[str], camera: list[str]) -> None:
         """EN: Sync mic/camera process sets from the media monitor.
@@ -338,6 +365,11 @@ class AnomalyDetector:
             alerts += self._check_beacon(remote_ip, geo)
             alerts += self._check_volume_spike(remote_ip, pkt, geo)
             alerts += self._check_media_exfil(pkt, remote_ip, geo)
+            # EN: Drop suppressed alerts before recording — persisted
+            #     "ignore this host/type" rules from the UI.
+            # FR: Écarter les alertes supprimées avant l'enregistrement —
+            #     règles « ignorer cet hôte/ce type » persistées depuis l'UI.
+            alerts = [a for a in alerts if not self._suppressed(a.type, remote_ip)]
             self._record(alerts)
             return alerts
 
@@ -370,6 +402,10 @@ class AnomalyDetector:
                         details={"ip": device.ip, "host": label},
                     ))
 
+            # EN: Device alerts honour suppressions too (keyed on the LAN ip).
+            # FR: Les alertes d'appareil respectent aussi les suppressions
+            #     (clés sur l'IP LAN).
+            alerts = [a for a in alerts if not self._suppressed(a.type, device.ip)]
             self._record(alerts)
             return alerts
 

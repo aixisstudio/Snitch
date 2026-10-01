@@ -49,6 +49,7 @@ _conn_lock = threading.Lock()
 # EN: In-memory write accumulator — (minute, category) -> [packets, bytes].
 # FR: Accumulateur d'écriture en mémoire — (minute, catégorie) -> [paquets, octets].
 _pending: dict[tuple, list] = defaultdict(lambda: [0, 0])
+_pending_hist: dict[tuple, list] = defaultdict(lambda: [0, 0])
 _pending_lock = threading.Lock()
 
 
@@ -115,6 +116,21 @@ def _init_schema(conn: sqlite3.Connection) -> None:
             key   TEXT PRIMARY KEY,
             value TEXT NOT NULL
         );
+
+        -- EN: Per-host and per-process byte/packet history, per minute.
+        --     dim is 'host' or 'process'; key is the IP or process name.
+        -- FR: Historique par hôte et par processus, en octets/paquets par
+        --     minute. dim vaut 'host' ou 'process' ; key est l'IP ou le nom
+        --     de processus.
+        CREATE TABLE IF NOT EXISTS history (
+            minute  TEXT NOT NULL,
+            dim     TEXT NOT NULL,
+            key     TEXT NOT NULL,
+            packets INTEGER DEFAULT 0,
+            bytes   INTEGER DEFAULT 0,
+            PRIMARY KEY (minute, dim, key)
+        );
+        CREATE INDEX IF NOT EXISTS idx_history_lookup ON history(dim, key, minute);
     """)
     conn.commit()
 
@@ -171,6 +187,18 @@ def accumulate(minute: str, category: str, size: int) -> None:
         _pending[(minute, category)][1] += size
 
 
+def accumulate_history(minute: str, dim: str, key: str, size: int) -> None:
+    """
+    EN: Same zero-block pattern as accumulate(), but into the per-entity
+        `history` table — one call per (remote host, owning process) pair.
+    FR: Même schéma non-bloquant qu'accumulate(), vers la table `history` —
+        un appel par couple (hôte distant, processus).
+    """
+    with _pending_lock:
+        _pending_hist[(minute, dim, key)][0] += 1
+        _pending_hist[(minute, dim, key)][1] += size
+
+
 def flush() -> None:
     """
     EN: Batch-write the accumulator to SQLite using UPSERT semantics.
@@ -179,12 +207,15 @@ def flush() -> None:
         Appelé par le thread de flush toutes les ~10 s.
     """
     with _pending_lock:
-        if not _pending:
+        if not _pending and not _pending_hist:
             return
         batch = dict(_pending)
         _pending.clear()
+        hist_batch = dict(_pending_hist)
+        _pending_hist.clear()
 
     rows = [(m, c, v[0], v[1]) for (m, c), v in batch.items()]
+    hist_rows = [(m, d, k, v[0], v[1]) for (m, d, k), v in hist_batch.items()]
     try:
         with _conn_lock:
             conn = get_conn()
@@ -195,6 +226,13 @@ def flush() -> None:
                     packets = packets + excluded.packets,
                     bytes   = bytes   + excluded.bytes
             """, rows)
+            conn.executemany("""
+                INSERT INTO history (minute, dim, key, packets, bytes)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(minute, dim, key) DO UPDATE SET
+                    packets = packets + excluded.packets,
+                    bytes   = bytes   + excluded.bytes
+            """, hist_rows)
             conn.commit()
     except sqlite3.Error as exc:
         logger.error("flush failed: %s", exc)
@@ -264,6 +302,38 @@ def get_timeline(minutes: int = 60) -> list[dict]:
     ]
 
 
+def get_history(dim: str, key: str, minutes: int = 60) -> list[dict]:
+    """
+    EN: Per-entity history — bytes/packets per minute for one host or process.
+        Used by the per-application view and node detail panel.
+    FR: Historique par entité — octets/paquets par minute pour un hôte ou un
+        processus. Utilisé par la vue par application et le panneau de détail.
+    """
+    cutoff = (datetime.now(timezone.utc) - timedelta(minutes=minutes)).strftime("%Y-%m-%dT%H:%M")
+    with _conn_lock:
+        rows = get_conn().execute("""
+            SELECT minute, packets, bytes FROM history
+            WHERE dim = ? AND key = ? AND minute >= ?
+            ORDER BY minute ASC
+        """, (dim, key, cutoff)).fetchall()
+    return [{"minute": r[0], "packets": r[1], "bytes": r[2]} for r in rows]
+
+
+def get_top_processes(minutes: int = 60, limit: int = 50) -> list[dict]:
+    """
+    EN: Top talkers by process over the window — feeds the Apps view.
+    FR: Plus gros émetteurs par processus sur la fenêtre — alimente la vue Apps.
+    """
+    cutoff = (datetime.now(timezone.utc) - timedelta(minutes=minutes)).strftime("%Y-%m-%dT%H:%M")
+    with _conn_lock:
+        rows = get_conn().execute("""
+            SELECT key, SUM(packets), SUM(bytes) FROM history
+            WHERE dim = 'process' AND minute >= ?
+            GROUP BY key ORDER BY SUM(bytes) DESC LIMIT ?
+        """, (cutoff, limit)).fetchall()
+    return [{"process": r[0], "packets": r[1], "bytes": r[2]} for r in rows]
+
+
 def get_alerts(limit: int = 100) -> list[dict]:
     """
     EN: Most recent persisted alerts, newest first — the /alerts endpoint now
@@ -303,6 +373,7 @@ def cleanup_old_data(hours: int = 24) -> None:
             conn = get_conn()
             conn.execute("DELETE FROM traffic WHERE minute < ?", (cutoff,))
             conn.execute("DELETE FROM alerts_log WHERE ts < ?", (cutoff,))
+            conn.execute("DELETE FROM history WHERE minute < ?", (cutoff,))
             conn.commit()
     except sqlite3.Error as exc:
         logger.error("cleanup failed: %s", exc)

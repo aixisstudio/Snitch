@@ -13,13 +13,16 @@
  *     vue, panneaux) vit ici.
  */
 import { useState, useMemo } from 'react'
-import { Hexagon, Globe, Wifi, Smartphone, Monitor, Cpu, ShieldCheck, Radio, Zap, HelpCircle, AlertTriangle, Square, Play, Filter, Mic, Camera, Download, ShieldOff } from 'lucide-react'
+import { Hexagon, Globe, Wifi, Smartphone, Monitor, Cpu, ShieldCheck, Radio, Zap, HelpCircle, AlertTriangle, Square, Play, Filter, Mic, Camera, Download, ShieldOff, AppWindow } from 'lucide-react'
 import ForceGraph from './graph/ForceGraph'
 import MapView from './map/MapView'
+import AppsView from './components/AppsView'
 import Sidebar from './components/Sidebar'
 import { AlertBell, AlertPanel, AlertToasts } from './components/AlertPanel'
+import { SettingsButton, SettingsPanel } from './components/Settings'
 import Timeline from './components/Timeline'
 import Dropdown from './components/Dropdown'
+import { apiBase, authHeaders } from './api'
 import { useWebSocket } from './hooks/useWebSocket'
 import { computePrivacyScore } from './scoring/privacy'
 // EN: WS URL is resolved dynamically (port + ws/wss) via api.js wsBase().
@@ -32,7 +35,9 @@ export default function App() {
   const [selected, setSelected] = useState(null)
   const [view, setView] = useState('graph')
   const [showAlerts, setShowAlerts] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
   const [filter, setFilter] = useState({ text: '', category: 'all' })
+  const { lang, setLang } = useT()
 
   // EN: Node ids that currently have at least one alert — drives the red glow.
   // FR: Ids des nœuds ayant au moins une alerte — pilote le halo rouge.
@@ -90,6 +95,17 @@ export default function App() {
     setSelected(null)
   }
 
+  // EN: Persisted "ignore this host/type" — POST /alerts/ignore.
+  // FR: « Ignorer cet hôte/ce type » persisté — POST /alerts/ignore.
+  async function handleIgnoreAlert(alert) {
+    const base = await apiBase()
+    await fetch(`${base}/alerts/ignore`, {
+      method: 'POST',
+      headers: await authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ type: alert.type, ip: alert.details?.ip }),
+    })
+  }
+
   return (
     <div style={{ display: 'flex', height: '100vh', width: '100vw', overflow: 'hidden' }}>
       <Sidebar
@@ -120,6 +136,7 @@ export default function App() {
           {view === 'map' && (
             <MapView nodes={filteredNodes} onNodeClick={setSelected} />
           )}
+          {view === 'apps' && <AppsView nodes={filteredNodes} />}
 
           {/* EN: Top-right toolbar / FR: Barre d'outils en haut à droite */}
           <div style={{
@@ -135,11 +152,16 @@ export default function App() {
             <IPWhitelist ips={whitelistedIps} onUpdate={updateIpWhitelist} />
             <CaptureToggle capturing={capturing} onToggle={toggleCapture} />
             <AlertBell unread={unread} onClick={handleBell} />
+            <SettingsButton onClick={() => setShowSettings(v => !v)} />
             <StatusBadge status={status} lanCount={Object.keys(lanDevices).length} />
           </div>
 
           {showAlerts && (
-            <AlertPanel alerts={alerts} onClose={() => setShowAlerts(false)} />
+            <AlertPanel alerts={alerts} onClose={() => setShowAlerts(false)} onIgnore={handleIgnoreAlert} />
+          )}
+
+          {showSettings && (
+            <SettingsPanel onClose={() => setShowSettings(false)} lang={lang} setLang={setLang} />
           )}
 
           {/* EN: Floating toasts for warning/critical alerts.
@@ -253,6 +275,11 @@ function ExportButton({ nodes, edges, lanDevices, alerts }) {
 /** EN: Red badge shown while a process holds the mic or camera.
  *  FR: Badge rouge affiché quand un processus utilise le micro ou la caméra. */
 function MediaBadge({ media }) {
+  // EN: supported === false means the platform has no backend (macOS) —
+  //     hide the badge entirely rather than lie with empty lists.
+  // FR: supported === false signifie que la plateforme n'a pas de backend
+  //     (macOS) — masquer le badge plutôt que de mentir avec des listes vides.
+  if (media.supported === false) return null
   const micActive = media.mic.length > 0
   const camActive = media.camera.length > 0
   if (!micActive && !camActive) return null
@@ -650,8 +677,9 @@ function LangToggle() {
 function ViewToggle({ view, onChange }) {
   const { t } = useT()
   const items = [
-    { id: 'graph', Icon: Hexagon, label: t('nav_graph') },
-    { id: 'map',   Icon: Globe,   label: t('nav_map')   },
+    { id: 'graph', Icon: Hexagon,   label: t('nav_graph') },
+    { id: 'map',   Icon: Globe,     label: t('nav_map')   },
+    { id: 'apps',  Icon: AppWindow, label: t('nav_apps')  },
   ]
   return (
     <div style={{

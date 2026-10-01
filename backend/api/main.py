@@ -67,6 +67,7 @@ import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Optional
 
 from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -146,6 +147,20 @@ class SettingsBody(BaseModel):
     """EN: /settings payload — generic key/value settings persisted to SQLite.
     FR: Charge utile de /settings — réglages clé/valeur persistés dans SQLite."""
     settings: dict = Field(default_factory=dict)
+
+
+class IgnoreBody(BaseModel):
+    """EN: /alerts/ignore payload — suppress a host, a type, or both.
+    FR: Charge utile de /alerts/ignore — supprimer un hôte, un type, ou les deux."""
+    type: Optional[str] = None
+    ip: Optional[str] = None
+
+
+class GeoDownloadBody(BaseModel):
+    """EN: /geo/download payload — explicit consent is REQUIRED, this is the
+    only outbound call in the whole app. / FR: Charge utile de /geo/download —
+    consentement explicite OBLIGATOIRE, c'est le seul appel sortant de l'app."""
+    consent: bool = False
 
 
 # ── Broadcast / Diffusion ────────────────────────────────────────────────────
@@ -396,8 +411,13 @@ def _process_batch(packets: list[Packet]) -> None:
         edge["bytes"] += pkt.size
         edge["packets"] += 1
 
-        db.accumulate(datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M"),
-                      category.category, pkt.size)
+        minute = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M")
+        db.accumulate(minute, category.category, pkt.size)
+        # EN: Per-entity history — feeds the per-host and per-app views.
+        # FR: Historique par entité — alimente les vues par hôte et par app.
+        db.accumulate_history(minute, "host", remote_ip, pkt.size)
+        if pkt.process_name:
+            db.accumulate_history(minute, "process", pkt.process_name, pkt.size)
 
         # EN: Detection runs in the event loop — analyze_packet is
         #     lock-guarded internally, no executor hop needed.
@@ -587,7 +607,8 @@ def _start_capture() -> None:
     """EN: (Re)start sniffer + ARP-table scanner in daemon threads.
     FR: (Re)démarrer sniffer + scanner de table ARP dans des threads daemon."""
     global _sniffer, _scanner, _capturing
-    _sniffer = PacketSniffer(callback=on_packet, ports=_port_filter)
+    _sniffer = PacketSniffer(callback=on_packet, ports=_port_filter,
+                             iface=db.get_setting("interface"))
     threading.Thread(target=_sniffer.start, daemon=True).start()
     _scanner = ARPScanner(callback=on_device, interval=30)
     threading.Thread(target=_scanner.start, daemon=True).start()
@@ -617,6 +638,7 @@ def _load_settings() -> None:
     _port_filter = db.get_setting("ports", []) or []
     _excluded_processes = set(db.get_setting("excluded_processes", []) or [])
     _whitelisted_ips = set(db.get_setting("whitelisted_ips", []) or [])
+    detector.load_suppressions(db.get_setting("suppressions", []) or [])
     if _port_filter:
         logger.info("restored port filter: %s", _port_filter)
 
@@ -898,6 +920,185 @@ async def get_timeline(minutes: int = 60) -> dict:
     loop = asyncio.get_running_loop()
     data = await loop.run_in_executor(None, db.get_timeline, minutes)
     return {"timeline": data}
+
+
+# ── Alert suppression / Suppression d'alertes ────────────────────────────────
+
+@app.post("/alerts/ignore", dependencies=_AUTH)
+async def ignore_alert(body: IgnoreBody) -> dict:
+    """
+    EN: Persisted "ignore this host / this type" — the rule is stored in the
+        settings table AND pushed live into the detector so it takes effect
+        immediately.
+    FR: « Ignorer cet hôte / ce type » persisté — la règle est stockée dans
+        settings ET poussée au détecteur pour prise d'effet immédiate.
+    """
+    suppressions = db.get_setting("suppressions", []) or []
+    entry = {"type": body.type, "ip": body.ip}
+    if entry not in suppressions and (body.type or body.ip):
+        suppressions.append(entry)
+        db.set_setting("suppressions", suppressions)
+        detector.load_suppressions(suppressions)
+    return {"suppressions": suppressions}
+
+
+@app.get("/alerts/ignore", dependencies=_AUTH)
+async def list_ignored() -> dict:
+    """EN: List active suppression rules.
+    FR: Lister les règles de suppression actives."""
+    return {"suppressions": db.get_setting("suppressions", []) or []}
+
+
+@app.delete("/alerts/ignore", dependencies=_AUTH)
+async def unignore_alert(body: IgnoreBody) -> dict:
+    """EN: Remove a suppression rule — {type, ip} must match exactly.
+    FR: Retirer une règle de suppression — {type, ip} doit correspondre."""
+    suppressions = db.get_setting("suppressions", []) or []
+    entry = {"type": body.type, "ip": body.ip}
+    suppressions = [s for s in suppressions if s != entry]
+    db.set_setting("suppressions", suppressions)
+    detector.load_suppressions(suppressions)
+    return {"suppressions": suppressions}
+
+
+# ── History / Historique ─────────────────────────────────────────────────────
+
+@app.get("/history/host/{ip}", dependencies=_AUTH)
+async def get_host_history(ip: str, minutes: int = 60) -> dict:
+    """EN: Per-host byte/packet history. / FR: Historique par hôte."""
+    loop = asyncio.get_running_loop()
+    return {"history": await loop.run_in_executor(
+        None, db.get_history, "host", ip, minutes)}
+
+
+@app.get("/history/process/{name}", dependencies=_AUTH)
+async def get_process_history(name: str, minutes: int = 60) -> dict:
+    """EN: Per-process byte/packet history. / FR: Historique par processus."""
+    loop = asyncio.get_running_loop()
+    return {"history": await loop.run_in_executor(
+        None, db.get_history, "process", name, minutes)}
+
+
+@app.get("/history/top_processes", dependencies=_AUTH)
+async def get_top_processes(minutes: int = 60) -> dict:
+    """EN: Top talkers by process — the Apps view data source.
+    FR: Plus gros émetteurs par processus — la source de la vue Apps."""
+    loop = asyncio.get_running_loop()
+    return {"processes": await loop.run_in_executor(
+        None, db.get_top_processes, minutes)}
+
+
+# ── Diagnostics / Diagnostic ────────────────────────────────────────────────
+
+@app.get("/diagnostics", dependencies=_AUTH)
+async def get_diagnostics() -> dict:
+    """
+    EN: Sanitized support bundle: versions, capture status, settings, last
+        200 log lines, DB sizes. IPs/hostnames stay local — this is served
+        only to the authenticated local user.
+    FR: Paquet de support assaini : versions, état de capture, réglages, 200
+        dernières lignes de log, tailles de la BDD. Les IP/noms d'hôtes
+        restent locaux — servi uniquement à l'utilisateur local authentifié.
+    """
+    import platform
+    from paths import data_dir
+
+    log_tail = []
+    log_file = data_dir() / "logs" / "snitch.log"
+    try:
+        if log_file.exists():
+            log_tail = log_file.read_text(errors="replace").splitlines()[-200:]
+    except OSError as exc:
+        log_tail = [f"<log read failed: {exc}>"]
+
+    db_file = data_dir() / "snitch.db"
+    return {
+        "version": "1.1.0",
+        "python": platform.python_version(),
+        "platform": platform.platform(),
+        "capture": {
+            "capturing": _capturing,
+            "interface": db.get_setting("interface"),
+            "ports": _port_filter,
+        },
+        "settings": db.all_settings(),
+        "counts": {"nodes": len(nodes), "edges": len(edges),
+                   "lan_devices": len(lan_devices),
+                   "alerts_memory": len(detector.history)},
+        "db_bytes": db_file.stat().st_size if db_file.exists() else 0,
+        "log_tail": log_tail,
+    }
+
+
+# ── GeoIP database download (consent-gated) / Téléchargement base GeoIP ─────
+
+def _download_dbip() -> dict:
+    """
+    EN: Download DB-IP Lite City + ASN into <data_dir>/geo/. This is the ONE
+        opt-in outbound call in the entire app — reached only via an explicit
+        user action and the `consent` flag. HTTPS, 60 s timeout, gzip decompress.
+    FR: Télécharger DB-IP Lite City + ASN dans <data_dir>/geo/. C'est le SEUL
+        appel sortant opt-in de toute l'app — atteint uniquement via une
+        action explicite et le drapeau `consent`. HTTPS, timeout 60 s,
+        décompression gzip.
+    """
+    import gzip
+    import urllib.request
+    from paths import data_dir
+    import resolver.dns_geo as dg
+
+    month = datetime.now(timezone.utc).strftime("%Y-%m")
+    files = {
+        f"dbip-city-lite-{month}.mmdb.gz": "dbip-city-lite.mmdb",
+        f"dbip-asn-lite-{month}.mmdb.gz":  "dbip-asn-lite.mmdb",
+    }
+    geo_dir = data_dir() / "geo"
+    geo_dir.mkdir(parents=True, exist_ok=True)
+
+    downloaded = []
+    errors = []
+    for remote, local in files.items():
+        url = f"https://download.db-ip.com/free/{remote}"
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "Snitch/1.1"})
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                data = gzip.decompress(resp.read())
+            (geo_dir / local).write_bytes(data)
+            downloaded.append(local)
+        except Exception as exc:
+            errors.append(f"{local}: {exc}")
+            logger.error("geo download failed for %s: %s", url, exc)
+
+    # EN: Force reader reload on next lookup.
+    # FR: Forcer le rechargement des lecteurs à la prochaine recherche.
+    dg.reset_readers()
+    return {"downloaded": downloaded, "errors": errors, "dir": str(geo_dir)}
+
+
+@app.post("/geo/download", dependencies=_AUTH)
+async def geo_download(body: GeoDownloadBody) -> dict:
+    """
+    EN: Consent-gated GeoIP DB download. Without consent=true the endpoint
+        refuses — the default state of Snitch makes ZERO outbound calls.
+    FR: Téléchargement de base GeoIP sous consentement. Sans consent=true le
+        endpoint refuse — l'état par défaut de Snitch n'émet AUCUN appel
+        sortant.
+    """
+    if not body.consent:
+        return {"ok": False, "reason": "consent_required"}
+    loop = asyncio.get_running_loop()
+    result = await loop.run_in_executor(None, _download_dbip)
+    result["ok"] = not result["errors"]
+    return result
+
+
+@app.get("/geo/status", dependencies=_AUTH)
+async def geo_status() -> dict:
+    """EN: Which .mmdb files are present. / FR: Quels .mmdb sont présents."""
+    from paths import data_dir
+    geo_dir = data_dir() / "geo"
+    present = sorted(p.name for p in geo_dir.glob("*.mmdb")) if geo_dir.exists() else []
+    return {"databases": present, "dir": str(geo_dir)}
 
 
 # ── WebSocket ────────────────────────────────────────────────────────────────

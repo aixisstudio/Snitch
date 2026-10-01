@@ -65,6 +65,7 @@ export function useWebSocket(url) {
     let stopped = false
     let attempts = 0
     let timer = null
+    let heartbeat = null  // EN: 20 s app-level keepalive / FR: keepalive applicatif de 20 s
 
     async function connect() {
       // EN: Resolve the token BEFORE opening the socket.
@@ -77,8 +78,16 @@ export function useWebSocket(url) {
       ws.current.onopen = () => {
         attempts = 0
         setStatus('connected')
+        // EN: send a cheap JSON ping every 20 s so idle sockets aren't dropped
+        //     by proxies or OS timeouts (the backend just ignores them).
+        // FR: envoyer un ping JSON toutes les 20 s pour que les sockets inactifs
+        //     ne soient pas coupés par les proxies ou les timeouts OS.
+        heartbeat = setInterval(() => {
+          if (ws.current?.readyState === WebSocket.OPEN) ws.current.send('{}')
+        }, 20000)
       }
       ws.current.onclose = () => {
+        clearInterval(heartbeat)
         if (stopped) return
         setStatus('disconnected')
         // EN: Exponential backoff — 1s, 2s, 4s … max 30s.
@@ -249,6 +258,7 @@ export function useWebSocket(url) {
       // FR: Arrêter les reconnexions et libérer le timer en attente au démontage.
       stopped = true
       if (timer) clearTimeout(timer)
+      clearInterval(heartbeat)
       ws.current?.close()
     }
   }, [url])

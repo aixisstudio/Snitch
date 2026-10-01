@@ -65,11 +65,31 @@ export function AlertBell({ unread, onClick }) {
   )
 }
 
-export function AlertPanel({ alerts, onClose }) {
+export function AlertPanel({ alerts, onClose, onIgnore }) {
   const { t } = useT()
   const warningCount  = alerts.filter(a => a.severity === 'warning').length
   const criticalCount = alerts.filter(a => a.severity === 'critical').length
   const infoCount     = alerts.filter(a => a.severity === 'info').length
+
+  // EN: NEW_HOST alerts are collapsed into ONE synthetic row ("N new hosts")
+  //     — they flood the list otherwise. All other types stay individual.
+  // FR: Les alertes NEW_HOST sont réduites en UNE ligne synthétique
+  //     (« N nouveaux hôtes ») — elles noient la liste sinon. Les autres
+  //     types restent individuels.
+  const newHostAlerts = alerts.filter(a => a.type === 'NEW_HOST')
+  const otherAlerts   = alerts.filter(a => a.type !== 'NEW_HOST')
+  const rows = [...otherAlerts]
+  if (newHostAlerts.length > 0) {
+    rows.unshift({
+      id: 'new-hosts-group',
+      type: 'NEW_HOST',
+      severity: 'info',
+      timestamp: newHostAlerts[0].timestamp,
+      details: { count: newHostAlerts.length, hosts: newHostAlerts.map(a => a.details?.ip || a.message).slice(0, 20) },
+      _grouped: true,
+    })
+  }
+  rows.sort((a, b) => new Date(b.timestamp + 'Z') - new Date(a.timestamp + 'Z'))
 
   return (
     <div style={{
@@ -87,7 +107,7 @@ export function AlertPanel({ alerts, onClose }) {
       }}>
         <div>
           <span style={{ fontWeight: 700, fontSize: 13, color: '#f1f5f9' }}>{t('alerts_title')}</span>
-          <span style={{ fontSize: 11, color: '#64748b', marginLeft: 8 }}>{alerts.length} {t('alerts_total')}</span>
+          <span style={{ fontSize: 11, color: '#64748b', marginLeft: 8 }}>{rows.length} {t('alerts_total')}</span>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           {criticalCount > 0 && <Badge count={criticalCount} color="#ef4444" />}
@@ -100,12 +120,12 @@ export function AlertPanel({ alerts, onClose }) {
       </div>
 
       <div style={{ overflowY: 'auto', flex: 1 }}>
-        {alerts.length === 0 && (
+        {rows.length === 0 && (
           <div style={{ padding: 32, textAlign: 'center', color: '#64748b', fontSize: 12 }}>
             {t('alerts_empty')}
           </div>
         )}
-        {alerts.map(alert => <AlertRow key={alert.id} alert={alert} />)}
+        {rows.map(alert => <AlertRow key={alert.id} alert={alert} onIgnore={onIgnore} />)}
       </div>
     </div>
   )
@@ -122,12 +142,13 @@ export function AlertPanel({ alerts, onClose }) {
  *     anglais du backend si aucune clé n'existe.
  */
 function alertMessage(t, alert) {
+  if (alert._grouped) return t('alertmsg_NEW_HOSTS', alert.details.count)
   const key = `alertmsg_${alert.type}`
   const translated = t(key, alert.details || {})
   return translated !== key ? translated : alert.message
 }
 
-function AlertRow({ alert }) {
+function AlertRow({ alert, onIgnore }) {
   const { t } = useT()
   const sev      = SEVERITY_STYLES[alert.severity] || SEVERITY_STYLES.info
   const TypeIcon = TYPE_ICONS[alert.type] || Info
@@ -154,8 +175,17 @@ function AlertRow({ alert }) {
             <div style={{ fontSize: 11, color: '#e2e8f0', lineHeight: 1.4 }}>{alertMessage(t, alert)}</div>
             {alert.details && Object.keys(alert.details).length > 0 && (
               <div style={{ marginTop: 3, fontSize: 9, color: '#64748b', fontFamily: 'monospace' }}>
-                {Object.entries(alert.details).filter(([, v]) => v).map(([k, v]) => `${k}: ${v}`).join(' · ')}
+                {Object.entries(alert.details).filter(([, v]) => v).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`).join(' · ')}
               </div>
+            )}
+            {!alert._grouped && onIgnore && (
+              <button onClick={() => onIgnore(alert)} style={{
+                marginTop: 5, background: 'none', border: '1px solid #334155',
+                borderRadius: 4, padding: '2px 8px', fontSize: 9,
+                color: '#64748b', cursor: 'pointer',
+              }}>
+                {t('ignore_alert')}
+              </button>
             )}
           </div>
         </div>

@@ -105,6 +105,12 @@ const API_TOKEN = crypto.randomBytes(24).toString('hex')
 ipcMain.handle('snitch:get-token',   () => API_TOKEN)
 ipcMain.handle('snitch:get-port',    () => backendPort)
 ipcMain.handle('snitch:get-version', () => app.getVersion())
+// EN: "Open logs" — opens the platform log dir in the file manager. Returns
+//     a non-empty error string on failure (shell.openPath contract).
+// FR: « Ouvrir les logs » — ouvre le dossier de logs dans le gestionnaire de
+//     fichiers. Renvoie une chaîne d'erreur non vide en cas d'échec
+//     (contrat de shell.openPath).
+ipcMain.handle('snitch:open-logs', () => shell.openPath(logDir))
 
 /**
  * EN: Find a free loopback port by binding :0 and releasing — the backend

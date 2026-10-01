@@ -30,4 +30,9 @@ contextBridge.exposeInMainWorld('snitch', {
   // EN: Async — real app version (package.json via app.getVersion()).
   // FR: Asynchrone — vraie version de l'app (package.json via app.getVersion()).
   getVersion: () => ipcRenderer.invoke('snitch:get-version'),
+  // EN: Async — asks the main process to open the log directory in the OS
+  //     file manager (shell.openPath — cross-platform, no shelling out).
+  // FR: Asynchrone — demande au processus principal d'ouvrir le dossier des
+  //     logs dans le gestionnaire de fichiers (shell.openPath — multi-OS).
+  openLogs:   () => ipcRenderer.invoke('snitch:open-logs'),
 })

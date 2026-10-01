@@ -51,10 +51,14 @@ The entire interface is available in **English and French**: use the `EN / FR` t
 - **API token** — every REST endpoint and the WebSocket require a token. Electron generates it per launch; in Docker/browser it's printed once in the backend logs and stored in `data/api_token.txt`. Open the UI with `http://localhost:8000/?token=<TOKEN>` (or enter it when prompted).
 - **Loopback-only by default** — the API binds `127.0.0.1` in every mode. Set `SNITCH_BIND=0.0.0.0` only if you explicitly want LAN access (token auth still applies).
 - **CORS/WebSocket origin allowlist** — only `localhost:5173`, the backend's own origin and Electron `file://` pages may connect.
-- **Geolocation is offline-only** — there is *no* online lookup. Drop `dbip-city-lite.mmdb` + `dbip-asn-lite.mmdb` ([DB-IP Lite](https://db-ip.com/db/lite.php), CC BY 4.0) or `GeoLite2-City.mmdb`/`GeoLite2-ASN.mmdb` (MaxMind) into `<data_dir>/geo/` for local lookups. Without a DB, IPs simply show no geo — nothing is ever sent to a third party.
-- **All data stays local** — `snitch.db` (24 h sliding window, configurable via `retention_hours` setting) and `data/logs/snitch.log` never leave the machine. No telemetry, no outbound calls.
-- **Settings persist** — port filters, excluded processes and the IP whitelist are stored in SQLite and restored on restart.
+- **Geolocation is offline-only** — there is *no* online lookup. Drop `dbip-city-lite.mmdb` + `dbip-asn-lite.mmdb` ([DB-IP Lite](https://db-ip.com/db/lite.php), CC BY 4.0) or `GeoLite2-City.mmdb`/`GeoLite2-ASN.mmdb` (MaxMind) into `<data_dir>/geo/` for local lookups — or download DB-IP Lite from the Settings panel (explicit consent, the only possible outbound call). Without a DB, IPs simply show no geo.
+- **All data stays local** — `snitch.db` (24 h sliding window, configurable via `retention_hours` setting) and `data/logs/snitch.log` never leave the machine. No telemetry. The **only** possible outbound call is the opt-in DB-IP Lite download (Settings → "Download DB-IP Lite"), which requires an explicit click.
+- **Settings persist** — port filters, excluded processes, the IP whitelist, language and retention are stored in SQLite and restored on restart.
+- **Alert suppression** — each alert has an "Ignore this type/host" action; suppression rules are persisted (`alert_suppressions` table), applied before alerts are emitted or logged, and survivable across restarts via `POST /alerts/ignore` / `DELETE /alerts/ignore` / `GET /alerts/ignore`.
+- **History** — per-minute per-host and per-process byte/packet aggregates are kept in SQLite (`host_history`, `process_history`) for the retention window, powering the per-application view and `GET /history/host/{ip}` / `GET /history/process/{name}`.
+- **Diagnostics** — `GET /diagnostics` returns a JSON snapshot of the runtime (capture state, geo DB status, interface, versions, paths) with no secrets; the Settings panel can export it or open the log directory (Electron).
 - **LAN devices** are discovered passively from the system ARP table — no active broadcast scanning.
+- See [docs/threat-model.md](docs/threat-model.md) for the full threat model.
 
 ### Docker (Linux)
 
@@ -185,10 +189,14 @@ Toute l'interface est disponible en **français et en anglais** : utilisez le s�
 - **Jeton API** — chaque endpoint REST et le WebSocket exigent un jeton. Electron le génère à chaque lancement ; sous Docker/navigateur il est affiché une fois dans les logs du backend et stocké dans `data/api_token.txt`. Ouvrez l'UI via `http://localhost:8000/?token=<JETON>` (ou saisissez-le à l'invite).
 - **Loopback uniquement par défaut** — l'API écoute sur `127.0.0.1` dans tous les modes. Ne mettez `SNITCH_BIND=0.0.0.0` que pour un accès LAN explicite (le jeton reste exigé).
 - **Liste blanche CORS/Origin WebSocket** — seuls `localhost:5173`, l'origine propre du backend et les pages `file://` d'Electron peuvent se connecter.
-- **Géolocalisation 100 % hors ligne** — il n'y a *aucune* recherche en ligne. Déposez `dbip-city-lite.mmdb` + `dbip-asn-lite.mmdb` ([DB-IP Lite](https://db-ip.com/db/lite.php), CC BY 4.0) ou `GeoLite2-City.mmdb`/`GeoLite2-ASN.mmdb` (MaxMind) dans `<data_dir>/geo/`. Sans base, les IP n'ont simplement pas de géo — rien n'est jamais envoyé à un tiers.
-- **Toutes les données restent locales** — `snitch.db` (fenêtre glissante de 24 h, configurable via le réglage `retention_hours`) et `data/logs/snitch.log` ne quittent jamais la machine. Pas de télémétrie, aucun appel sortant.
-- **Réglages persistés** — filtres de ports, processus exclus et whitelist IP sont stockés dans SQLite et restaurés au redémarrage.
+- **Géolocalisation 100 % hors ligne** — il n'y a *aucune* recherche en ligne. Déposez `dbip-city-lite.mmdb` + `dbip-asn-lite.mmdb` ([DB-IP Lite](https://db-ip.com/db/lite.php), CC BY 4.0) ou `GeoLite2-City.mmdb`/`GeoLite2-ASN.mmdb` (MaxMind) dans `<data_dir>/geo/` — ou téléchargez DB-IP Lite depuis le panneau Réglages (consentement explicite, seul appel sortant possible). Sans base, les IP n'ont simplement pas de géo.
+- **Toutes les données restent locales** — `snitch.db` (fenêtre glissante de 24 h, configurable via le réglage `retention_hours`) et `data/logs/snitch.log` ne quittent jamais la machine. Pas de télémétrie. Le **seul** appel sortant possible est le téléchargement opt-in de DB-IP Lite (Réglages → « Télécharger DB-IP Lite »), qui exige un clic explicite.
+- **Réglages persistés** — filtres de ports, processus exclus, whitelist IP, langue et rétention sont stockés dans SQLite et restaurés au redémarrage.
+- **Suppression d'alertes** — chaque alerte offre « Ignorer ce type/cet hôte » ; les règles sont persistées (`alert_suppressions`), appliquées avant émission, et gérables via `POST /alerts/ignore`, `DELETE /alerts/ignore`, `GET /alerts/ignore`.
+- **Historique** — les agrégats octets/paquets par minute, par hôte et par processus sont conservés dans SQLite (`host_history`, `process_history`) sur la fenêtre de rétention, et alimentent la vue par application ainsi que `GET /history/host/{ip}` et `GET /history/process/{nom}`.
+- **Diagnostic** — `GET /diagnostics` renvoie un instantané JSON du runtime (état de capture, géo, interface, versions, chemins) sans secrets ; le panneau Réglages peut l'exporter ou ouvrir le dossier des logs (Electron).
 - **Appareils LAN** découverts passivement via la table ARP système — aucun scan broadcast actif.
+- Voir [docs/threat-model.md](docs/threat-model.md) pour le modèle de menace complet.
 
 ### Docker (Linux)
 

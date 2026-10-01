@@ -164,6 +164,21 @@ def resolve_hostname(ip: str) -> Optional[str]:
 
 # ── Geolocation / Géolocalisation ────────────────────────────────────────────
 
+def reset_readers() -> None:
+    """EN: Drop open .mmdb readers so a newly downloaded DB is picked up.
+    FR: Refermer les lecteurs .mmdb pour prendre en compte une base fraîche."""
+    global _readers
+    with _readers_lock:
+        for r in _readers.values():
+            try:
+                if r is not None:
+                    r.close()
+            except Exception:
+                pass
+        _readers = {}
+    resolve_geo.cache_clear()
+
+
 def _get_reader(kind: str):
     """
     EN: Lazy-open one .mmdb reader ('city' or 'asn'). Prefers DB-IP Lite

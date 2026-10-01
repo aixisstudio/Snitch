@@ -381,12 +381,16 @@ def parse_tls_sni(payload: bytes) -> Optional[str]:
         if len(body) < 34:
             return None
         off = 2 + 32                         # EN: version + random / FR: version + aléa
-        sid_len = body[off]; off += 1 + sid_len
-        cs_len = struct.unpack("!H", body[off:off + 2])[0]; off += 2 + cs_len
-        cm_len = body[off]; off += 1 + cm_len
+        sid_len = body[off]
+        off += 1 + sid_len
+        cs_len = struct.unpack("!H", body[off:off + 2])[0]
+        off += 2 + cs_len
+        cm_len = body[off]
+        off += 1 + cm_len
         if off + 2 > len(body):
             return None
-        ext_total = struct.unpack("!H", body[off:off + 2])[0]; off += 2
+        ext_total = struct.unpack("!H", body[off:off + 2])[0]
+        off += 2
         ext_end = min(off + ext_total, len(body))
 
         while off + 4 <= ext_end:
