@@ -33,7 +33,8 @@ a = Analysis(
     #     app finds them — _list_dir() resolves via sys._MEIPASS.
     # FR: Embarquer classifier/lists/ (listes trackers + CDN) pour que l'app
     #     figée les trouve — _list_dir() résout via sys._MEIPASS.
-    datas=[('classifier/lists', 'classifier/lists')],
+    datas=[('classifier/lists', 'classifier/lists'),
+           ('scanner/oui_table.txt.gz', 'scanner')],
     hiddenimports=(
         # ── uvicorn internals / éléments internes d'uvicorn ─────────────
         collect_submodules('uvicorn')

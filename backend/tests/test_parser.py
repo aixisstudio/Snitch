@@ -16,7 +16,7 @@ import struct
 
 from capture.parser import (
     DLT_EN10MB, DLT_LINUX_SLL, DLT_LINUX_SLL2, DLT_NULL, DLT_RAW,
-    parse_frame, parse_dns, parse_tls_sni,
+    parse_frame, parse_dns, parse_mdns, parse_tls_sni,
 )
 
 ETH = DLT_EN10MB
@@ -223,3 +223,70 @@ def test_dns_malformed():
 def test_sni_garbage():
     assert parse_tls_sni(b"\x16\x03\x01") is None
     assert parse_tls_sni(b"GET / HTTP/1.1\r\n\r\n") is None
+
+
+# ── mDNS / mDNS ──────────────────────────────────────────────────────────────
+
+def mdns_frame(hostname: str, ip: bytes, section: str = "answer") -> bytes:
+    """
+    EN: Minimal mDNS message carrying "<hostname>.local → <ip>" — the A
+        record can sit in the ANSWER or ADDITIONAL section (real devices put
+        it in additional, e.g. under a PTR service answer).
+    FR: Message mDNS minimal portant « <hostname>.local → <ip> » — le record
+        A peut siéger dans la section ANSWER ou ADDITIONNELLE (les vrais
+        appareils le mettent en additional, ex. sous une réponse PTR).
+    """
+    def name_to_wire(n: str) -> bytes:
+        out = b""
+        for label in n.split("."):
+            out += bytes([len(label)]) + label.encode()
+        return out + b"\x00"
+
+    a_rec = name_to_wire(f"{hostname}.local") + struct.pack("!HHIH", 1, 1, 120, 4) + ip
+    an, ar = (1, 0) if section == "answer" else (0, 1)
+    # EN: when the A lives in ADDITIONAL, the answer section holds a dummy
+    #     PTR record (name "ptr.local" → target "ptr.local") to stay realistic.
+    # FR: quand le A vit en ADDITIONNELLE, la section réponses tient un
+    #     enregistrement PTR factice (« ptr.local » → « ptr.local ») pour
+    #     rester réaliste.
+    answers = b"" if ar else a_rec
+    if ar:
+        ptr_name = name_to_wire("ptr.local")
+        answers = ptr_name + struct.pack("!HHIH", 12, 1, 120, len(ptr_name)) + ptr_name
+        an = 1
+    hdr = struct.pack("!HHHHHH", 0, 0x8400, 0, an, 0, ar)
+    return hdr + answers + (a_rec if ar else b"")
+
+
+def test_mdns_answer_section():
+    """EN: A record in ANSWER. / FR: Enregistrement A en ANSWER."""
+    res = parse_mdns(mdns_frame("iPhone-de-Lisa", b"\xc0\xa8\x01\xc6", "answer"))
+    assert res == [("iPhone-de-Lisa.local", "192.168.1.198", 120)]
+
+
+def test_mdns_additional_section():
+    """EN: A record in ADDITIONAL under a PTR answer — the common real case.
+    FR: Enregistrement A en ADDITIONNELLE sous une réponse PTR — le cas réel
+    le plus courant."""
+    res = parse_mdns(mdns_frame("MacBook-Pro", b"\xc0\xa8\x01\x2a", "additional"))
+    assert res == [("MacBook-Pro.local", "192.168.1.42", 120)]
+
+
+def test_mdns_udp_5353_flows_through_parser():
+    """EN: A real UDP/5353 frame exposes dns tuples; port 53 still works and
+        other ports stay empty.
+    FR: Une vraie trame UDP/5353 expose des tuples dns ; le port 53 marche
+        toujours et les autres ports restent vides."""
+    mdns = mdns_frame("Nest-Mini", b"\xc0\xa8\x01\x63")
+    ip = ipv4(b"\xc0\xa8\x01\x63", b"\xe0\x00\x00\xfb", 17, udp(5353, 5353, mdns))
+    p = parse_frame(ETH, eth(ip))
+    assert p is not None and p.dns == [("Nest-Mini.local", "192.168.1.99", 120)]
+
+    plain = ipv4(b"\x0a\x00\x00\x01", b"\x5d\xb8\xd8\x22", 17, udp(5354, 8080, mdns))
+    p2 = parse_frame(ETH, eth(plain))
+    assert p2 is not None and p2.dns == []
+
+
+def test_mdns_malformed():
+    assert parse_mdns(b"\x00") == []
+    assert parse_mdns(b"\x00" * 12) == []

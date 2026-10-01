@@ -42,7 +42,7 @@ from typing import Callable, Optional
 
 import psutil
 
-from scanner.oui import lookup, DEVICE_TYPE_COLORS
+from scanner.oui import lookup, is_local_mac, DEVICE_TYPE_COLORS
 
 logger = logging.getLogger("snitch.scanner")
 
@@ -63,6 +63,10 @@ class Device:
     vendor: str = ""
     device_type: str = "unknown"        # phone / pc / router / iot / tv / unknown
     hostname: Optional[str] = None
+    is_gateway: bool = False            # EN: this device IS the internet box
+                                       # FR: cet appareil EST la box internet
+    private_mac: bool = False           # EN: randomized/locally-administered MAC
+                                       # FR: MAC aléatoire/administrée localement
     online: bool = True
     first_seen: float = field(default_factory=time.time)
     last_seen: float = field(default_factory=time.time)
@@ -81,6 +85,8 @@ class Device:
             "vendor": self.vendor,
             "category": "lan_device",
             "device_type": self.device_type,
+            "is_gateway": self.is_gateway,
+            "private_mac": self.private_mac,
             "online": self.online,
             "bytes": self.bytes,
             "packets": self.packets,
@@ -164,6 +170,48 @@ def _resolve_hostname(ip: str) -> Optional[str]:
         return None
 
 
+def default_gateway() -> Optional[str]:
+    """
+    EN: The IPv4 default gateway — i.e. the user's internet box/router.
+        Per-OS readers: /proc/net/route on Linux, `route -n get default` on
+        macOS, `route print -4` on Windows. None when undetectable.
+        Used to flag the matching LAN device as a router even when its OUI
+        is missing from both tables.
+    FR: La passerelle IPv4 par défaut — c'est-à-dire la box/routeur de
+        l'utilisateur. Lecteurs par OS : /proc/net/route sous Linux,
+        `route -n get default` sous macOS, `route print -4` sous Windows.
+        None si indétectable. Sert à marquer l'appareil LAN correspondant
+        comme routeur même si son OUI est absent des deux tables.
+    """
+    try:
+        if sys.platform.startswith("linux"):
+            # EN: /proc/net/route — gateway is column 3, little-endian hex,
+            #     on lines whose destination is 00000000.
+            # FR: /proc/net/route — la passerelle est en colonne 3, hex
+            #     little-endian, sur les lignes dont la destination est 00000000.
+            for line in Path("/proc/net/route").read_text().splitlines()[1:]:
+                parts = line.split()
+                if len(parts) > 2 and parts[1] == "00000000":
+                    raw = parts[2]
+                    return socket.inet_ntoa(bytes.fromhex(raw)[::-1])
+        elif sys.platform == "darwin":
+            proc = subprocess.run(["route", "-n", "get", "default"],
+                                  capture_output=True, text=True, timeout=5)
+            m = re.search(r"gateway:\s*(\S+)", proc.stdout)
+            if m:
+                return m.group(1)
+        elif sys.platform.startswith("win"):
+            proc = subprocess.run(["route", "print", "-4", "0.0.0.0"],
+                                  capture_output=True, text=True, timeout=10)
+            for line in proc.stdout.splitlines():
+                cols = line.split()
+                if len(cols) >= 3 and cols[0] == "0.0.0.0" and IPV4_RE.fullmatch(cols[2]):
+                    return cols[2]
+    except (OSError, subprocess.TimeoutExpired, ValueError) as exc:
+        logger.debug("default gateway detection failed: %s", exc)
+    return None
+
+
 class ARPScanner:
     """
     EN: Background scanner — re-reads the neighbour table every `interval`
@@ -192,6 +240,11 @@ class ARPScanner:
         local_ips = _get_local_ips()
         while self._running:
             seen_ips: set[str] = set()
+            # EN: Re-resolve the gateway each round — DHCP/roaming can change
+            #     it, and the flag must follow the real box.
+            # FR: Re-résoudre la passerelle à chaque tour — DHCP/itinérance
+            #     peuvent la changer, et le drapeau doit suivre la vraie box.
+            gateway = default_gateway()
 
             for ip, mac in _read_arp_table():
                 if ip in local_ips:
@@ -207,18 +260,37 @@ class ARPScanner:
                 is_new = ip not in self._known
                 if is_new:
                     vendor, device_type = lookup(mac)
+                    is_gateway = ip == gateway
+                    if is_gateway:
+                        # EN: The gateway IS the router — better than any OUI
+                        #     guess, and it works for unknown vendors too.
+                        # FR: La passerelle EST le routeur — plus fiable que
+                        #     tout OUI, et marche pour les fabricants inconnus.
+                        device_type = "router"
                     hostname = _resolve_hostname(ip)
                     self._known[ip] = Device(
                         ip=ip, mac=mac, vendor=vendor, device_type=device_type,
                         hostname=hostname, online=True,
+                        is_gateway=is_gateway,
+                        private_mac=is_local_mac(mac),
                         color=DEVICE_TYPE_COLORS.get(device_type, "#64748b"),
                     )
                 else:
-                    self._known[ip].last_seen = time.time()
-                    if not self._known[ip].online:
-                        self._known[ip].online = True
+                    dev = self._known[ip]
+                    dev.last_seen = time.time()
+                    if not dev.online:
+                        dev.online = True
                         is_new = True  # EN: treat reappearance as a change event
                                        # FR: traiter la réapparition comme un événement
+                    # EN: Late gateway promotion — the route may only resolve
+                    #     after the device was first seen.
+                    # FR: Promotion tardive en passerelle — la route peut ne se
+                    #     résoudre qu'après la première vue de l'appareil.
+                    if ip == gateway and not dev.is_gateway:
+                        dev.is_gateway = True
+                        dev.device_type = "router"
+                        dev.color = DEVICE_TYPE_COLORS["router"]
+                        is_new = True
                 self.callback(self._known[ip], is_new)
 
             # EN: Mark disappeared devices as offline.

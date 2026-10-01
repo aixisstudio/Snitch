@@ -2,18 +2,45 @@
 Snitch — OUI lookup table.
 
 EN: Maps the first 6 hex chars of a MAC address (the Organizationally Unique
-    Identifier) to a (vendor, device_type) pair. This is a partial,
-    hand-picked table covering the most common home-network devices — extend
-    it freely.
+    Identifier) to a (vendor, device_type) pair.
+
+    Two layers:
+      1. OUI_TABLE — hand-picked prefixes that also carry a device_type guess
+         (home routers, phones, TVs, IoT). These always win.
+      2. oui_table.txt.gz — the full IEEE MA-L registry (~40k vendors,
+         ~390 KB compressed), loaded lazily from package data. Gives a vendor
+         name for almost every real MAC; device_type stays "unknown" since
+         the registry doesn't tell you what the device IS.
+
+    Locally-administered MACs (bit 1 of the first octet set) are private/
+    randomized addresses — iOS/Android default to them. is_local_mac()
+    detects them so the UI can explain why no vendor shows.
 
 FR: Associe les 6 premiers caractères hex d'une adresse MAC (l'Organizationally
-    Unique Identifier) à un couple (fabricant, type d'appareil). Table
-    partielle et choisie couvrant les appareils domestiques les plus courants —
-    à enrichir librement.
+    Unique Identifier) à un couple (fabricant, type d'appareil).
+
+    Deux couches :
+      1. OUI_TABLE — préfixes choisis qui portent aussi une estimation de type
+         d'appareil (routeurs, téléphones, TV, IoT). Toujours prioritaires.
+      2. oui_table.txt.gz — le registre IEEE MA-L complet (~40 000 fabricants,
+         ~390 Ko compressé), chargé paresseusement depuis les données du
+         package. Donne un nom de fabricant pour presque toute MAC réelle ;
+         le type reste « unknown » car le registre ne dit pas ce qu'est
+         l'appareil.
+
+    Les MAC locales (bit 1 du premier octet levé) sont des adresses privées/
+    aléatoires — iOS/Android les utilisent par défaut. is_local_mac() les
+    détecte pour que l'UI explique l'absence de fabricant.
 """
 
-# EN: Partial OUI table — key = first 6 hex chars of MAC (uppercase, no colons).
-# FR: Table OUI partielle — clé = 6 premiers caractères hex de la MAC (majuscules, sans « : »).
+import gzip
+import sys
+from pathlib import Path
+
+# EN: Curated OUI table — key = first 6 hex chars of MAC (uppercase, no colons).
+#     Value = (vendor, device_type). Takes precedence over the IEEE registry.
+# FR: Table OUI choisie — clé = 6 premiers caractères hex de la MAC (majuscules,
+#     sans « : »). Valeur = (fabricant, type). Prioritaire sur le registre IEEE.
 OUI_TABLE: dict[str, tuple[str, str]] = {
     # Apple
     "A4C138": ("Apple", "phone"), "F0DCE2": ("Apple", "phone"),
@@ -39,8 +66,16 @@ OUI_TABLE: dict[str, tuple[str, str]] = {
     "E45F01": ("Raspberry Pi", "iot"),
     # Intel — EN: usually PC/laptop / FR: généralement PC/portable
     "8086F2": ("Intel", "pc"), "A4C3F0": ("Intel", "pc"),
+    "58A023": ("Intel", "pc"),
     # Realtek — EN: PC NICs / FR: cartes réseau de PC
     "00E04C": ("Realtek", "pc"),
+    # French ISP boxes — EN: gate the gateway check anyway, these are belts
+    # FR: Box d'opérateurs français — la détection de passerelle reste active,
+    #     ce ne sont que des indices supplémentaires
+    "70FC8F": ("Freebox", "router"), "001D19": ("Freebox", "router"),
+    "F4CAE5": ("Freebox", "router"), "14A9E3": ("Orange", "router"),
+    "A09169": ("Orange", "router"), "449F51": ("Bouygues", "router"),
+    "EC43E6": ("SFR", "router"), "2485B5": ("SFR", "router"),
     # Google — Chromecast, Home, etc.
     "54600A": ("Google", "iot"), "F88FCA": ("Google", "iot"),
     "A47733": ("Google", "iot"),
@@ -68,12 +103,71 @@ DEVICE_TYPE_COLORS: dict[str, str] = {
 }
 
 
+# EN: Full IEEE registry, loaded lazily on first lookup miss: prefix → vendor.
+#     The .gz sits in package data (works in dev AND under sys._MEIPASS).
+# FR: Registre IEEE complet, chargé paresseusement au premier échec de lookup :
+#     préfixe → fabricant. Le .gz est embarqué dans les données du package
+#     (fonctionne en dev ET sous sys._MEIPASS).
+_IEEE_TABLE: dict[str, str] | None = None
+
+
+def _ieee_table() -> dict[str, str]:
+    """
+    EN: One-shot loader for oui_table.txt.gz — lines "HHHHHH|Vendor Name".
+        Empty dict on any failure; lookup then falls back to "unknown".
+    FR: Chargeur unique de oui_table.txt.gz — lignes « HHHHHH|Nom fabricant ».
+        Dictionnaire vide sur erreur ; le lookup retombe alors sur « unknown ».
+    """
+    global _IEEE_TABLE
+    if _IEEE_TABLE is not None:
+        return _IEEE_TABLE
+    base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
+    candidates = [
+        base / "scanner" / "oui_table.txt.gz" if getattr(sys, "_MEIPASS", None)
+            else base / "oui_table.txt.gz",
+        base / "oui_table.txt.gz",
+    ]
+    table: dict[str, str] = {}
+    for path in candidates:
+        try:
+            if path.exists():
+                with gzip.open(path, "rt", encoding="utf-8", errors="replace") as fh:
+                    for line in fh:
+                        prefix, _, vendor = line.strip().partition("|")
+                        if prefix and vendor:
+                            table[prefix] = vendor
+                break
+        except OSError:
+            continue
+    _IEEE_TABLE = table
+    return table
+
+
+def is_local_mac(mac: str) -> bool:
+    """
+    EN: True for locally-administered addresses (U/L bit = bit 1 of the first
+        octet). iOS, Android and modern Windows randomize MACs this way on
+        Wi-Fi — no OUI will ever match, and the UI should say so.
+    FR: Vrai pour les adresses administrées localement (bit U/L = bit 1 du
+        premier octet). iOS, Android et Windows récents randomisent ainsi les
+        MAC en Wi-Fi — aucun OUI ne correspondra, l'UI doit le dire.
+    """
+    try:
+        first = int(mac.replace(":", "").replace("-", "")[:2], 16)
+        return bool(first & 0x02)
+    except ValueError:
+        return False
+
+
 def lookup(mac: str) -> tuple[str, str]:
     """
-    EN: Return (vendor, device_type) for a MAC address string. Unknown OUIs
-        return ("Unknown", "unknown").
-    FR: Renvoyer (fabricant, type d'appareil) pour une adresse MAC. Les OUI
-        inconnus renvoient ("Unknown", "unknown").
+    EN: Return (vendor, device_type) for a MAC address string.
+        Resolution order: curated table → IEEE registry → ("", "unknown").
+    FR: Renvoyer (fabricant, type d'appareil) pour une adresse MAC.
+        Ordre : table choisie → registre IEEE → ("", "unknown").
     """
     key = mac.upper().replace(":", "").replace("-", "")[:6]
-    return OUI_TABLE.get(key, ("", "unknown"))
+    if key in OUI_TABLE:
+        return OUI_TABLE[key]
+    vendor = _ieee_table().get(key, "")
+    return (vendor, "unknown") if vendor else ("", "unknown")

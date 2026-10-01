@@ -266,7 +266,16 @@ def _parse_transport(payload: bytes, proto: int, src: str, dst: str,
             return None
         sport, dport = struct.unpack("!HH", payload[:4])
         udp_payload = payload[8:]
-        dns = parse_dns(udp_payload) if (sport == 53 or dport == 53) else []
+        if sport == 53 or dport == 53:
+            dns = parse_dns(udp_payload)
+        elif sport == 5353 or dport == 5353:
+            # EN: mDNS — devices announce "<name>.local → <ip>" here; that's
+            #     how we learn hostnames without ever sending a query.
+            # FR: mDNS — les appareils annoncent « <nom>.local → <ip> » ici ;
+            #     c'est ainsi qu'on apprend les noms sans jamais émettre.
+            dns = parse_mdns(udp_payload)
+        else:
+            dns = []
         return ParsedPacket(src, dst, "UDP", wire_len, sport, dport, 0, dns, None)
 
     if proto in (IPPROTO_ICMP, IPPROTO_ICMPV6):
@@ -348,6 +357,56 @@ def parse_dns(payload: bytes) -> list[tuple[str, str, int]]:
                 answers.append((name, socket.inet_ntop(socket.AF_INET, rdata), ttl))
             elif rtype == 28 and rdlen == 16:                # EN: AAAA / FR: AAAA
                 answers.append((name, socket.inet_ntop(socket.AF_INET6, rdata), ttl))
+            off = rdata_off + rdlen
+        return answers
+    except (IndexError, struct.error, ValueError):
+        return []
+
+
+def parse_mdns(payload: bytes) -> list[tuple[str, str, int]]:
+    """
+    EN: Parse an mDNS message (UDP/5353). Same wire format as DNS, but device
+        A/AAAA records often live in the ADDITIONAL section — so we walk all
+        three record sections, not just answers, and we don't require the QR
+        bit (mDNS announcements and responses both carry records). Only
+        "*.local" names are returned, as (hostname, ip, ttl) — hostname with
+        the .local suffix stripped.
+    FR: Analyser un message mDNS (UDP/5353). Même format fil que DNS, mais les
+        enregistrements A/AAAA des appareils vivent souvent dans la section
+        ADDITIONNELLE — on parcourt donc les trois sections, pas seulement
+        les réponses, et le bit QR n'est pas exigé (annonces et réponses
+        portent des enregistrements). Seuls les noms « *.local » sont
+        renvoyés, en (nom d'hôte, ip, ttl) — suffixe .local retiré.
+    """
+    try:
+        if len(payload) < 12:
+            return []
+        _, _flags, qdcount, ancount, nscount, arcount = struct.unpack("!HHHHHH", payload[:12])
+
+        off = 12
+        for _ in range(qdcount):
+            _, off = _dns_name(payload, off)
+            off += 4
+
+        answers = []
+        for _ in range(ancount + nscount + arcount):
+            name, off = _dns_name(payload, off)
+            if off + 10 > len(payload):
+                break
+            rtype, _, ttl, rdlen = struct.unpack("!HHIH", payload[off:off + 10])
+            rdata_off = off + 10
+            if rdata_off + rdlen > len(payload):
+                break
+            rdata = payload[rdata_off:rdata_off + rdlen]
+            # EN: Keep the ".local" suffix — main.py uses it to tell mDNS
+            #     device names apart from regular DNS answers.
+            # FR: Garder le suffixe « .local » — main.py s'en sert pour
+            #     distinguer les noms d'appareils mDNS des réponses DNS normales.
+            if name.lower().endswith(".local"):
+                if rtype == 1 and rdlen == 4:                # EN: A / FR: A
+                    answers.append((name, socket.inet_ntop(socket.AF_INET, rdata), ttl))
+                elif rtype == 28 and rdlen == 16:            # EN: AAAA / FR: AAAA
+                    answers.append((name, socket.inet_ntop(socket.AF_INET6, rdata), ttl))
             off = rdata_off + rdlen
         return answers
     except (IndexError, struct.error, ValueError):

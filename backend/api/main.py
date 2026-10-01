@@ -81,7 +81,7 @@ from capture.media_monitor import MediaMonitor, MediaState
 from classifier.traffic import classify
 from resolver.dns_geo import (enrich_ip, is_private, learn_dns_answers,
                               learn_sni, lookup_domain)
-from scanner.arp_scanner import ARPScanner, Device
+from scanner.arp_scanner import ARPScanner, Device, default_gateway as _default_gateway
 from detection.anomaly import AnomalyDetector
 import storage.db as db
 
@@ -218,12 +218,15 @@ def _ensure_lan_device(ip: str) -> dict:
     key = f"lan:{ip}"
     dev = lan_devices.get(key)
     if dev is None:
+        is_gw = ip == _gateway()
         dev = {
             "id": key, "ip": ip, "mac": None,
             "label": ip, "hostname": None, "vendor": "",
-            "category": "lan_device", "device_type": "unknown",
+            "category": "lan_device",
+            "device_type": "router" if is_gw else "unknown",
+            "is_gateway": is_gw, "private_mac": False,
             "online": True, "bytes": 0, "packets": 0,
-            "color": "#64748b", "alerted": False,
+            "color": "#f97316" if is_gw else "#64748b", "alerted": False,
         }
         lan_devices[key] = dev
         edges[f"lan-edge-{ip}"] = {
@@ -232,6 +235,43 @@ def _ensure_lan_device(ip: str) -> dict:
             "bytes": 0, "packets": 0, "dashed": True,
         }
     return dev
+
+
+# EN: Default-gateway cache — `route`/`/proc` is re-read at most once per
+#     minute so stub creation stays cheap.
+# FR: Cache de la passerelle par défaut — `route`/`/proc` relu au maximum
+#     une fois par minute pour que la création de stub reste légère.
+_gateway_cache: dict = {"ip": None, "ts": 0.0}
+
+
+def _gateway() -> Optional[str]:
+    """EN: Cached default_gateway() (5 min TTL).
+    FR: default_gateway() mis en cache (TTL 5 min)."""
+    now = time.time()
+    if now - _gateway_cache["ts"] > 300:
+        _gateway_cache["ip"] = _default_gateway()
+        _gateway_cache["ts"] = now
+    return _gateway_cache["ip"]
+
+
+def _learn_lan_hostname(ip: str, name: str,
+                       touched_devices: dict) -> None:
+    """
+    EN: An mDNS "*.local" announcement named this LAN device — store the
+        hostname on the entry (stub or real) so the UI shows "iPhone-de-Lisa"
+        instead of a bare IP. Never overwrites an existing name.
+    FR: Une annonce mDNS « *.local » a nommé cet appareil LAN — stocker le
+        nom d'hôte sur l'entrée (stub ou réelle) pour que l'UI affiche
+        « iPhone-de-Lisa » au lieu d'une IP nue. N'écrase jamais un nom
+        existant.
+    """
+    dev = _ensure_lan_device(ip)
+    if dev.get("hostname"):
+        return
+    dev["hostname"] = name
+    if dev.get("label") == dev.get("ip"):
+        dev["label"] = name
+    touched_devices[dev["id"]] = dev
 
 
 # ── Packet handling / Traitement des paquets ─────────────────────────────────
@@ -331,16 +371,25 @@ def _process_batch(packets: list[Packet]) -> None:
             continue
 
         remote_ip = pkt.dst_ip if pkt.direction == "out" else pkt.src_ip
+
+        # EN: DNS/mDNS learning runs BEFORE the noise filter — mDNS answers
+        #     are destined to multicast 224.0.0.251, which must never become
+        #     a node but still carries "*.local" device names we want.
+        # FR: L'apprentissage DNS/mDNS tourne AVANT le filtre anti-bruit —
+        #     les réponses mDNS visent le multicast 224.0.0.251, qui ne doit
+        #     jamais devenir un nœud mais porte les noms « *.local » utiles.
+        if pkt.dns:
+            dns53 = [a for a in pkt.dns if not a[0].lower().endswith(".local")]
+            if dns53:
+                learn_dns_answers(dns53)
+            for name, ip, _ttl in pkt.dns:
+                if name.lower().endswith(".local") and is_private(ip):
+                    _learn_lan_hostname(ip, name[:-len(".local")],
+                                        touched_devices)
+
         if remote_ip in _whitelisted_ips or _is_noise_ip(remote_ip):
             continue
 
-        # EN: Feed the observed-domain map first — DNS answers map many IPs,
-        #     SNI names the destination of this very packet.
-        # FR: Alimenter d'abord la table des domaines observés — les réponses
-        #     DNS mappent beaucoup d'IP, le SNI nomme la destination de ce
-        #     paquet même.
-        if pkt.dns:
-            learn_dns_answers(pkt.dns)
         if pkt.sni:
             learn_sni(remote_ip, pkt.sni)
 
@@ -521,6 +570,13 @@ async def _handle_device(device: Device, is_new: bool) -> None:
         node["bytes"] = prev.get("bytes", 0)
         node["packets"] = prev.get("packets", 0)
         node["alerted"] = prev.get("alerted", False)
+        # EN: Keep names learned from mDNS — reverse-DNS often returns None
+        #     where a passive mDNS announcement already gave a real hostname.
+        # FR: Garder les noms appris via mDNS — le DNS inverse renvoie souvent
+        #     None là où une annonce mDNS passive a déjà donné un vrai nom.
+        if not device.hostname and prev.get("hostname"):
+            node["hostname"] = prev["hostname"]
+            node["label"] = prev["hostname"]
     else:
         node["alerted"] = False
     lan_devices[node["id"]] = node

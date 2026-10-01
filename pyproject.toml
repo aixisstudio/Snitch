@@ -52,3 +52,6 @@ py-modules = ["cli", "paths", "logging_config", "run_backend"]
 # EN: Domain lists ship inside the wheel too (tracker + CDN suffix lists).
 # FR: Les listes de domaines sont aussi embarquées dans la wheel.
 "classifier" = ["lists/*.txt"]
+# EN: Full IEEE OUI registry (gzipped) — offline MAC→vendor lookup.
+# FR: Registre IEEE OUI complet (gzippé) — lookup MAC→fabricant hors ligne.
+"scanner" = ["oui_table.txt.gz"]

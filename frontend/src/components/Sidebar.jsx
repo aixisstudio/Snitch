@@ -204,7 +204,11 @@ function DeviceRow({ device }) {
           )}
         </div>
         <div style={{ fontSize: 9, color: '#64748b', fontFamily: 'monospace' }}>
-          {device.ip} · {device.mac}
+          {/* EN: Type first — "Routeur · 192.168.1.254" tells a neophyte more
+                  than a bare MAC address does.
+              FR: Le type d'abord — « Routeur · 192.168.1.254 » dit plus à un
+                  néophyte qu'une MAC nue. */}
+          {enumName(t, 'devtype_', device.device_type)} · {device.ip}
         </div>
       </div>
       <div style={{ fontSize: 9, color: device.online === false ? '#ef4444' : '#22c55e', flexShrink: 0 }}>
@@ -286,6 +290,20 @@ function NodeDetail({ node, onWhitelist }) {
           borderLeft: '2px solid #334155',
         }}>
           {t(isLan ? 'hint_unidentified' : 'hint_unresolved')}
+        </div>
+      )}
+
+      {/* EN: Randomized-MAC note — iOS/Android hide their real MAC, so "no
+              vendor" is expected, not suspicious.
+          FR: Note MAC randomisée — iOS/Android masquent leur vraie MAC, donc
+              « pas de fabricant » est attendu, pas suspect. */}
+      {node.private_mac && (
+        <div style={{
+          marginTop: 8, padding: '6px 8px', fontSize: 9, lineHeight: 1.5,
+          color: '#64748b', background: '#1e293b', borderRadius: 6,
+          borderLeft: '2px solid #a855f7',
+        }}>
+          {t('hint_private_mac')}
         </div>
       )}
 
