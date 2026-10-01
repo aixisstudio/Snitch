@@ -803,11 +803,17 @@ function Legend() {
           { color: '#22c55e', label: t('legend_ring_safe') },
           { color: '#f59e0b', label: t('legend_ring_warn') },
           { color: '#ef4444', label: t('legend_ring_crit') },
-        ].map(({ color, label }) => (
+          // EN: A dashed gray swatch for the ABSENCE of ring — unidentified
+          //     or simply unremarkable devices wear no verdict at all.
+          // FR: Une pastille grise en pointillés pour l'ABSENCE d'anneau —
+          //     les appareils non identifiés ou sans particularité ne
+          //     portent aucun verdict.
+          { color: '#475569', label: t('legend_ring_none'), dashed: true },
+        ].map(({ color, label, dashed }) => (
           <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
             <span style={{
               width: 10, height: 10, borderRadius: '50%', flexShrink: 0,
-              border: `1.5px solid ${color}`,
+              border: `1.5px ${dashed ? 'dashed' : 'solid'} ${color}`,
             }} />
             <span style={{ fontSize: 9, color: '#64748b' }}>{label}</span>
           </div>

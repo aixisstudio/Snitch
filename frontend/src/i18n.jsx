@@ -101,6 +101,7 @@ const en = {
   legend_ring_safe: 'green ring = identified, safe',
   legend_ring_warn: 'amber ring = suspicious',
   legend_ring_crit: 'red ring = alert',
+  legend_ring_none: 'no ring = unidentified, neutral',
 
   // Alert panel / Panneau d'alertes
   alerts_title: 'Alerts',
@@ -336,6 +337,7 @@ const fr = {
   legend_ring_safe: 'anneau vert = identifié, sûr',
   legend_ring_warn: 'anneau orange = suspect',
   legend_ring_crit: 'anneau rouge = alerte',
+  legend_ring_none: 'sans anneau = non identifié, neutre',
 
   // Panneau d'alertes / Alert panel
   alerts_title: 'Alertes',
