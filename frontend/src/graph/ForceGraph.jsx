@@ -211,7 +211,7 @@ export default function ForceGraph({ nodes, edges, lanDevices, alertedNodes = ne
       //     la zone locale.
       if (c && n.id !== 'local' && n.category !== 'lan_device') {
         const dx = c.x - width / 2, dy = c.y - height / 2
-        if (Math.hypot(dx, dy) < ringInner + 55) c = null
+        if (Math.hypot(dx, dy) < ringOuter - 60) c = null
       }
       if (c) { n.x = c.x; n.y = c.y; n.fx = c.fx; n.fy = c.fy }
       else {
@@ -232,7 +232,13 @@ export default function ForceGraph({ nodes, edges, lanDevices, alertedNodes = ne
     }
     const sim = simRef.current
     sim.nodes(allNodes)
-    sim.force('link', d3.forceLink(allEdges).id(d => d.id).distance(d => d.dashed ? 130 : 200).strength(0.25))
+    // EN: Link distances must sit AT/ABOVE the outer ring — shorter edges
+    //     overpower the radial force at equilibrium and drag external hosts
+    //     inside the LAN perimeter.
+    // FR: Les distances de lien doivent être À/AU-DESSUS de l'anneau externe —
+    //     des arêtes plus courtes battent la force radiale à l'équilibre et
+    //     traînent les hôtes externes dans le périmètre LAN.
+    sim.force('link', d3.forceLink(allEdges).id(d => d.id).distance(d => d.dashed ? 170 : ringOuter + 20).strength(0.25))
     sim.force('charge', d3.forceManyBody().strength(d => d.category === 'lan_device' ? -500 : -750))
     sim.force('radial', d3.forceRadial(ringOf, width / 2, height / 2)
       // EN: external hosts hold their outer ring firmly — a weak radial pull
