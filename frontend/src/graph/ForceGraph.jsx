@@ -59,6 +59,7 @@ export default function ForceGraph({ nodes, edges, lanDevices, alertedNodes = ne
   const nodeSel  = useRef(null)   // EN: d3 selection of node <g>s / FR: sélection d3 des <g> nœuds
   const linkSel  = useRef(null)   // EN: d3 selection of edge <line>s / FR: sélection d3 des <line> arêtes
   const labelSel = useRef(null)   // EN: d3 selection of edge <text>s / FR: sélection d3 des <text> arêtes
+  const floatPaint = useRef(null) // EN: drift painter shared with rebuilds / FR: peintre de dérive partagé avec les reconstructions
   const posCache = useRef({})     // EN: { id: {x,y,fx,fy} } / FR: positions persistées
   const zoomTf   = useRef(null)   // EN: last user pan/zoom transform / FR: dernière transformation pan/zoom
   const dataRef  = useRef({ nodes: {}, edges: {}, lanDevices: {} })
@@ -360,6 +361,9 @@ export default function ForceGraph({ nodes, edges, lanDevices, alertedNodes = ne
       posCache.current[n.id] = { x: n.x, y: n.y, fx: n.x, fy: n.y }
     })
     renderTick()
+    // EN: Repaint WITH drift — the plain tick above wrote base positions.
+    // FR: Repeindre AVEC la dérive — le tick ci-dessus a écrit les positions de base.
+    floatPaint.current?.(performance.now())
     })
     return () => cancelAnimationFrame(raf)
 
@@ -409,14 +413,17 @@ export default function ForceGraph({ nodes, edges, lanDevices, alertedNodes = ne
       return ((h >>> 0) % 628) / 100
     }
     const AMP = 4.5                                        // EN: px of drift / FR: amplitude en px
+    let t0 = 0
     const driftX = d => d.id === 'local' ? 0 : Math.sin(t0 * 0.35 + phase(d.id)) * AMP
     const driftY = d => d.id === 'local' ? 0 : Math.cos(t0 * 0.28 + phase(d.id) * 1.3) * AMP
-    let t0 = 0
 
-    let raf
-    const frame = now => {
-      raf = requestAnimationFrame(frame)
-      if (document.hidden) return                          // EN: free when tab hidden / FR: gratuit onglet caché
+    // EN: Exposed via ref so a structural rebuild can repaint WITH drift —
+    //     otherwise its plain renderTick snaps every bubble back to base
+    //     for one frame = the visible "jump" when a new host appears.
+    // FR: Exposé via ref pour qu'une reconstruction peigne AVEC la dérive —
+    //     sinon son renderTick nu ramène toutes les bulles à la base pendant
+    //     un frame = le « saut » visible quand un nouvel hôte apparaît.
+    floatPaint.current = now => {
       t0 = now / 1000
       nodeSel.current?.attr('transform', d => `translate(${d.x + driftX(d)},${d.y + driftY(d)})`)
       linkSel.current
@@ -428,8 +435,15 @@ export default function ForceGraph({ nodes, edges, lanDevices, alertedNodes = ne
         ?.attr('x', d => (d.source.x + d.target.x) / 2 + (driftX(d.source) + driftX(d.target)) / 2)
         .attr('y', d => (d.source.y + d.target.y) / 2 + (driftY(d.source) + driftY(d.target)) / 2)
     }
+
+    let raf
+    const frame = now => {
+      raf = requestAnimationFrame(frame)
+      if (document.hidden) return                          // EN: free when tab hidden / FR: gratuit onglet caché
+      floatPaint.current(now)
+    }
     raf = requestAnimationFrame(frame)
-    return () => cancelAnimationFrame(raf)
+    return () => { cancelAnimationFrame(raf); floatPaint.current = null }
   }, [])
 
   // ── Filter dimming — no simulation restart ───────────────────────────────
