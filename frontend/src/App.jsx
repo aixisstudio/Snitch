@@ -18,7 +18,7 @@ import ForceGraph from './graph/ForceGraph'
 import AuroraCurtain from './components/AuroraCurtain'
 import MapView from './map/MapView'
 import AppsView from './components/AppsView'
-import Sidebar from './components/Sidebar'
+import Sidebar, { matchesFilter } from './components/Sidebar'
 import { AlertBell, AlertPanel, AlertToasts } from './components/AlertPanel'
 import { SettingsButton, SettingsPanel } from './components/Settings'
 import Onboarding from './components/Onboarding'
@@ -64,31 +64,48 @@ export default function App() {
     return m
   }, [alerts])
 
-  // EN: When processes are excluded, hide nodes whose traffic comes ONLY from
-  //     excluded apps — keeps the graph honest about what's filtered.
-  // FR: Quand des processus sont exclus, masquer les nœuds dont le trafic vient
-  //     UNIQUEMENT d'apps exclues — le graphe reflète honnêtement le filtre.
+  // EN: The graph shows ONLY what matches the active filter — a selected
+  //     category ("Tracking", "HTTPS"…) or search text hides every other
+  //     node, so the view shows just that slice. The "local" node always
+  //     stays (it anchors the star layout). Process exclusions still apply.
+  // FR: Le graphe n'affiche QUE ce qui correspond au filtre actif — une
+  //     catégorie choisie (« Tracking », « HTTPS »…) ou un texte masque
+  //     tous les autres nœuds. Le nœud « local » reste toujours (il ancre
+  //     la disposition en étoile). Les exclusions de processus s'appliquent.
   const filteredNodes = useMemo(() => {
-    if (excludedProcesses.length === 0) return nodes
     const out = {}
     for (const [id, node] of Object.entries(nodes)) {
       if (id === 'local') { out[id] = node; continue }
       const procs = node.processes ? Object.keys(node.processes) : []
       if (procs.length > 0 && procs.every(p => excludedProcesses.includes(p))) continue
+      if (!matchesFilter(node, filter)) continue
       out[id] = node
     }
     return out
-  }, [nodes, excludedProcesses])
+  }, [nodes, excludedProcesses, filter])
+
+  // EN: LAN devices obey the same filter in the graph — picking "Tracking"
+  //     hides the local devices too; the sidebar keeps its own filtering.
+  // FR: Les appareils LAN obéissent au même filtre dans le graphe —
+  //     choisir « Tracking » masque aussi les appareils locaux ; la sidebar
+  //     garde son propre filtrage.
+  const filteredLanDevices = useMemo(() => {
+    if (!filter || (filter.category === 'all' && !filter.text)) return lanDevices
+    const out = {}
+    for (const [id, d] of Object.entries(lanDevices)) {
+      if (matchesFilter({ ...d, label: d.hostname }, filter)) out[id] = d
+    }
+    return out
+  }, [lanDevices, filter])
 
   const filteredEdges = useMemo(() => {
-    if (excludedProcesses.length === 0) return edges
-    const visibleIds = new Set([...Object.keys(filteredNodes), ...Object.keys(lanDevices)])
+    const visibleIds = new Set([...Object.keys(filteredNodes), ...Object.keys(filteredLanDevices)])
     const out = {}
     for (const [id, edge] of Object.entries(edges)) {
       if (visibleIds.has(edge.source) && visibleIds.has(edge.target)) out[id] = edge
     }
     return out
-  }, [edges, filteredNodes, lanDevices, excludedProcesses])
+  }, [edges, filteredNodes, filteredLanDevices])
 
   const filteredPackets = useMemo(() =>
     excludedProcesses.length === 0
@@ -155,7 +172,7 @@ export default function App() {
             <ForceGraph
               nodes={filteredNodes}
               edges={filteredEdges}
-              lanDevices={lanDevices}
+              lanDevices={filteredLanDevices}
               alertedNodes={alertedNodes}
               onNodeClick={setSelected}
               filter={filter}

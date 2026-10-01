@@ -65,7 +65,7 @@ function fmt(bytes) {
  * FR: Un nœud correspond-il au filtre de recherche actif ? Le nœud « local »
  *     et tout nœud de la bonne catégorie passent sauf si le texte échoue.
  */
-function matchesFilter(node, filter) {
+export function matchesFilter(node, filter) {
   if (!filter || (filter.category === 'all' && !filter.text)) return true
   if (filter.category !== 'all' && node.category !== filter.category) return false
   if (filter.text) {
