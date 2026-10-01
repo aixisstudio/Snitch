@@ -41,7 +41,7 @@ export default function PrivacyScore({ score, grade, color, labelKey, factors })
   const badCount = factors.filter(f => f.bad).length
 
   return (
-    <div style={{ padding: '14px 20px', borderBottom: '1px solid #334155' }}>
+    <div style={{ padding: '14px 20px', borderBottom: '1px solid #2a2a2a' }}>
       <div style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
         {t('privacy_title')}
       </div>
@@ -51,7 +51,7 @@ export default function PrivacyScore({ score, grade, color, labelKey, factors })
             FR: Donut — longueur d'arc proportionnelle au score. */}
         <div style={{ flexShrink: 0 }}>
           <svg width={84} height={84}>
-            <circle cx={42} cy={42} r={R} fill="none" stroke="#1e3a5f" strokeWidth={STROKE} />
+            <circle cx={42} cy={42} r={R} fill="none" stroke="#1c1c1c" strokeWidth={STROKE} />
             <circle
               cx={42} cy={42} r={R}
               fill="none" stroke={color} strokeWidth={STROKE}
@@ -115,7 +115,7 @@ export default function PrivacyScore({ score, grade, color, labelKey, factors })
             position: 'absolute', left: `${score}%`, top: '50%',
             transform: 'translate(-50%, -50%)',
             width: 10, height: 10, borderRadius: '50%',
-            background: color, border: '2px solid #0f172a',
+            background: color, border: '2px solid #000000',
             boxShadow: `0 0 6px ${color}`,
             transition: 'left 0.6s ease',
           }} />

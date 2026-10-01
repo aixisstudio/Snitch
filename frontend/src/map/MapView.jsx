@@ -229,7 +229,7 @@ export default function MapView({ nodes, onNodeClick }) {
       .datum(d3.geoGraticule()())
       .attr('d', geoPath)
       .attr('fill', 'none')
-      .attr('stroke', '#1e3a5f')
+      .attr('stroke', '#1c1c1c')
       .attr('stroke-width', 0.3)
 
     const countries = topojson.feature(topo, topo.objects.countries)
@@ -238,7 +238,7 @@ export default function MapView({ nodes, onNodeClick }) {
       .data(countries.features)
       .join('path')
       .attr('d', geoPath)
-      .attr('fill', '#1e293b')
+      .attr('fill', '#0f0f0f')
       .attr('stroke', '#2d4a6e')
       .attr('stroke-width', 0.5)
 
@@ -247,7 +247,7 @@ export default function MapView({ nodes, onNodeClick }) {
       .datum(topojson.mesh(topo, topo.objects.countries, (a, b) => a !== b))
       .attr('d', geoPath)
       .attr('fill', 'none')
-      .attr('stroke', '#334155')
+      .attr('stroke', '#2a2a2a')
       .attr('stroke-width', 0.3)
 
     // EN: Layer order matters: arcs below dots.
@@ -403,7 +403,7 @@ export default function MapView({ nodes, onNodeClick }) {
       {/* EN: Geolocated-host counter badge / FR: Badge compteur d'hôtes géolocalisés */}
       <div style={{
         position: 'absolute', top: 16, left: 16,
-        background: '#1e293b', border: '1px solid #334155',
+        background: '#0f0f0f', border: '1px solid #2a2a2a',
         borderRadius: 8, padding: '8px 14px', fontSize: 10, color: '#64748b',
       }}>
         <span style={{ color: '#22c55e', fontWeight: 700 }}>{t('map_located', geoCount)}</span>
@@ -414,7 +414,7 @@ export default function MapView({ nodes, onNodeClick }) {
       {tooltip && (
         <div style={{
           position: 'fixed', left: tooltip.x + 14, top: tooltip.y - 10, zIndex: 100,
-          background: '#1e293b', border: '1px solid #334155',
+          background: '#0f0f0f', border: '1px solid #2a2a2a',
           borderRadius: 8, padding: '8px 12px', pointerEvents: 'none',
           boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
         }}>

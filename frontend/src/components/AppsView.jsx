@@ -79,14 +79,14 @@ export default function AppsView({ nodes }) {
             <Fragment key={app.name}>
               <tr
                 onClick={() => setExpanded(expanded === app.name ? null : app.name)}
-                style={{ cursor: 'pointer', borderTop: '1px solid #1e293b' }}
+                style={{ cursor: 'pointer', borderTop: '1px solid #0f0f0f' }}
               >
                 <td style={{ padding: '8px', color: '#e2e8f0', fontFamily: 'monospace' }}>{app.name}</td>
                 <td style={{ padding: '8px', textAlign: 'right', color: '#94a3b8' }}>{app.destinations.length}</td>
                 <td style={{ padding: '8px', textAlign: 'right', color: '#94a3b8' }}>{app.packets}</td>
                 <td style={{ padding: '8px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <div style={{ flex: 1, height: 6, background: '#0f172a', borderRadius: 3, overflow: 'hidden' }}>
+                    <div style={{ flex: 1, height: 6, background: '#000000', borderRadius: 3, overflow: 'hidden' }}>
                       <div style={{ width: `${(app.bytes / maxBytes) * 100}%`, height: '100%', background: '#3b82f6' }} />
                     </div>
                     <span style={{ color: '#94a3b8', minWidth: 60, textAlign: 'right' }}>{fmtBytes(app.bytes)}</span>
@@ -95,7 +95,7 @@ export default function AppsView({ nodes }) {
               </tr>
               {expanded === app.name && (
                 <tr>
-                  <td colSpan={4} style={{ padding: '8px 8px 16px 24px', background: '#0f172a' }}>
+                  <td colSpan={4} style={{ padding: '8px 8px 16px 24px', background: '#000000' }}>
                     <div style={{ fontSize: 10, color: '#64748b', marginBottom: 6 }}>{t('apps_top_dest')}</div>
                     {app.destinations.slice(0, 5).map(d => (
                       <div key={d.ip} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#94a3b8', padding: '2px 0' }}>

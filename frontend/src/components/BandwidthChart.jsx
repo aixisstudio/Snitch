@@ -57,7 +57,7 @@ export default function BandwidthChart({ data }) {
     svg.append('text')
       .attr('x', W - 2).attr('y', 11)
       .attr('text-anchor', 'end')
-      .attr('fill', current > 0 ? '#3b82f6' : '#334155')
+      .attr('fill', current > 0 ? '#3b82f6' : '#2a2a2a')
       .attr('font-size', 9).attr('font-weight', 700)
       .text(fmtBps(current))
   }, [data])

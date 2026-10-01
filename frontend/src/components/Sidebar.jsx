@@ -89,12 +89,12 @@ export default function Sidebar({ nodes, lanDevices, packets, selected, onClose,
 
   return (
     <div style={{
-      width: 300, height: '100vh', background: '#1e293b',
-      borderRight: '1px solid #334155', display: 'flex',
+      width: 300, height: '100vh', background: '#0f0f0f',
+      borderRight: '1px solid #2a2a2a', display: 'flex',
       flexDirection: 'column', overflow: 'hidden',
     }}>
       {/* EN: Brand + live bandwidth / FR: Marque + débit en direct */}
-      <div style={{ padding: '14px 20px 8px', borderBottom: '1px solid #334155' }}>
+      <div style={{ padding: '14px 20px 8px', borderBottom: '1px solid #2a2a2a' }}>
         <div style={{ marginBottom: 6 }}>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 7, marginBottom: 2 }}>
             <span style={{ fontSize: 9, fontFamily: 'monospace', color: '#f7b016', letterSpacing: 3, fontWeight: 600 }}>NET</span>
@@ -106,7 +106,7 @@ export default function Sidebar({ nodes, lanDevices, packets, selected, onClose,
       </div>
 
       {/* EN: Quick counters / FR: Compteurs rapides */}
-      <div style={{ padding: '10px 20px', borderBottom: '1px solid #334155' }}>
+      <div style={{ padding: '10px 20px', borderBottom: '1px solid #2a2a2a' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
           <Stat label={t('stat_lan')}     value={devList.length}      color="#f97316" />
           <Stat label={t('stat_ext')}     value={extNodes.length} />
@@ -126,7 +126,7 @@ export default function Sidebar({ nodes, lanDevices, packets, selected, onClose,
 
       {/* EN: Detail card for the clicked node. / FR: Fiche détail du nœud cliqué. */}
       {selected && (
-        <div style={{ padding: '12px 20px', borderBottom: '1px solid #334155', background: '#0f172a' }}>
+        <div style={{ padding: '12px 20px', borderBottom: '1px solid #2a2a2a', background: '#000000' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
             <span style={{ fontSize: 12, fontWeight: 600, color: '#f1f5f9' }}>
               {nodeName(selected, t)}
@@ -159,7 +159,7 @@ export default function Sidebar({ nodes, lanDevices, packets, selected, onClose,
       </div>
 
       {/* EN: Recent packet feed / FR: Flux de paquets récents */}
-      <div style={{ borderTop: '1px solid #334155', maxHeight: 160, overflowY: 'auto' }}>
+      <div style={{ borderTop: '1px solid #2a2a2a', maxHeight: 160, overflowY: 'auto' }}>
         <SectionTitle label={t('section_packets')} />
         {packets.slice(0, 25).map((p, i) => <PacketRow key={i} packet={p} />)}
       </div>
@@ -170,7 +170,7 @@ export default function Sidebar({ nodes, lanDevices, packets, selected, onClose,
 /** EN: Sticky list section header. / FR: En-tête de section de liste collant. */
 function SectionTitle({ label }) {
   return (
-    <div style={{ padding: '5px 20px', fontSize: 10, color: '#64748b', textTransform: 'uppercase', letterSpacing: 1, background: '#1e293b', position: 'sticky', top: 0 }}>
+    <div style={{ padding: '5px 20px', fontSize: 10, color: '#64748b', textTransform: 'uppercase', letterSpacing: 1, background: '#0f0f0f', position: 'sticky', top: 0 }}>
       {label}
     </div>
   )
@@ -188,11 +188,11 @@ function Stat({ label, value, color }) {
 /** EN: Small explanatory note in the detail card — muted box, coloured
  *      left border. / FR: Petite note explicative dans la fiche détail —
  *      cadre discret, bordure gauche colorée. */
-function Hint({ children, accent = '#334155' }) {
+function Hint({ children, accent = '#2a2a2a' }) {
   return (
     <div style={{
       marginTop: 8, padding: '6px 8px', fontSize: 9, lineHeight: 1.5,
-      color: '#64748b', background: '#1e293b', borderRadius: 6,
+      color: '#64748b', background: '#0f0f0f', borderRadius: 6,
       borderLeft: `2px solid ${accent}`,
     }}>
       {children}
@@ -207,7 +207,7 @@ function DeviceRow({ device }) {
   return (
     <div style={{
       padding: '7px 20px', display: 'flex', alignItems: 'center', gap: 8,
-      borderBottom: '1px solid #1e293b',
+      borderBottom: '1px solid #0f0f0f',
       opacity: device.online === false ? 0.45 : 1,
     }}>
       <Icon size={16} color={device.color} />
@@ -237,7 +237,7 @@ function DeviceRow({ device }) {
 function NodeRow({ node }) {
   const { t } = useT()
   return (
-    <div style={{ padding: '6px 20px', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid #1e293b' }}>
+    <div style={{ padding: '6px 20px', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid #0f0f0f' }}>
       <div style={{ width: 7, height: 7, borderRadius: '50%', background: CATEGORY_COLORS[node.category] || '#94a3b8', flexShrink: 0 }} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 11, color: '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>

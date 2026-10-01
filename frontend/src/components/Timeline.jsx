@@ -86,7 +86,7 @@ export default function Timeline() {
     // EN: Horizontal grid lines. / FR: Lignes de grille horizontales.
     g.append('g').attr('class', 'grid')
       .call(d3.axisLeft(y).ticks(3).tickSize(-innerW).tickFormat(''))
-      .selectAll('line').attr('stroke', '#1e3a5f').attr('stroke-dasharray', '3,3')
+      .selectAll('line').attr('stroke', '#1c1c1c').attr('stroke-dasharray', '3,3')
     g.select('.grid .domain').remove()
 
     // EN: Bars — amber when the minute produced alerts, blue otherwise.
@@ -130,12 +130,12 @@ export default function Timeline() {
       .call(xAxis)
       .selectAll('text')
       .attr('fill', '#475569').attr('font-size', 9)
-    g.selectAll('.domain, .tick line').attr('stroke', '#334155')
+    g.selectAll('.domain, .tick line').attr('stroke', '#2a2a2a')
 
     g.append('g')
       .call(d3.axisLeft(y).ticks(3).tickFormat(d => d > 999 ? `${(d / 1000).toFixed(0)}k` : d))
       .selectAll('text').attr('fill', '#475569').attr('font-size', 9)
-    g.select('.domain').attr('stroke', '#334155')
+    g.select('.domain').attr('stroke', '#2a2a2a')
   }
 
   const totalPkts   = data.reduce((a, d) => a + d.packets, 0)
@@ -145,8 +145,8 @@ export default function Timeline() {
   return (
     <div style={{
       height: expanded ? EXPANDED_H : COLLAPSED_H,
-      background: '#0f172a',
-      borderTop: '1px solid #1e3a5f',
+      background: '#000000',
+      borderTop: '1px solid #1c1c1c',
       transition: 'height 0.2s ease',
       overflow: 'hidden',
       flexShrink: 0,
@@ -159,7 +159,7 @@ export default function Timeline() {
         style={{
           height: COLLAPSED_H, display: 'flex', alignItems: 'center',
           padding: '0 16px', gap: 20, cursor: 'pointer',
-          borderBottom: expanded ? '1px solid #1e3a5f' : 'none',
+          borderBottom: expanded ? '1px solid #1c1c1c' : 'none',
         }}
       >
         <span style={{ fontSize: 10, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: 1 }}>
@@ -179,8 +179,8 @@ export default function Timeline() {
               key={m}
               onClick={e => { e.stopPropagation(); setRange(m) }}
               style={{
-                background: range === m ? '#1e3a5f' : 'transparent',
-                border: '1px solid #1e3a5f', borderRadius: 4,
+                background: range === m ? '#1c1c1c' : 'transparent',
+                border: '1px solid #1c1c1c', borderRadius: 4,
                 color: range === m ? '#93c5fd' : '#475569',
                 fontSize: 9, padding: '2px 7px', cursor: 'pointer',
               }}
@@ -209,7 +209,7 @@ export default function Timeline() {
       {tooltip && (
         <div style={{
           position: 'fixed', left: tooltip.x + 12, top: tooltip.y - 60,
-          background: '#1e293b', border: '1px solid #334155',
+          background: '#0f0f0f', border: '1px solid #2a2a2a',
           borderRadius: 6, padding: '6px 10px', fontSize: 10,
           color: '#e2e8f0', pointerEvents: 'none', zIndex: 500,
         }}>

@@ -45,8 +45,8 @@ const TYPE_ICONS = {
 export function AlertBell({ unread, onClick }) {
   return (
     <button onClick={onClick} style={{
-      position: 'relative', background: '#1e293b',
-      border: '1px solid #334155', borderRadius: 20,
+      position: 'relative', background: '#0f0f0f',
+      border: '1px solid #2a2a2a', borderRadius: 20,
       padding: '5px 14px', cursor: 'pointer',
       display: 'flex', alignItems: 'center', gap: 6,
       color: unread > 0 ? '#f59e0b' : '#64748b',
@@ -95,14 +95,14 @@ export function AlertPanel({ alerts, onClose, onIgnore }) {
     <div style={{
       position: 'absolute', top: 56, right: 16, zIndex: 200,
       width: 380, maxHeight: 'calc(100vh - 80px)',
-      background: '#1e293b', border: '1px solid #334155',
+      background: '#0f0f0f', border: '1px solid #2a2a2a',
       borderRadius: 12, overflow: 'hidden',
       boxShadow: '0 8px 40px rgba(0,0,0,0.6)',
       display: 'flex', flexDirection: 'column',
     }}>
       {/* EN: Header with severity counters / FR: En-tête avec compteurs de sévérité */}
       <div style={{
-        padding: '14px 18px', borderBottom: '1px solid #334155',
+        padding: '14px 18px', borderBottom: '1px solid #2a2a2a',
         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
       }}>
         <div>
@@ -159,7 +159,7 @@ function AlertRow({ alert, onIgnore }) {
 
   return (
     <div style={{
-      padding: '10px 18px', borderBottom: '1px solid #1e293b',
+      padding: '10px 18px', borderBottom: '1px solid #0f0f0f',
       borderLeft: `3px solid ${sev.color}`, background: sev.bg,
     }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
@@ -180,7 +180,7 @@ function AlertRow({ alert, onIgnore }) {
             )}
             {!alert._grouped && onIgnore && (
               <button onClick={() => onIgnore(alert)} style={{
-                marginTop: 5, background: 'none', border: '1px solid #334155',
+                marginTop: 5, background: 'none', border: '1px solid #2a2a2a',
                 borderRadius: 4, padding: '2px 8px', fontSize: 9,
                 color: '#64748b', cursor: 'pointer',
               }}>
@@ -281,7 +281,7 @@ function Toast({ alert, index, dying }) {
 
   return (
     <div style={{
-      background: '#1e293b', border: `1px solid ${sev.color}44`,
+      background: '#0f0f0f', border: `1px solid ${sev.color}44`,
       borderLeft: `3px solid ${sev.color}`,
       borderRadius: 6, padding: '5px 10px',
       display: 'flex', alignItems: 'center', gap: 8,

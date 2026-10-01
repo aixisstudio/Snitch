@@ -56,7 +56,7 @@ export default function Dropdown({ button, children, panelStyle }) {
       {open && (
         <div style={{
           position: 'absolute', top: '110%', right: 0, zIndex: 100,
-          background: '#1e293b', border: '1px solid #334155',
+          background: '#0f0f0f', border: '1px solid #2a2a2a',
           borderRadius: 10, minWidth: 180,
           boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
           ...panelStyle,

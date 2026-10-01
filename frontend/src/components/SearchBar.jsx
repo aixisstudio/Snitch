@@ -34,7 +34,7 @@ export default function SearchBar({ filter, onChange }) {
   }))
 
   return (
-    <div style={{ padding: '8px 12px', borderBottom: '1px solid #334155' }}>
+    <div style={{ padding: '8px 12px', borderBottom: '1px solid #2a2a2a' }}>
       {/* EN: Text field / FR: Champ texte */}
       <div style={{ position: 'relative', marginBottom: 7 }}>
         <Search size={11} style={{
@@ -47,7 +47,7 @@ export default function SearchBar({ filter, onChange }) {
           placeholder={t('search_placeholder')}
           style={{
             width: '100%', boxSizing: 'border-box',
-            background: '#0f172a', border: '1px solid #334155',
+            background: '#000000', border: '1px solid #2a2a2a',
             borderRadius: 6, padding: '5px 26px 5px 26px',
             color: '#e2e8f0', fontSize: 11, outline: 'none',
           }}
@@ -67,7 +67,7 @@ export default function SearchBar({ filter, onChange }) {
         {categories.map(c => (
           <button key={c.id} onClick={() => onChange({ ...filter, category: c.id })} style={{
             background: category === c.id ? c.color + '22' : 'transparent',
-            border: `1px solid ${category === c.id ? c.color : '#334155'}`,
+            border: `1px solid ${category === c.id ? c.color : '#2a2a2a'}`,
             borderRadius: 10, padding: '2px 8px',
             fontSize: 9, fontWeight: 600,
             color: category === c.id ? c.color : '#64748b',

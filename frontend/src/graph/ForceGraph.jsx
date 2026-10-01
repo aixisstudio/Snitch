@@ -214,7 +214,7 @@ export default function ForceGraph({ nodes, edges, lanDevices, alertedNodes = ne
       .attr('r', radius)
       .attr('fill', d => d.color || '#475569')
       .attr('fill-opacity', d => d.online === false ? 0.35 : 0.85)
-      .attr('stroke', d => d.online === false ? '#475569' : '#1e293b')
+      .attr('stroke', d => d.online === false ? '#475569' : '#0f0f0f')
       .attr('stroke-width', d => d.category === 'lan_device' ? 2.5 : 1.5)
       .attr('stroke-dasharray', d => d.online === false ? '4,3' : null)
 

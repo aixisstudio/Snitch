@@ -33,7 +33,7 @@ export default function Onboarding({ onDone }) {
       display: 'flex', alignItems: 'center', justifyContent: 'center',
     }}>
       <div style={{
-        width: 440, background: '#1e293b', border: '1px solid #334155',
+        width: 440, background: '#0f0f0f', border: '1px solid #2a2a2a',
         borderRadius: 14, padding: '28px 28px 20px',
         boxShadow: '0 20px 60px rgba(0,0,0,0.7)',
       }}>
