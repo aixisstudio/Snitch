@@ -182,6 +182,18 @@ export default function Sidebar({ nodes, lanDevices, packets, selected, onClose,
         <SectionTitle label={t('section_packets')} />
         {packets.slice(0, 25).map((p, i) => <PacketRow key={i} packet={p} />)}
       </div>
+
+      {/* EN: Tiny credit footer floating on the rail — same free-floating
+              treatment as the brand block, no card.
+          FR: Petit pied de page de crédit flottant sur le rail — même
+              traitement libre que le bloc marque, sans carte. */}
+      <div style={{ padding: '0 8px 4px', textAlign: 'center', flexShrink: 0 }}>
+        <a href="https://aixis.fr/" target="_blank" rel="noopener noreferrer" style={{
+          fontSize: 9, color: '#475569', textDecoration: 'none', letterSpacing: 0.5,
+        }}>
+          {t('footer_credit')} · aixis.fr
+        </a>
+      </div>
     </div>
   )
 }
