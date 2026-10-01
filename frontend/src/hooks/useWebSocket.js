@@ -23,6 +23,26 @@
 import { useEffect, useRef, useState } from 'react'
 import { apiBase, authHeaders, wsUrlWithToken, wsBase } from '../api'
 
+// EN: Desktop notifications for warning/critical alerts — only when the
+//     window is NOT focused (no double-notification while you watch). Uses
+//     the Web Notification API, which Electron grants without prompting;
+//     browsers get a one-time permission request on first alert.
+// FR: Notifications bureau pour les alertes warning/critiques — seulement
+//     quand la fenêtre n'a PAS le focus (pas de doublon quand on regarde).
+//     API Web Notification, qu'Electron accorde sans invite ; les
+//     navigateurs demandent la permission une fois à la première alerte.
+function notifyAlert(alert) {
+  if (alert.severity === 'info' || !document.hidden) return
+  if (typeof Notification === 'undefined') return
+  const fire = () => new Notification(`Snitch — ${alert.type}`, {
+    body: alert.message || '', tag: alert.id, silent: false,
+  })
+  if (Notification.permission === 'granted') fire()
+  else if (Notification.permission === 'default') {
+    Notification.requestPermission().then(p => { if (p === 'granted') fire() })
+  }
+}
+
 export function useWebSocket(url) {
   const ws = useRef(null)
   const [nodes, setNodes] = useState({})
@@ -173,6 +193,7 @@ export function useWebSocket(url) {
             const incoming = msg.alerts
             setAlerts(prev => [...incoming.slice().reverse(), ...prev].slice(0, 200))
             setUnread(prev => prev + incoming.length)
+            incoming.forEach(notifyAlert)
           }
         }
 
@@ -194,6 +215,7 @@ export function useWebSocket(url) {
         if (msg.type === 'alert') {
           setAlerts(prev => [msg.alert, ...prev].slice(0, 200))
           setUnread(prev => prev + 1)
+          notifyAlert(msg.alert)
         }
 
         // EN: Capture/filter status changed (local or remote action).

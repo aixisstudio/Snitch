@@ -61,6 +61,7 @@ import asyncio
 import ipaddress
 import json
 import logging
+import os
 import queue
 import threading
 import time
@@ -959,6 +960,36 @@ async def unignore_alert(body: IgnoreBody) -> dict:
     db.set_setting("suppressions", suppressions)
     detector.load_suppressions(suppressions)
     return {"suppressions": suppressions}
+
+
+@app.post("/shutdown", dependencies=_AUTH)
+async def shutdown() -> dict:
+    """
+    EN: Graceful process exit — flushes the DB, stops capture, then exits.
+        Needed because an elevated backend (Windows RunAs) CANNOT be killed
+        by our unprivileged UI process; the token-gated endpoint is the only
+        clean shutdown path. Exit happens 0.5 s later so the HTTP 200 reply
+        reaches the caller first.
+    FR: Sortie propre du processus — flush la BDD, stoppe la capture, puis
+        quitte. Nécessaire car un backend élevé (RunAs Windows) ne PEUT PAS
+        être tué par notre UI non privilégiée ; l'endpoint authentifié est le
+        seul chemin d'arrêt propre. La sortie survient 0,5 s plus tard pour
+        que la réponse HTTP 200 atteigne l'appelant.
+    """
+    def _exit_soon() -> None:
+        try:
+            # EN: Synchronous cleanup (uvicorn is already unwinding by the
+            #     time the lifespan finally runs — do it ourselves here).
+            # FR: Nettoyage synchrone (uvicorn se déroule déjà quand le
+            #     finally du lifespan tourne — on le fait nous-même ici).
+            _stop_capture()
+            db.flush()
+        except Exception:
+            pass
+        os._exit(0)
+
+    asyncio.get_running_loop().call_later(0.5, _exit_soon)
+    return {"ok": True}
 
 
 # ── History / Historique ─────────────────────────────────────────────────────

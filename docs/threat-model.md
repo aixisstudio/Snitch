@@ -31,9 +31,10 @@ same process. There is **no cloud component** and **no telemetry**.
 
 ### Known limitations
 
-- **Root/Admin required for capture.** In Electron v1 the whole app runs
-  elevated on Windows (`requireAdministrator`) — a privileged split is on the
-  roadmap, see `docs/architecture.md`.
+- **Admin/elevation is still required for capture** — but scoped to the
+  backend only: the Electron UI runs asInvoker while the backend is spawned
+  elevated (`Start-Process -Verb RunAs`) and stopped via the authenticated
+  `/shutdown` endpoint.
 - The API token protects HTTP/WS but **not** against another local process
   running as you that can read `data/api_token.txt` or the Electron IPC.
 - SQLite data at rest is unencrypted.
@@ -76,9 +77,10 @@ le même processus. **Aucun composant cloud, aucune télémétrie.**
 
 ### Limites connues
 
-- **Capture = privilèges admin/root.** Sous Electron v1, toute l'app tourne
-  élevée sur Windows (`requireAdministrator`) — séparation privilégiée en
-  feuille de route, voir `docs/architecture.md`.
+- **Capture = privilèges admin/root**, mais limités au backend : l'UI
+  Electron tourne en asInvoker tandis que le backend est lancé élevé
+  (`Start-Process -Verb RunAs`) et arrêté via l'endpoint authentifié
+  `/shutdown`.
 - Le jeton protège HTTP/WS mais **pas** contre un autre processus local
   tournant sous votre compte qui lit `data/api_token.txt` ou l'IPC Electron.
 - Les données SQLite au repos ne sont pas chiffrées.

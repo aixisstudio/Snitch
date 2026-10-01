@@ -18,7 +18,7 @@ const zlib = require('zlib')
 const fs   = require('fs')
 const path = require('path')
 
-const S = 256
+const S = 512
 // EN: RGBA pixel buffer, fully transparent. / FR: buffer de pixels RGBA, entièrement transparent.
 const buf = Buffer.alloc(S * S * 4, 0)
 
@@ -78,10 +78,10 @@ function drawEllipse(cx, cy, rx, ry, r, g, b, a) {
 }
 
 const cx = S / 2, cy = S / 2
-const R = 92  // EN: sphere radius / FR: rayon de la sphère
+const R = 184  // EN: sphere radius / FR: rayon de la sphère
 
 // ── Rounded-square black background / Fond noir à coins arrondis ─────────────
-const cornerR = 50
+const cornerR = 100
 for (let y = 0; y < S; y++)
   for (let x = 0; x < S; x++) {
     const dx = Math.abs(x - cx) - (cx - cornerR)
@@ -99,7 +99,7 @@ for (const rx_f of [0.32, 0.74])
   drawEllipse(cx, cy, R * rx_f, R, 255, 255, 255, 38)
 
 // ── Sphere ring / Anneau de la sphère ────────────────────────────────────────
-strokeCircle(cx, cy, R, 2.8, 255, 255, 255, 190)
+strokeCircle(cx, cy, R, 5.6, 255, 255, 255, 190)
 
 // ── Peripheral nodes / Nœuds périphériques ───────────────────────────────────
 const scale = R / 118
@@ -118,16 +118,16 @@ for (let i = 0; i < nodes.length; i++) {
 for (const [nx,ny] of nodes) drawLine(cx, cy, nx, ny, 255, 255, 255, 38)
 
 for (const [nx,ny] of nodes) {
-  fillCircle(nx, ny, 5.5, 0, 0, 0, 255)
-  strokeCircle(nx, ny, 5.5, 1.8, 255, 255, 255, 210)
-  fillCircle(nx, ny, 2.8, 247, 176, 22, 255)
+  fillCircle(nx, ny, 11, 0, 0, 0, 255)
+  strokeCircle(nx, ny, 11, 3.6, 255, 255, 255, 210)
+  fillCircle(nx, ny, 5.6, 247, 176, 22, 255)
 }
 
 // ── Center node / Nœud central ───────────────────────────────────────────────
-fillCircle(cx, cy, 18, 247, 176, 22, 45)
-fillCircle(cx, cy, 11, 247, 176, 22, 155)
-fillCircle(cx, cy, 7,  247, 176, 22, 255)
-fillCircle(cx, cy, 3,  255, 255, 255, 255)
+fillCircle(cx, cy, 36, 247, 176, 22, 45)
+fillCircle(cx, cy, 22, 247, 176, 22, 155)
+fillCircle(cx, cy, 14, 247, 176, 22, 255)
+fillCircle(cx, cy, 6,  255, 255, 255, 255)
 
 // ── PNG encoding / Encodage PNG ──────────────────────────────────────────────
 // EN: Minimal hand-rolled PNG writer: signature + IHDR + IDAT + IEND with

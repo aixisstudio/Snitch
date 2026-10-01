@@ -47,13 +47,28 @@ from api.main import app  # noqa: E402
 import uvicorn             # noqa: E402
 
 if __name__ == '__main__':
+    # EN: Optional --port/--bind argv flags — needed by the Windows elevated
+    #     spawn path, where environment variables cannot cross the UAC
+    #     boundary. Env vars still take precedence when both are present.
+    # FR: Drapeaux argv optionnels --port/--bind — nécessaires pour le
+    #     lancement élevé Windows, où les variables d'environnement ne
+    #     traversent pas la frontière UAC. Les variables d'env gardent la
+    #     priorité quand les deux sont présentes.
+    argv_port = argv_bind = None
+    args = sys.argv[1:]
+    for i, a in enumerate(args):
+        if a == '--port' and i + 1 < len(args):
+            argv_port = args[i + 1]
+        elif a == '--bind' and i + 1 < len(args):
+            argv_bind = args[i + 1]
+
     # EN: Loopback-only by default everywhere — Electron AND Docker/dev.
     #     Set SNITCH_BIND=0.0.0.0 to expose (token auth still applies).
     # FR: Loopback uniquement par défaut partout — Electron ET Docker/dev.
     #     Poser SNITCH_BIND=0.0.0.0 pour exposer (le jeton reste exigé).
     uvicorn.run(
         app,
-        host=os.environ.get('SNITCH_BIND', '127.0.0.1'),
-        port=int(os.environ.get('SNITCH_PORT', '8000')),
+        host=os.environ.get('SNITCH_BIND') or argv_bind or '127.0.0.1',
+        port=int(os.environ.get('SNITCH_PORT') or argv_port or '8000'),
         log_level='warning',
     )

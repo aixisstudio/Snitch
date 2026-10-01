@@ -45,7 +45,7 @@
  */
 
 const _electron        = require('electron')
-const { app, BrowserWindow, dialog, ipcMain, shell } = _electron.default || _electron
+const { app, BrowserWindow, dialog, ipcMain, shell, Tray, Menu } = _electron.default || _electron
 const { spawn, execSync }            = require('child_process')
 const crypto = require('crypto')
 const path = require('path')
@@ -77,19 +77,32 @@ const iconPath = isDev
   ? path.join(__dirname, 'icon.png')
   : path.join(resourcesDir, 'icon.png')
 
-// EN: Backend stdout/stderr go to a real log file — never stdio:'ignore',
-//     so crashes leave a trace the diagnostics export can pick up.
-// FR: stdout/stderr du backend vont dans un vrai fichier de log — jamais
-//     stdio:'ignore', pour qu'un crash laisse une trace récupérable par
-//     l'export de diagnostic.
-const logDir  = path.join(app.getPath('userData'), 'logs')
+// EN: Log dir = the backend's own data dir (LOCALAPPDATA\Snitch on Windows,
+//     etc.) so "Open logs" and the /diagnostics log_tail read the SAME file
+//     the backend writes to — even when the backend runs elevated and gets
+//     no SNITCH_USER_DATA env (frozen builds resolve the platform dir).
+// FR: Dossier de logs = le dossier de données du backend lui-même
+//     (LOCALAPPDATA\Snitch sous Windows, etc.) pour que « Ouvrir les logs »
+//     et le log_tail de /diagnostics lisent le MÊME fichier que celui écrit
+//     par le backend — même quand il tourne élevé et ne reçoit pas
+//     SNITCH_USER_DATA (les builds figés résolvent le dossier plateforme).
+// EN: backendDataDir() is hoisted (function declaration below) — safe to
+//     call here at module level.
+// FR: backendDataDir() est hissée (déclaration de fonction plus bas) —
+//     appelable ici au niveau module.
+const logDir  = path.join(backendDataDir(), 'logs')
 const logFile = path.join(logDir, 'backend.log')
 
 let mainWindow   = null
 let splashWindow = null
 let backendProc  = null
+let tray         = null
 let backendPort  = 0            // EN: chosen at launch / FR: choisi au lancement
 let isQuitting   = false
+let backendElevated = false     // EN: Windows RunAs spawn — we can't kill it,
+                                //     /shutdown is the exit path.
+                                // FR: spawn élevé Windows — on ne peut pas
+                                //     le tuer, /shutdown est le chemin d'arrêt.
 
 // ── API token + port / Jeton API + port ─────────────────────────────────────
 // EN: 48-hex-char secret generated once per app launch. Passed to the backend
@@ -229,7 +242,50 @@ function createMain() {
     mainWindow.show()
     mainWindow.focus()
   })
+
+  // EN: Minimize to tray instead of quitting — a network monitor is meant
+  //     to keep watching. Real exit happens via the tray menu's Quit item.
+  // FR: Réduire dans la zone de notification au lieu de quitter — un
+  //     moniteur réseau est fait pour continuer à observer. La vraie sortie
+  //     passe par l'entrée Quitter du menu de la zone de notification.
+  mainWindow.on('close', (e) => {
+    if (!isQuitting && tray) {
+      e.preventDefault()
+      mainWindow.hide()
+    }
+  })
   mainWindow.on('closed', () => { mainWindow = null })
+}
+
+/**
+ * EN: System tray — bilingual menu with Show / Open logs / Quit. The icon
+ *     is the generated 512px PNG; Electron scales it per platform.
+ * FR: Zone de notification — menu bilingue Afficher / Ouvrir les logs /
+ *     Quitter. L'icône est le PNG 512 px généré ; Electron l'adapte selon
+ *     la plateforme.
+ */
+function createTray() {
+  tray = new Tray(iconPath)
+  tray.setToolTip('Snitch')
+  const menu = Menu.buildFromTemplate([
+    {
+      label: 'Show Snitch / Afficher Snitch',
+      click: () => { if (mainWindow) { mainWindow.show(); mainWindow.focus() } },
+    },
+    {
+      label: 'Open logs / Ouvrir les logs',
+      click: () => shell.openPath(logDir),
+    },
+    { type: 'separator' },
+    {
+      label: 'Quit / Quitter',
+      click: () => { isQuitting = true; app.quit() },
+    },
+  ])
+  tray.setContextMenu(menu)
+  // EN: A plain click (Windows/Linux) or double-click restores the window.
+  // FR: Un simple clic (Windows/Linux) ou double-clic restaure la fenêtre.
+  tray.on('click', () => { if (mainWindow) { mainWindow.show(); mainWindow.focus() } })
 }
 
 // ── Backend process / Processus backend ──────────────────────────────────────
@@ -286,6 +342,60 @@ function killBackend() {
   }
 }
 
+/**
+ * EN: The writable dir the FROZEN backend resolves on each platform —
+ *     mirrors paths.py so the token file we drop lands where it looks.
+ *     Windows: %LOCALAPPDATA%\Snitch. macOS: ~/Library/Application Support/Snitch.
+ *     Linux: $XDG_DATA_HOME/snitch or ~/.local/share/snitch.
+ * FR: Le dossier inscriptible que le backend FIGÉ résout sur chaque
+ *     plateforme — reflète paths.py pour que le fichier de jeton qu'on
+ *     dépose atterrisse là où il le cherche.
+ */
+function backendDataDir() {
+  if (isWindows) return path.join(process.env.LOCALAPPDATA || path.join(app.getPath('home'), 'AppData', 'Local'), 'Snitch')
+  if (process.platform === 'darwin') return path.join(app.getPath('home'), 'Library', 'Application Support', 'Snitch')
+  return path.join(process.env.XDG_DATA_HOME || path.join(app.getPath('home'), '.local', 'share'), 'snitch')
+}
+
+/**
+ * EN: Windows privilege split — the UI runs UNPRIVILEGED (asInvoker); only
+ *     the backend asks for admin via `Start-Process -Verb RunAs` (one UAC
+ *     prompt per launch). Env vars can't cross UAC, so we pass the port as
+ *     an argv flag and pre-write the token to api_token.txt — the backend's
+ *     own resolution order picks it up. In dev we spawn normally: capture
+ *     will fail without rights but the UI stays usable.
+ * FR: Séparation de privilèges Windows — l'UI tourne SANS privilèges
+ *     (asInvoker) ; seul le backend demande l'admin via `Start-Process -Verb
+ *     RunAs` (une invite UAC par lancement). Les variables d'env ne
+ *     traversent pas l'UAC, donc on passe le port en argument argv et on
+ *     pré-écrit le jeton dans api_token.txt — l'ordre de résolution du
+ *     backend le récupère. En dev on lance normalement : la capture échouera
+ *     sans droits mais l'UI reste utilisable.
+ */
+function launchBackendElevated() {
+  const dataDir = backendDataDir()
+  fs.mkdirSync(dataDir, { recursive: true })
+  fs.writeFileSync(path.join(dataDir, 'api_token.txt'), API_TOKEN, { mode: 0o600 })
+
+  // EN: -FilePath/-ArgumentList carefully quoted (paths may contain spaces).
+  // FR: -FilePath/-ArgumentList soigneusement entre guillemets (chemins avec espaces).
+  const ps = `Start-Process -FilePath "${backendExe}" -ArgumentList '--port ${backendPort}' -Verb RunAs -WindowStyle Hidden`
+  backendProc = spawn('powershell.exe', [
+    '-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-Command', ps,
+  ], { windowsHide: true, stdio: 'ignore' })
+  backendElevated = true
+
+  backendProc.on('error', err => {
+    if (isQuitting) return
+    dialog.showErrorBox('Snitch', `Failed to start backend / Échec du démarrage du backend :\n${err.message}`)
+    app.quit()
+  })
+  // EN: No 'exit' crash-watch here — the powershell wrapper exits as soon as
+  //     the elevated child is up; waitForBackend() is the liveness check.
+  // FR: Pas de surveillance 'exit' ici — le wrapper powershell sort dès que
+  //     l'enfant élevé est lancé ; waitForBackend() est le test de vie.
+}
+
 function launchBackend() {
   /** EN: Spawn the compiled backend with SNITCH_TOKEN + SNITCH_PORT in its
    *      environment; windowsHide keeps a console window from flashing;
@@ -296,6 +406,15 @@ function launchBackend() {
   if (!fs.existsSync(backendExe)) {
     dialog.showErrorBox('Snitch', `Backend not found / Backend introuvable :\n${backendExe}`)
     app.quit(); return
+  }
+
+  // EN: Windows packaged build → elevated child, unprivileged UI.
+  //     Everything else → normal spawn, same privilege as the UI.
+  // FR: Build packagé Windows → enfant élevé, UI non privilégiée.
+  //     Le reste → spawn normal, même privilège que l'UI.
+  if (isWindows && !isDev) {
+    launchBackendElevated()
+    return
   }
 
   fs.mkdirSync(logDir, { recursive: true })
@@ -330,6 +449,30 @@ function launchBackend() {
   })
 }
 
+/**
+ * EN: Ask the backend to exit through its authenticated /shutdown endpoint —
+ *     the ONLY way to stop an elevated child we can't signal. Falls back to
+ *     killing our own child tree for the unprivileged path.
+ * FR: Demander au backend de quitter via son endpoint authentifié /shutdown
+ *     — le SEUL moyen d'arrêter un enfant élevé qu'on ne peut pas signaler.
+ *     Repli : tuer notre propre arbre de processus pour le chemin non élevé.
+ */
+function shutdownBackend() {
+  if (backendElevated) {
+    try {
+      const req = http.request(
+        `http://127.0.0.1:${backendPort}/shutdown`,
+        { method: 'POST', headers: { 'X-Snitch-Token': API_TOKEN }, timeout: 3000 },
+        res => res.resume())
+      req.on('error', () => {})       // EN: best-effort — app is exiting anyway
+      req.on('timeout', () => req.destroy())
+      req.end()
+    } catch { /* EN: nothing more we can do / FR: rien de plus à faire */ }
+    return
+  }
+  killBackend()
+}
+
 // ── App lifecycle / Cycle de vie de l'application ────────────────────────────
 app.whenReady().then(async () => {
   // EN: On Windows, Npcap is a hard requirement — guide the user to npcap.com
@@ -348,11 +491,19 @@ app.whenReady().then(async () => {
   try {
     await waitForBackend()
   } catch (e) {
-    dialog.showErrorBox('Snitch', `Backend unavailable / Backend indisponible :\n${e.message}`)
+    // EN: On Windows an elevated backend that never answers usually means
+    //     the UAC prompt was declined — say so explicitly.
+    // FR: Sous Windows un backend élevé qui ne répond jamais signifie
+    //     généralement une invite UAC refusée — le dire explicitement.
+    const extra = backendElevated
+      ? '\n\nDid you decline the admin (UAC) prompt? Capture requires it.\nAvez-vous refusé l\'invite administrateur (UAC) ? La capture l\'exige.'
+      : ''
+    dialog.showErrorBox('Snitch', `Backend unavailable / Backend indisponible :\n${e.message}${extra}`)
     app.quit(); return
   }
 
   createMain()
+  createTray()
 })
 
 app.on('window-all-closed', () => {
@@ -366,5 +517,7 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   isQuitting = true
-  killBackend()
+  // EN: /shutdown API call for the elevated backend; direct kill otherwise.
+  // FR: Appel API /shutdown pour le backend élevé ; kill direct sinon.
+  shutdownBackend()
 })
