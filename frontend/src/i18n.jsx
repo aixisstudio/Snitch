@@ -372,9 +372,9 @@ const fr = {
   privacy_excellent_label: 'Excellent',
   privacy_risk_factors: n => `${n} facteur${n !== 1 ? 's' : ''} de risque`,
   privacy_more_factors: n => `+${n} autre${n > 1 ? 's' : ''} facteur${n > 1 ? 's' : ''}`,
-  privacy_label_excellent: 'Excellente',
-  privacy_label_good: 'Bonne',
-  privacy_label_average: 'Moyenne',
+  privacy_label_excellent: 'Excellent',
+  privacy_label_good: 'Bon',
+  privacy_label_average: 'Moyen',
   privacy_label_weak: 'Faible',
   privacy_label_critical: 'Critique',
 
