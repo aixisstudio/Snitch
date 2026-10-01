@@ -123,6 +123,12 @@ export default function Sidebar({ nodes, lanDevices, packets, selected, onClose,
         <span style={{ fontSize: 10, color: '#475569', letterSpacing: 1 }}>{t('tagline')}</span>
       </div>
 
+      {/* EN: Search + category chips — first card, right under the brand.
+          FR: Recherche + puces de catégorie — première carte, juste sous la marque. */}
+      <div style={CARD}>
+        <SearchBar filter={filter} onChange={onFilterChange} />
+      </div>
+
       {/* EN: Quick counters + live bandwidth sparkline.
           FR: Compteurs rapides + sparkline de débit en direct. */}
       <div style={{ ...CARD, padding: '10px 16px' }}>
@@ -158,10 +164,6 @@ export default function Sidebar({ nodes, lanDevices, packets, selected, onClose,
           <NodeDetail node={selected} onWhitelist={onWhitelist} />
         </div>
       )}
-
-      <div style={CARD}>
-        <SearchBar filter={filter} onChange={onFilterChange} />
-      </div>
 
       <div style={{ ...CARD, flex: 1, overflowY: 'auto', minHeight: 0 }}>
         {devList.length > 0 && (
