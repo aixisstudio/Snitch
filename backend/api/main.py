@@ -79,7 +79,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from api.security import ALLOWED_ORIGIN_REGEX, require_token, ws_authorized
-from capture.sniffer import Packet, PacketSniffer
+from capture.sniffer import Packet, PacketSniffer, get_local_ips
 from capture.media_monitor import MediaMonitor, MediaState
 from classifier.traffic import classify
 from resolver.dns_geo import (enrich_ip, is_private, learn_dns_answers,
@@ -229,16 +229,46 @@ def _is_noise_ip(ip: str) -> bool:
         return ip == "255.255.255.255"
 
 
+# EN: This machine's own interface IPs, cached 60 s — the local node's IPv6
+#     kept appearing as a phantom "LAN device" named by the DNS-sanitized
+#     mDNS hostname ("MoneyLisa" losing the "$" from "MoneyLi$a").
+# FR: Les IP propres de cette machine, en cache 60 s — l'IPv6 du nœud local
+#     apparaissait comme « appareil LAN » fantôme nommé par le hostname mDNS
+#     sanitisé (« MoneyLisa » perdant le « $ » de « MoneyLi$a »).
+_own_ips_cache: dict = {"ips": set(), "ts": 0.0}
+
+
+def _own_ips() -> set:
+    """EN: Local interface IPs (60 s TTL — DHCP can renumber).
+    FR: IP des interfaces locales (TTL 60 s — le DHCP peut renuméroter)."""
+    now = time.time()
+    if now - _own_ips_cache["ts"] > 60:
+        try:
+            _own_ips_cache["ips"] = get_local_ips()
+        except Exception:
+            pass
+        _own_ips_cache["ts"] = now
+    return _own_ips_cache["ips"]
+
+
 def _ensure_lan_device(ip: str) -> dict:
     """
     EN: Guarantee a lan_devices entry for a private peer — even before the
         ARP table yields it (router, DHCP guests). Real discoveries later
         overwrite these stub fields with vendor/hostname info.
+        EXCEPTION: one of OUR OWN interface IPs is not a LAN peer — it's
+        the "local" center node. Purge any phantom entry and return local.
     FR: Garantir une entrée lan_devices pour un pair privé — même avant que
         la table ARP ne le livre (routeur, invités DHCP). Les vraies
         découvertes écrasent ensuite ces champs stub avec fabricant/nom d'hôte.
+        EXCEPTION : une IP de NOS PROPRES interfaces n'est pas un pair LAN —
+        c'est le nœud central « local ». Purger tout fantôme et renvoyer local.
     """
     key = f"lan:{ip}"
+    if ip in _own_ips():
+        lan_devices.pop(key, None)
+        edges.pop(f"lan-edge-{ip}", None)
+        return nodes["local"]
     dev = lan_devices.get(key)
     if dev is None:
         is_gw = ip == _gateway()
@@ -593,11 +623,14 @@ def _process_batch(packets: list[Packet]) -> None:
             dev = _ensure_lan_device(remote_ip)
             dev["bytes"] += pkt.size
             dev["packets"] += 1
-            edge = edges[f"lan-edge-{remote_ip}"]
-            edge["bytes"] += pkt.size
-            edge["packets"] += 1
             touched_devices[dev["id"]] = dev
-            touched_edges[edge["id"]] = edge
+            # EN: Our own IP returns the "local" node — no phantom LAN edge.
+            # FR: Une IP propre renvoie le nœud « local » — pas d'arête fantôme.
+            if dev["id"] != "local":
+                edge = edges[f"lan-edge-{remote_ip}"]
+                edge["bytes"] += pkt.size
+                edge["packets"] += 1
+                touched_edges[edge["id"]] = edge
             continue
 
         geo = _geo_for(remote_ip)
@@ -756,6 +789,21 @@ async def _handle_device(device: Device, is_new: bool) -> None:
     FR: Enregistrer/mettre à jour le nœud d'un appareil LAN, maintenir son
         arête pointillée vers « local », lancer les règles niveau appareil.
     """
+    if device.ip in _own_ips():
+        # EN: The ARP table can contain OUR OWN address — it's the "local"
+        #     center node, not a LAN peer. Adopt the MAC/real IP onto the
+        #     local node instead of spawning a phantom device that would
+        #     carry the sanitized hostname ("MoneyLisa" without "$").
+        # FR: La table ARP peut contenir NOTRE PROPRE adresse — c'est le nœud
+        #     central « local », pas un pair LAN. Adopter la MAC/IP réelle
+        #     sur le nœud local au lieu de créer un appareil fantôme qui
+        #     porterait le nom sanitisé (« MoneyLisa » sans « $ »).
+        local = nodes.get("local")
+        if local is not None:
+            local["mac"] = device.mac or local.get("mac")
+            if local.get("ip") == "local":
+                local["ip"] = device.ip
+        return
     node = device.to_dict()
     # EN: Preserve accumulated counters + merge any stub the packet path made.
     # FR: Préserver les compteurs + fusionner l'éventuel stub du chemin paquets.
