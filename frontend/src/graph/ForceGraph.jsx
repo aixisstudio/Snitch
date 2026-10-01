@@ -321,7 +321,10 @@ export default function ForceGraph({ nodes, edges, lanDevices, alertedNodes = ne
     })
   }, [filter])
 
-  return <svg ref={svgRef} style={{ width: '100%', height: '100%', background: '#0f172a' }} />
+  // EN: Transparent SVG — the AuroraCurtain canvas underneath supplies the
+  //     backdrop. / FR: SVG transparent — le canvas AuroraCurtain dessous
+  //     fournit la toile de fond.
+  return <svg ref={svgRef} style={{ width: '100%', height: '100%', background: 'transparent' }} />
 }
 
 /**

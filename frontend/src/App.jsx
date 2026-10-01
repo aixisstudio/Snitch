@@ -15,6 +15,7 @@
 import { useState, useMemo } from 'react'
 import { Hexagon, Globe, Wifi, Smartphone, Monitor, Cpu, ShieldCheck, Radio, Zap, HelpCircle, AlertTriangle, Square, Play, Filter, Mic, Camera, Download, ShieldOff, AppWindow } from 'lucide-react'
 import ForceGraph from './graph/ForceGraph'
+import AuroraCurtain from './components/AuroraCurtain'
 import MapView from './map/MapView'
 import AppsView from './components/AppsView'
 import Sidebar from './components/Sidebar'
@@ -139,16 +140,31 @@ export default function App() {
       />
 
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+        <div style={{ flex: 1, position: 'relative', overflow: 'hidden', background: '#0f172a' }}>
           {view === 'graph' && (
-            <ForceGraph
-              nodes={filteredNodes}
-              edges={filteredEdges}
-              lanDevices={lanDevices}
-              alertedNodes={alertedNodes}
-              onNodeClick={setSelected}
-              filter={filter}
-            />
+            /* EN: Aurora backdrop behind the graph — orange/pink ribbons,
+                   fine film grain (0.35), dimmed to 55% so nodes and edges
+                   stay perfectly readable.
+               FR: Toile de fond aurore derrière le graphe — rubans
+                   orangés/rosés, grain de film fin (0.35), atténuée à 55 %
+                   pour que nœuds et arêtes restent parfaitement lisibles. */
+            <AuroraCurtain
+              bands={5}
+              noise={0.35}
+              intensity={0.55}
+              speed={0.7}
+              colors={['#fb923c', '#f472b6', '#e879f9']}
+              style={{ position: 'absolute', inset: 0 }}
+            >
+              <ForceGraph
+                nodes={filteredNodes}
+                edges={filteredEdges}
+                lanDevices={lanDevices}
+                alertedNodes={alertedNodes}
+                onNodeClick={setSelected}
+                filter={filter}
+              />
+            </AuroraCurtain>
           )}
           {view === 'map' && (
             <MapView nodes={filteredNodes} onNodeClick={setSelected} />

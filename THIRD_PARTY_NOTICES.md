@@ -30,6 +30,12 @@ compatibles AGPL.
 | Electron | MIT |
 | electron-builder | MIT |
 
+## UI components / Composants d'interface
+
+| Component / Composant | License / Licence | Attribution |
+|---|---|---|
+| Aurora Curtain (`frontend/src/components/AuroraCurtain.jsx`) | MIT | Ported from [SmoothUI](https://smoothui.dev) by Eduardo Lopez ([educlopez/smoothui](https://github.com/educlopez/smoothui)) — adapted to plain JSX (no Tailwind/Motion dependency) / porté depuis SmoothUI, adapté en JSX pur |
+
 ## System libraries / Bibliothèques système
 
 | Component / Composant | License / Licence | Notes |
