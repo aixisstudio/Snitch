@@ -217,12 +217,15 @@ export default function MapView({ nodes, onNodeClick }) {
     const g = svg.append('g')
     gRef.current = g
 
-    // EN: Ocean background (oversized for pan headroom).
-    // FR: Fond océan (surdimensionné pour la marge de déplacement).
+    // EN: Ocean background (oversized for pan headroom) — translucent
+    //     black so the aurora backdrop glows faintly through the map.
+    // FR: Fond océan (surdimensionné pour la marge de déplacement) —
+    //     noir translucide pour laisser l'aurore luire sous la carte.
     g.append('rect')
       .attr('width', W * 4).attr('height', H * 4)
       .attr('x', -W).attr('y', -H)
-      .attr('fill', '#0a1628')
+      .attr('fill', '#000000')
+      .attr('fill-opacity', 0.55)
 
     g.append('path')
       .attr('class', 'graticule')

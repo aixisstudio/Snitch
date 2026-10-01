@@ -125,7 +125,17 @@ export default function App() {
   }
 
   return (
-    <div style={{ display: 'flex', height: '100vh', width: '100vw', overflow: 'hidden' }}>
+    /* EN: Aurora backdrop covers the WHOLE page — the canvas sits behind
+           every view and every bento card glows against the ribbons.
+       FR: La toile aurore couvre TOUTE la page — le canvas est derrière
+           chaque vue et chaque carte bento ressort sur les rubans. */
+    <AuroraCurtain
+      bands={5}
+      noise={0.35}
+      colors={['#fb923c', '#f472b6', '#e879f9']}
+      style={{ height: '100vh', width: '100vw' }}
+    >
+    <div style={{ display: 'flex', height: '100%', width: '100%', overflow: 'hidden' }}>
       <Sidebar
         nodes={filteredNodes}
         lanDevices={lanDevices}
@@ -140,28 +150,16 @@ export default function App() {
       />
 
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <div style={{ flex: 1, position: 'relative', overflow: 'hidden', background: '#000000' }}>
+        <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
           {view === 'graph' && (
-            /* EN: Aurora backdrop behind the graph — orange/pink ribbons,
-                   fine film grain (0.35), full intensity like the demo.
-               FR: Toile de fond aurore derrière le graphe — rubans
-                   orangés/rosés, grain de film fin (0.35), intensité
-                   complète comme la démo. */
-            <AuroraCurtain
-              bands={5}
-              noise={0.35}
-              colors={['#fb923c', '#f472b6', '#e879f9']}
-              style={{ position: 'absolute', inset: 0 }}
-            >
-              <ForceGraph
-                nodes={filteredNodes}
-                edges={filteredEdges}
-                lanDevices={lanDevices}
-                alertedNodes={alertedNodes}
-                onNodeClick={setSelected}
-                filter={filter}
-              />
-            </AuroraCurtain>
+            <ForceGraph
+              nodes={filteredNodes}
+              edges={filteredEdges}
+              lanDevices={lanDevices}
+              alertedNodes={alertedNodes}
+              onNodeClick={setSelected}
+              filter={filter}
+            />
           )}
           {view === 'map' && (
             <MapView nodes={filteredNodes} onNodeClick={setSelected} />
@@ -206,6 +204,7 @@ export default function App() {
         <Timeline />
       </div>
     </div>
+    </AuroraCurtain>
   )
 }
 

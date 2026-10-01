@@ -93,8 +93,8 @@ export default function Sidebar({ nodes, lanDevices, packets, selected, onClose,
        FR: Layout bento — chaque section est une carte arrondie flottant
            sur le rail noir, séparée par des espaces plutôt que des lignes. */
     <div style={{
-      width: 308, height: '100vh', background: '#000000',
-      borderRight: '1px solid #141414', display: 'flex',
+      width: 308, height: '100vh', background: 'transparent',
+      borderRight: '1px solid rgba(255,255,255,0.06)', display: 'flex',
       flexDirection: 'column', overflow: 'hidden',
       padding: 8, gap: 8, boxSizing: 'border-box',
     }}>
