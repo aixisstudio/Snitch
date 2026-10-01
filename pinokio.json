@@ -1,0 +1,9 @@
+{
+  "title": "Snitch",
+  "description": "Real-time network traffic visualizer — privacy-first, all data stays local. / Visualiseur de trafic réseau en temps réel — vie privée d'abord, toutes les données restent locales.",
+  "icon": "icon.png",
+  "links": [{
+    "title": "GitHub",
+    "value": "https://github.com/aixisstudio/Snitch"
+  }]
+}

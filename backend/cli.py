@@ -81,9 +81,15 @@ def main() -> int:
 
     token = get_token()
     url = f"http://127.0.0.1:{port}/?token={token}"
-    print(f"\n  Snitch is running / Snitch tourne :\n\n    {url}\n")
+    # EN: flush=True — launchers (Pinokio, systemd) pipe stdout, so an
+    #     unflushed print would never reach their URL watchers.
+    # FR: flush=True — les launchers (Pinokio, systemd) pipent stdout, donc un
+    #     print non flushé n'atteindrait jamais leurs watchers d'URL.
+    print(f"\n  Snitch is running / Snitch tourne :\n\n    {url}\n",
+          flush=True)
     print("  Keep this terminal open. Ctrl+C to stop. / "
-          "Gardez ce terminal ouvert. Ctrl+C pour arrêter.\n")
+          "Gardez ce terminal ouvert. Ctrl+C pour arrêter.\n",
+          flush=True)
 
     if not args.no_browser:
         # EN: Open after a short delay so uvicorn is listening first.

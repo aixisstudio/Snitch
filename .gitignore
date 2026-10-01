@@ -27,6 +27,11 @@ data/
 # EN: Electron generated files / FR: Fichiers générés Electron
 electron/icon.png
 
+# EN: Pinokio launcher artifacts / FR: Artefacts du launcher Pinokio
+backend/env/
+frontend_dist/
+logs/
+
 # EN: OS / editor noise / FR: Fichiers système et éditeur
 .DS_Store
 *.log
