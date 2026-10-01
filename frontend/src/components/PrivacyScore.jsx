@@ -60,11 +60,10 @@ export default function PrivacyScore({ score, grade, color, labelKey, factors })
               transform="rotate(-90 42 42)"
               style={{ transition: 'stroke-dasharray 0.6s ease' }}
             />
-            <text x={42} y={38} textAnchor="middle" fill={color} fontSize={20} fontWeight={700} fontFamily="system-ui">
+            {/* EN: score only — no letter grade, vertically centred.
+                FR: score seul — pas de lettre, centré verticalement. */}
+            <text x={42} y={49} textAnchor="middle" fill={color} fontSize={22} fontWeight={700} fontFamily="system-ui">
               {score}
-            </text>
-            <text x={42} y={54} textAnchor="middle" fill={color} fontSize={11} fontWeight={600} opacity={0.7}>
-              {grade}
             </text>
           </svg>
         </div>
