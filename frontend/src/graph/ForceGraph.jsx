@@ -276,7 +276,13 @@ export default function ForceGraph({ nodes, edges, lanDevices, alertedNodes = ne
     //     par l'effet métriques ci-dessous.
     node.append('title').text(d => nodeTitle(d, displayNameRef.current))
 
-    sim.on('tick', () => {
+    // EN: Named so the synchronous convergence below can paint once —
+    //     d3's manual tick() does NOT dispatch events (only the RAF loop
+    //     does), so we must call the painter ourselves after stepping.
+    // FR: Nommé pour que la convergence synchrone ci-dessous peigne une
+    //     fois — le tick() manuel de d3 NE dispatche PAS les événements
+    //     (seule la boucle RAF le fait), il faut donc appeler le peintre.
+    const renderTick = () => {
       link
         .attr('x1', d => d.source.x).attr('y1', d => d.source.y)
         .attr('x2', d => d.target.x).attr('y2', d => d.target.y)
@@ -284,16 +290,27 @@ export default function ForceGraph({ nodes, edges, lanDevices, alertedNodes = ne
         .attr('x', d => (d.source.x + d.target.x) / 2)
         .attr('y', d => (d.source.y + d.target.y) / 2)
       node.attr('transform', d => `translate(${d.x},${d.y})`)
-    })
+    }
+    sim.on('tick', renderTick)
 
-    // EN: Once the sim cools down, pin every node and cache its position.
-    // FR: Une fois la sim refroidie, épingler chaque nœud et cacher sa position.
-    sim.on('end', () => {
-      allNodes.forEach(n => {
-        n.fx = n.x; n.fy = n.y
-        posCache.current[n.id] = { x: n.x, y: n.y, fx: n.x, fy: n.y }
-      })
+    // EN: Converge the sim SYNCHRONOUSLY — ~300 manual ticks before the
+    //     view is painted, then the RAF loop is dead. The graph appears
+    //     already in place: no drift, no shuffle, no visible physics.
+    //     Manual ticks don't fire 'end', so pin + cache + paint by hand.
+    //     Only a user drag briefly restarts the RAF loop.
+    // FR: Faire converger la sim de façon SYNCHRONE — ~300 ticks manuels
+    //     avant que la vue ne soit peinte, puis la boucle RAF est morte.
+    //     Le graphe apparaît déjà en place : pas de dérive, pas de
+    //     brassage, pas de physique visible. Les ticks manuels ne
+    //     déclenchent pas « end », on épingle + cache + peint à la main.
+    //     Seul un drag utilisateur relance brièvement la boucle RAF.
+    sim.stop()
+    for (let i = 0; i < 300; i++) sim.tick()
+    allNodes.forEach(n => {
+      n.fx = n.x; n.fy = n.y
+      posCache.current[n.id] = { x: n.x, y: n.y, fx: n.x, fy: n.y }
     })
+    renderTick()
 
     return () => sim.stop()
     // eslint-disable-next-line react-hooks/exhaustive-deps
