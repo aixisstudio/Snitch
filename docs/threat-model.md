@@ -32,9 +32,10 @@ same process. There is **no cloud component** and **no telemetry**.
 ### Known limitations
 
 - **Admin/elevation is still required for capture** — but scoped to the
-  backend only: the Electron UI runs asInvoker while the backend is spawned
-  elevated (`Start-Process -Verb RunAs`) and stopped via the authenticated
-  `/shutdown` endpoint.
+  backend only: the Electron UI runs unprivileged while the backend is
+  spawned elevated through the platform prompt (`Start-Process -Verb RunAs`
+  on Windows, `osascript` on macOS, `pkexec` on Linux) and stopped via the
+  authenticated `/shutdown` endpoint.
 - The API token protects HTTP/WS but **not** against another local process
   running as you that can read `data/api_token.txt` or the Electron IPC.
 - SQLite data at rest is unencrypted.
@@ -78,9 +79,10 @@ le même processus. **Aucun composant cloud, aucune télémétrie.**
 ### Limites connues
 
 - **Capture = privilèges admin/root**, mais limités au backend : l'UI
-  Electron tourne en asInvoker tandis que le backend est lancé élevé
-  (`Start-Process -Verb RunAs`) et arrêté via l'endpoint authentifié
-  `/shutdown`.
+  Electron tourne sans privilèges tandis que le backend est lancé élevé via
+  l'invite de la plateforme (`Start-Process -Verb RunAs` sous Windows,
+  `osascript` sous macOS, `pkexec` sous Linux) et arrêté via l'endpoint
+  authentifié `/shutdown`.
 - Le jeton protège HTTP/WS mais **pas** contre un autre processus local
   tournant sous votre compte qui lit `data/api_token.txt` ou l'IPC Electron.
 - Les données SQLite au repos ne sont pas chiffrées.

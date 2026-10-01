@@ -36,25 +36,29 @@ conception :
 ## Privileges / Privilèges
 
 **EN:** Packet capture requires elevated privileges — but only the backend
-holds them. The Electron UI runs unprivileged (`asInvoker`); on Windows the
-backend alone is spawned elevated (`Start-Process -Verb RunAs`, one UAC
-prompt per launch) and is stopped through the authenticated `/shutdown`
-endpoint since an unprivileged process cannot signal it.
+holds them. The packaged Electron app runs the UI unprivileged on every OS
+and elevates ONLY the backend through the platform's native prompt:
 
-- Windows: UI unprivileged + backend elevated via UAC + Npcap (installed by you from npcap.com)
-- Linux: `setcap cap_net_raw,cap_net_admin` on the binary, or root
-- macOS: read access to `/dev/bpf*` (experimental support)
+- **Windows:** `Start-Process -Verb RunAs` (one UAC prompt per launch) + Npcap (installed by you from npcap.com)
+- **macOS:** `osascript … with administrator privileges` (native password dialog)
+- **Linux:** `pkexec` (polkit dialog); falls back to unprivileged if polkit is absent
+
+The elevated child is stopped through the authenticated `/shutdown` endpoint
+since an unprivileged process cannot signal it. Declining the prompt offers
+retry / continue-without-capture instead of a hard quit.
 
 **FR :** La capture de paquets exige des privilèges élevés — mais seul le
-backend les détient. L'UI Electron tourne sans privilèges (`asInvoker`) ;
-sous Windows, seul le backend est lancé en mode élevé (`Start-Process -Verb
-RunAs`, une invite UAC par lancement) et il est arrêté via l'endpoint
-authentifié `/shutdown` puisqu'un processus non privilégié ne peut pas le
-signaler.
+backend les détient. L'app Electron packagée fait tourner l'UI sans
+privilèges sur tous les OS et n'élève QUE le backend via l'invite native de
+la plateforme :
 
-- Windows : UI non privilégiée + backend élevé via UAC + Npcap (installé par vos soins depuis npcap.com)
-- Linux : `setcap cap_net_raw,cap_net_admin` sur le binaire, ou root
-- macOS : accès en lecture à `/dev/bpf*` (support expérimental)
+- **Windows :** `Start-Process -Verb RunAs` (une invite UAC par lancement) + Npcap (installé par vos soins depuis npcap.com)
+- **macOS :** `osascript … with administrator privileges` (dialogue mot de passe natif)
+- **Linux :** `pkexec` (dialogue polkit) ; repli non privilégié si polkit est absent
+
+L'enfant élevé est arrêté via l'endpoint authentifié `/shutdown` puisqu'un
+processus non privilégié ne peut pas le signaler. Refuser l'invite propose
+réessayer / continuer sans capture au lieu d'une sortie brutale.
 
 ## Dependencies / Dépendances
 

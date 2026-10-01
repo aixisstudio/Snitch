@@ -99,10 +99,12 @@ let backendProc  = null
 let tray         = null
 let backendPort  = 0            // EN: chosen at launch / FR: choisi au lancement
 let isQuitting   = false
-let backendElevated = false     // EN: Windows RunAs spawn — we can't kill it,
-                                //     /shutdown is the exit path.
-                                // FR: spawn élevé Windows — on ne peut pas
-                                //     le tuer, /shutdown est le chemin d'arrêt.
+let backendElevated = false     // EN: Elevated spawn (RunAs/osascript/pkexec)
+                                //     — we can't kill it, /shutdown is the
+                                //     exit path.
+                                // FR: Spawn élevé (RunAs/osascript/pkexec) —
+                                //     impossible à tuer, /shutdown est le
+                                //     chemin d'arrêt.
 
 // ── API token + port / Jeton API + port ─────────────────────────────────────
 // EN: 48-hex-char secret generated once per app launch. Passed to the backend
@@ -358,31 +360,76 @@ function backendDataDir() {
 }
 
 /**
- * EN: Windows privilege split — the UI runs UNPRIVILEGED (asInvoker); only
- *     the backend asks for admin via `Start-Process -Verb RunAs` (one UAC
- *     prompt per launch). Env vars can't cross UAC, so we pass the port as
- *     an argv flag and pre-write the token to api_token.txt — the backend's
- *     own resolution order picks it up. In dev we spawn normally: capture
- *     will fail without rights but the UI stays usable.
- * FR: Séparation de privilèges Windows — l'UI tourne SANS privilèges
- *     (asInvoker) ; seul le backend demande l'admin via `Start-Process -Verb
- *     RunAs` (une invite UAC par lancement). Les variables d'env ne
- *     traversent pas l'UAC, donc on passe le port en argument argv et on
- *     pré-écrit le jeton dans api_token.txt — l'ordre de résolution du
- *     backend le récupère. En dev on lance normalement : la capture échouera
- *     sans droits mais l'UI reste utilisable.
+ * EN: Privilege split — the UI runs UNPRIVILEGED on every OS; only the
+ *     backend asks for elevation, once per launch, through the platform's
+ *     native prompt:
+ *       Windows : Start-Process -Verb RunAs  (UAC dialog)
+ *       macOS   : osascript "do shell script … with administrator privileges"
+ *                 (native password dialog — same as sudo, GUI-flavoured)
+ *       Linux   : pkexec                      (polkit dialog)
+ *
+ *     Elevated processes get a different $HOME (root), so SNITCH_DATA_DIR is
+ *     passed explicitly on macOS/Linux — the token file, DB and logs must
+ *     land in the USER's data dir, not /var/root. On Windows env can't
+ *     cross UAC, so the pre-written api_token.txt does the job and the
+ *     frozen binary resolves %LOCALAPPDATA% itself.
+ *
+ *     All elevated children are unreachable by kill() — /shutdown is the
+ *     only exit path (see shutdownBackend).
+ *
+ * FR: Séparation de privilèges — l'UI tourne SANS privilèges sur tous les
+ *     OS ; seul le backend demande l'élévation, une fois par lancement, via
+ *     l'invite native de la plateforme :
+ *       Windows : Start-Process -Verb RunAs  (dialogue UAC)
+ *       macOS   : osascript « do shell script … with administrator
+ *                 privileges » (dialogue mot de passe natif — comme sudo,
+ *                 en version graphique)
+ *       Linux   : pkexec                      (dialogue polkit)
+ *
+ *     Les processus élevés reçoivent un $HOME différent (root), donc
+ *     SNITCH_DATA_DIR est passé explicitement sous macOS/Linux — le fichier
+ *     de jeton, la DB et les logs doivent atterrir dans le dossier de
+ *     données de L'UTILISATEUR, pas dans /var/root. Sous Windows l'env ne
+ *     traverse pas l'UAC, donc le api_token.txt pré-écrit fait le travail
+ *     et le binaire figé résout %LOCALAPPDATA% lui-même.
+ *
+ *     Tous les enfants élevés sont inaccessibles à kill() — /shutdown est
+ *     le seul chemin d'arrêt (voir shutdownBackend).
  */
 function launchBackendElevated() {
   const dataDir = backendDataDir()
   fs.mkdirSync(dataDir, { recursive: true })
   fs.writeFileSync(path.join(dataDir, 'api_token.txt'), API_TOKEN, { mode: 0o600 })
 
-  // EN: -FilePath/-ArgumentList carefully quoted (paths may contain spaces).
-  // FR: -FilePath/-ArgumentList soigneusement entre guillemets (chemins avec espaces).
-  const ps = `Start-Process -FilePath "${backendExe}" -ArgumentList '--port ${backendPort}' -Verb RunAs -WindowStyle Hidden`
-  backendProc = spawn('powershell.exe', [
-    '-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-Command', ps,
-  ], { windowsHide: true, stdio: 'ignore' })
+  if (isWindows) {
+    // EN: -FilePath/-ArgumentList carefully quoted (paths may contain spaces).
+    // FR: -FilePath/-ArgumentList soigneusement entre guillemets (chemins avec espaces).
+    const ps = `Start-Process -FilePath "${backendExe}" -ArgumentList '--port ${backendPort}' -Verb RunAs -WindowStyle Hidden`
+    backendProc = spawn('powershell.exe', [
+      '-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-Command', ps,
+    ], { windowsHide: true, stdio: 'ignore' })
+  } else if (process.platform === 'darwin') {
+    // EN: Escape for the AppleScript double-quoted string, then the shell.
+    // FR: Échapper pour la chaîne AppleScript entre guillemets, puis le shell.
+    const esc = s => s.replace(/(["\\$`])/g, '\\$1')
+    const shellCmd = `SNITCH_DATA_DIR="${dataDir}" "${backendExe}" --port ${backendPort}`
+    backendProc = spawn('osascript', [
+      '-e', `do shell script "${esc(shellCmd)}" with administrator privileges`,
+    ], { stdio: 'ignore' })
+  } else {
+    // EN: pkexec strips the environment — `env` re-injects SNITCH_DATA_DIR.
+    //     If polkit isn't installed (minimal distros), fall back to a plain
+    //     spawn: the UI still works, capture just won't start.
+    // FR: pkexec purge l'environnement — `env` réinjecte SNITCH_DATA_DIR.
+    //     Si polkit n'est pas installé (distros minimales), repli sur un
+    //     spawn simple : l'UI marche, la capture ne démarrera juste pas.
+    const pkexecBin = ['/usr/bin/pkexec', '/bin/pkexec', '/usr/local/bin/pkexec']
+      .find(p => fs.existsSync(p))
+    if (!pkexecBin) { spawnBackendPlain(); return }
+    backendProc = spawn(pkexecBin, [
+      'env', `SNITCH_DATA_DIR=${dataDir}`, backendExe, '--port', String(backendPort),
+    ], { stdio: 'ignore' })
+  }
   backendElevated = true
 
   backendProc.on('error', err => {
@@ -390,33 +437,38 @@ function launchBackendElevated() {
     dialog.showErrorBox('Snitch', `Failed to start backend / Échec du démarrage du backend :\n${err.message}`)
     app.quit()
   })
-  // EN: No 'exit' crash-watch here — the powershell wrapper exits as soon as
-  //     the elevated child is up; waitForBackend() is the liveness check.
-  // FR: Pas de surveillance 'exit' ici — le wrapper powershell sort dès que
-  //     l'enfant élevé est lancé ; waitForBackend() est le test de vie.
+  // EN: No 'exit' crash-watch here — the wrapper exits as soon as the
+  //     elevated child is up; waitForBackend() is the liveness check.
+  // FR: Pas de surveillance 'exit' ici — le wrapper sort dès que l'enfant
+  //     élevé est lancé ; waitForBackend() est le test de vie.
 }
 
 function launchBackend() {
+  /** EN: Dispatcher — packaged builds elevate the backend on EVERY platform
+   *      (capture needs it); dev mode spawns plain so developers can iterate
+   *      without password prompts (capture fails without rights, UI works).
+   *  FR: Répartiteur — les builds packagées élèvent le backend sur TOUS les
+   *      OS (la capture l'exige) ; le mode dev lance sans privilèges pour
+   *      itérer sans invite mot de passe (la capture échoue, l'UI marche). */
+  if (!fs.existsSync(backendExe)) {
+    dialog.showErrorBox('Snitch', `Backend not found / Backend introuvable :\n${backendExe}`)
+    app.quit(); return
+  }
+
+  if (isDev) {
+    spawnBackendPlain()
+    return
+  }
+  launchBackendElevated()
+}
+
+function spawnBackendPlain() {
   /** EN: Spawn the compiled backend with SNITCH_TOKEN + SNITCH_PORT in its
    *      environment; windowsHide keeps a console window from flashing;
    *      stdout/stderr stream to the log file for diagnostics.
    *  FR: Lancer le backend compilé avec SNITCH_TOKEN + SNITCH_PORT dans son
    *      environnement ; windowsHide évite l'éclair d'une fenêtre console ;
    *      stdout/stderr vont dans le fichier de log pour le diagnostic. */
-  if (!fs.existsSync(backendExe)) {
-    dialog.showErrorBox('Snitch', `Backend not found / Backend introuvable :\n${backendExe}`)
-    app.quit(); return
-  }
-
-  // EN: Windows packaged build → elevated child, unprivileged UI.
-  //     Everything else → normal spawn, same privilege as the UI.
-  // FR: Build packagé Windows → enfant élevé, UI non privilégiée.
-  //     Le reste → spawn normal, même privilège que l'UI.
-  if (isWindows && !isDev) {
-    launchBackendElevated()
-    return
-  }
-
   fs.mkdirSync(logDir, { recursive: true })
   const logFd = fs.openSync(logFile, 'a')
 
@@ -486,20 +538,54 @@ app.whenReady().then(async () => {
 
   createSplash()
   backendPort = await findFreePort()
-  launchBackend()
 
-  try {
-    await waitForBackend()
-  } catch (e) {
-    // EN: On Windows an elevated backend that never answers usually means
-    //     the UAC prompt was declined — say so explicitly.
-    // FR: Sous Windows un backend élevé qui ne répond jamais signifie
-    //     généralement une invite UAC refusée — le dire explicitement.
-    const extra = backendElevated
-      ? '\n\nDid you decline the admin (UAC) prompt? Capture requires it.\nAvez-vous refusé l\'invite administrateur (UAC) ? La capture l\'exige.'
-      : ''
-    dialog.showErrorBox('Snitch', `Backend unavailable / Backend indisponible :\n${e.message}${extra}`)
-    app.quit(); return
+  // EN: Boot loop — if the elevated backend never answers (declined admin
+  //     prompt is the usual cause), offer: retry elevation, continue
+  //     unprivileged (UI works, capture stays off), or quit.
+  // FR: Boucle de démarrage — si le backend élevé ne répond jamais (invite
+  //     admin refusée, cause habituelle), proposer : réessayer l'élévation,
+  //     continuer sans privilèges (l'UI marche, la capture reste coupée),
+  //     ou quitter.
+  let booted = false
+  while (!booted) {
+    launchBackend()
+    try {
+      // EN: 90 s of patience when elevated — the user may type a password.
+      // FR: 90 s de patience quand élevé — l'utilisateur tape son mot de passe.
+      await waitForBackend(backendElevated ? 90 : 40)
+      booted = true
+    } catch (e) {
+      if (!backendElevated) {
+        dialog.showErrorBox('Snitch', `Backend unavailable / Backend indisponible :\n${e.message}`)
+        app.quit(); return
+      }
+      const choice = await dialog.showMessageBox({
+        type: 'warning', title: 'Snitch',
+        message: 'The admin prompt was declined or timed out. Capture needs it to watch traffic.\n' +
+                 'L\'invite administrateur a été refusée ou a expiré. La capture en a besoin pour observer le trafic.',
+        detail: `Backend unavailable / Backend indisponible : ${e.message}`,
+        buttons: [
+          'Retry / Réessayer',
+          'Continue without capture / Continuer sans capture',
+          'Quit / Quitter',
+        ],
+        defaultId: 0, cancelId: 2,
+      })
+      if (choice.response === 2) { app.quit(); return }
+      if (choice.response === 1) {
+        backendElevated = false
+        spawnBackendPlain()
+        try {
+          await waitForBackend()
+          booted = true
+        } catch (e2) {
+          dialog.showErrorBox('Snitch', `Backend unavailable / Backend indisponible :\n${e2.message}`)
+          app.quit(); return
+        }
+      }
+      // EN: response 0 loops back to launchBackend() → fresh admin prompt.
+      // FR: la réponse 0 reboucle vers launchBackend() → nouvelle invite admin.
+    }
   }
 
   createMain()
