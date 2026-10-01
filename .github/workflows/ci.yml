@@ -79,7 +79,7 @@ jobs:
           cd dist/backend
           tar czf snitch-backend-${{ matrix.os }}.tar.gz snitch-backend
           sha256sum snitch-backend-${{ matrix.os }}.tar.gz > snitch-backend-${{ matrix.os }}.sha256
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: snitch-backend-${{ matrix.os }}
           path: dist/backend/*.tar.gz*
