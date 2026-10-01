@@ -182,8 +182,22 @@ export default function ForceGraph({ nodes, edges, lanDevices, alertedNodes = ne
     //     hôtes internet sur une orbite externe. forceRadial fait le gros du
     //     travail ; la charge répartit les nœuds sur chaque anneau pour que
     //     les étiquettes (~90 px) ne s'empilent jamais.
-    const ringInner = Math.min(width, height) * 0.20
-    const ringOuter = Math.min(width, height) * 0.44
+    // EN: Adaptive inner ring — the LAN orbit grows with the device count so
+    //     every device keeps ~95 px of arc (room for bubble + label). A
+    //     school with 30 machines gets a big perimeter instead of a pile-up.
+    //     The outer ring moves out with it to keep clear separation.
+    // FR: Anneau interne adaptatif — l'orbite LAN grandit avec le nombre
+    //     d'appareils pour que chacun garde ~95 px d'arc (bulle + étiquette).
+    //     Une école avec 30 machines obtient un grand périmètre plutôt qu'un
+    //     empilement. L'anneau externe recule avec lui pour garder la
+    //     séparation nette.
+    const lanCount = allNodes.filter(n => n.category === 'lan_device').length
+    const LAN_SPACING = 95   // EN: arc px per LAN device / FR: px d'arc par appareil LAN
+    const ringInner = Math.max(
+      Math.min(width, height) * 0.20,
+      (lanCount * LAN_SPACING) / (2 * Math.PI)
+    )
+    const ringOuter = Math.max(Math.min(width, height) * 0.44, ringInner + Math.min(width, height) * 0.24)
     const ringOf = d =>
       d.id === 'local' ? 0
       : d.category === 'lan_device' ? ringInner
@@ -209,9 +223,16 @@ export default function ForceGraph({ nodes, edges, lanDevices, alertedNodes = ne
       //     externe est un bug de mise en page — on l'évince pour que le
       //     nœud réapparaisse sur son anneau externe au lieu de squatter
       //     la zone locale.
-      if (c && n.id !== 'local' && n.category !== 'lan_device') {
+      if (c && n.id !== 'local') {
         const dx = c.x - width / 2, dy = c.y - height / 2
-        if (Math.hypot(dx, dy) < ringOuter - 60) c = null
+        const dist = Math.hypot(dx, dy)
+        if (n.category === 'lan_device') {
+          // EN: ring moved (device count changed) → re-settle on the new orbit.
+          // FR: l'anneau a bougé (le nombre d'appareils a changé) → se replacer.
+          if (Math.abs(dist - ringInner) > 40) c = null
+        } else if (dist < ringOuter - 60) {
+          c = null
+        }
       }
       if (c) { n.x = c.x; n.y = c.y; n.fx = c.fx; n.fy = c.fy }
       else {
