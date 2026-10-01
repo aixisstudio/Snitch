@@ -128,25 +128,35 @@ export default function ForceGraph({ nodes, edges, lanDevices, alertedNodes = ne
       else    { hasNew = true }
     })
 
+    // EN: Concentric-ring layout — the mental model IS a star: "me" at the
+    //     center, my LAN devices on an inner orbit, internet hosts on an
+    //     outer orbit. forceRadial does the heavy lifting; charge spreads
+    //     nodes around each ring so labels (≈90 px wide) never stack.
+    // FR: Layout en anneaux concentriques — le modèle mental EST une étoile :
+    //     « moi » au centre, mes appareils LAN sur une orbite interne, les
+    //     hôtes internet sur une orbite externe. forceRadial fait le gros du
+    //     travail ; la charge répartit les nœuds sur chaque anneau pour que
+    //     les étiquettes (~90 px) ne s'empilent jamais.
+    const ringInner = Math.min(width, height) * 0.20
+    const ringOuter = Math.min(width, height) * 0.44
+    const ringOf = d =>
+      d.id === 'local' ? 0
+      : d.category === 'lan_device' ? ringInner
+      : ringOuter
+
     const sim = d3.forceSimulation(allNodes)
-      .alpha(hasNew ? 0.6 : 0.05)    // EN: barely reheat if nothing new
+      .alpha(hasNew ? 0.8 : 0.05)    // EN: barely reheat if nothing new
                                      // FR: réchauffer à peine si rien de nouveau
       .alphaDecay(0.04)              // EN: settle ~2× faster / FR: stabilisation ~2× plus rapide
       .velocityDecay(0.55)           // EN: more friction, less overshoot / FR: plus de friction, moins de dépassement
-      .force('link', d3.forceLink(allEdges).id(d => d.id).distance(d => d.dashed ? 120 : 180).strength(0.4))
-      .force('charge', d3.forceManyBody().strength(d => d.category === 'lan_device' ? -450 : -600))
-      .force('center', d3.forceCenter(width / 2, height / 2).strength(0.03))
-      // EN: Collision radius covers node + label below — nodes never overlap.
-      // FR: Le rayon de collision couvre nœud + étiquette dessous — les nœuds
-      //     ne se chevauchent jamais.
-      .force('collision', d3.forceCollide(d => d.id === 'local' ? 55 : 48))
-      // EN: Gentle pull toward center for LAN devices so they orbit "local" —
-      //     weak enough that repulsion + collision keep them readable.
-      // FR: Légère attraction centrale pour les appareils LAN afin qu'ils
-      //     orbitent « local » — assez faible pour que répulsion + collision
-      //     les gardent lisibles.
-      .force('lan_x', d3.forceX(width / 2).strength(d => d.category === 'lan_device' ? 0.06 : 0))
-      .force('lan_y', d3.forceY(height / 2).strength(d => d.category === 'lan_device' ? 0.06 : 0))
+      .force('link', d3.forceLink(allEdges).id(d => d.id).distance(d => d.dashed ? 130 : 200).strength(0.25))
+      .force('charge', d3.forceManyBody().strength(d => d.category === 'lan_device' ? -500 : -750))
+      .force('radial', d3.forceRadial(ringOf, width / 2, height / 2)
+        .strength(d => d.id === 'local' ? 1 : d.category === 'lan_device' ? 0.45 : 0.3))
+      // EN: Collision covers node + label (~90 px wide → half-width ~45-55).
+      // FR: La collision couvre nœud + étiquette (~90 px de large →
+      //     demi-largeur ~45-55).
+      .force('collision', d3.forceCollide(d => d.id === 'local' ? 62 : 55))
 
     const link = g.append('g').selectAll('line')
       .data(allEdges)
