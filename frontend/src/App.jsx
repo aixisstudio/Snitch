@@ -143,16 +143,13 @@ export default function App() {
         <div style={{ flex: 1, position: 'relative', overflow: 'hidden', background: '#0f172a' }}>
           {view === 'graph' && (
             /* EN: Aurora backdrop behind the graph — orange/pink ribbons,
-                   fine film grain (0.35), dimmed to 55% so nodes and edges
-                   stay perfectly readable.
+                   fine film grain (0.35), full intensity like the demo.
                FR: Toile de fond aurore derrière le graphe — rubans
-                   orangés/rosés, grain de film fin (0.35), atténuée à 55 %
-                   pour que nœuds et arêtes restent parfaitement lisibles. */
+                   orangés/rosés, grain de film fin (0.35), intensité
+                   complète comme la démo. */
             <AuroraCurtain
               bands={5}
               noise={0.35}
-              intensity={0.55}
-              speed={0.7}
               colors={['#fb923c', '#f472b6', '#e879f9']}
               style={{ position: 'absolute', inset: 0 }}
             >
