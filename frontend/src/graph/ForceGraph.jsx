@@ -133,14 +133,20 @@ export default function ForceGraph({ nodes, edges, lanDevices, alertedNodes = ne
                                      // FR: réchauffer à peine si rien de nouveau
       .alphaDecay(0.04)              // EN: settle ~2× faster / FR: stabilisation ~2× plus rapide
       .velocityDecay(0.55)           // EN: more friction, less overshoot / FR: plus de friction, moins de dépassement
-      .force('link', d3.forceLink(allEdges).id(d => d.id).distance(d => d.dashed ? 80 : 130).strength(0.4))
-      .force('charge', d3.forceManyBody().strength(d => d.category === 'lan_device' ? -300 : -400))
+      .force('link', d3.forceLink(allEdges).id(d => d.id).distance(d => d.dashed ? 120 : 180).strength(0.4))
+      .force('charge', d3.forceManyBody().strength(d => d.category === 'lan_device' ? -450 : -600))
       .force('center', d3.forceCenter(width / 2, height / 2).strength(0.03))
-      .force('collision', d3.forceCollide(d => d.id === 'local' ? 30 : 20))
-      // EN: Gentle pull toward center for LAN devices so they orbit "local".
-      // FR: Légère attraction centrale pour les appareils LAN afin qu'ils orbitent « local ».
-      .force('lan_x', d3.forceX(width / 2).strength(d => d.category === 'lan_device' ? 0.15 : 0))
-      .force('lan_y', d3.forceY(height / 2).strength(d => d.category === 'lan_device' ? 0.15 : 0))
+      // EN: Collision radius covers node + label below — nodes never overlap.
+      // FR: Le rayon de collision couvre nœud + étiquette dessous — les nœuds
+      //     ne se chevauchent jamais.
+      .force('collision', d3.forceCollide(d => d.id === 'local' ? 55 : 48))
+      // EN: Gentle pull toward center for LAN devices so they orbit "local" —
+      //     weak enough that repulsion + collision keep them readable.
+      // FR: Légère attraction centrale pour les appareils LAN afin qu'ils
+      //     orbitent « local » — assez faible pour que répulsion + collision
+      //     les gardent lisibles.
+      .force('lan_x', d3.forceX(width / 2).strength(d => d.category === 'lan_device' ? 0.06 : 0))
+      .force('lan_y', d3.forceY(height / 2).strength(d => d.category === 'lan_device' ? 0.06 : 0))
 
     const link = g.append('g').selectAll('line')
       .data(allEdges)
