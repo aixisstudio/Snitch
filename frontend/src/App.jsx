@@ -78,11 +78,11 @@ export default function App() {
       if (id === 'local') { out[id] = node; continue }
       const procs = node.processes ? Object.keys(node.processes) : []
       if (procs.length > 0 && procs.every(p => excludedProcesses.includes(p))) continue
-      if (!matchesFilter(node, filter)) continue
+      if (!matchesFilter(node, filter, alertedNodes)) continue
       out[id] = node
     }
     return out
-  }, [nodes, excludedProcesses, filter])
+  }, [nodes, excludedProcesses, filter, alertedNodes])
 
   // EN: LAN devices obey the same filter in the graph — picking "Tracking"
   //     hides the local devices too; the sidebar keeps its own filtering.
@@ -93,10 +93,10 @@ export default function App() {
     if (!filter || (filter.category === 'all' && !filter.text)) return lanDevices
     const out = {}
     for (const [id, d] of Object.entries(lanDevices)) {
-      if (matchesFilter({ ...d, label: d.hostname }, filter)) out[id] = d
+      if (matchesFilter({ ...d, label: d.hostname }, filter, alertedNodes)) out[id] = d
     }
     return out
-  }, [lanDevices, filter])
+  }, [lanDevices, filter, alertedNodes])
 
   const filteredEdges = useMemo(() => {
     const visibleIds = new Set([...Object.keys(filteredNodes), ...Object.keys(filteredLanDevices)])
@@ -164,6 +164,7 @@ export default function App() {
         filter={filter}
         onFilterChange={setFilter}
         onWhitelist={handleWhitelist}
+        alertedNodes={alertedNodes}
       />
 
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>

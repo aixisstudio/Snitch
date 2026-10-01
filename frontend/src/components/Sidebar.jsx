@@ -61,13 +61,19 @@ function fmt(bytes) {
 
 /**
  * EN: Does a node match the active search filter? The "local" node and any
- *     node matching the category always pass unless the text fails.
+ *     node matching the category always pass unless the text fails. The
+ *     special "alerted" category keeps only nodes present in `alertedIds`
+ *     (warning/critical alert map), regardless of their traffic category.
  * FR: Un nœud correspond-il au filtre de recherche actif ? Le nœud « local »
  *     et tout nœud de la bonne catégorie passent sauf si le texte échoue.
+ *     La catégorie spéciale « alerted » ne garde que les nœuds présents dans
+ *     `alertedIds` (alertes warning/critique), quelle que soit la catégorie.
  */
-export function matchesFilter(node, filter) {
+export function matchesFilter(node, filter, alertedIds) {
   if (!filter || (filter.category === 'all' && !filter.text)) return true
-  if (filter.category !== 'all' && node.category !== filter.category) return false
+  if (filter.category === 'alerted') {
+    if (!alertedIds || !alertedIds.has(node.id)) return false
+  } else if (filter.category !== 'all' && node.category !== filter.category) return false
   if (filter.text) {
     const t = filter.text.toLowerCase()
     return (node.label   || '').toLowerCase().includes(t)
@@ -78,13 +84,19 @@ export function matchesFilter(node, filter) {
   return true
 }
 
-export default function Sidebar({ nodes, lanDevices, packets, selected, onClose, privacyScore, bandwidth, filter, onFilterChange, onWhitelist }) {
+export default function Sidebar({ nodes, lanDevices, packets, selected, onClose, privacyScore, bandwidth, filter, onFilterChange, onWhitelist, alertedNodes }) {
   const { t } = useT()
   const extNodes = Object.values(nodes).filter(n => n.id !== 'local')
+  // EN: the "Alerts" chip narrows the LAN list to flagged devices too —
+  //     other categories keep the full device list (they're local, not hosts).
+  // FR: la puce « Alertes » réduit aussi la liste LAN aux appareils
+  //     signalés — les autres catégories gardent la liste complète (ce sont
+  //     des appareils locaux, pas des hôtes).
   const devList  = Object.values(lanDevices)
+    .filter(d => filter?.category !== 'alerted' || (alertedNodes && alertedNodes.has(d.id)))
   const totalBytes = extNodes.reduce((a, n) => a + (n.bytes || 0), 0)
 
-  const filteredNodes = extNodes.filter(n => matchesFilter(n, filter))
+  const filteredNodes = extNodes.filter(n => matchesFilter(n, filter, alertedNodes))
   const hiddenCount = filteredNodes.length < extNodes.length ? extNodes.length : null
 
   return (

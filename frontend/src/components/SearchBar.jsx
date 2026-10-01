@@ -22,6 +22,7 @@ const CATEGORY_IDS = [
   { id: 'cdn',      label: 'CDN',      color: '#6366f1' },
   { id: 'dns',      label: 'DNS',      color: '#38bdf8' },
   { id: 'unknown',  color: '#94a3b8' },
+  { id: 'alerted',  color: '#ef4444' },
 ]
 
 export default function SearchBar({ filter, onChange }) {
@@ -30,7 +31,9 @@ export default function SearchBar({ filter, onChange }) {
 
   const categories = CATEGORY_IDS.map(c => ({
     ...c,
-    label: c.label ?? (c.id === 'all' ? t('cat_all') : t('cat_unknown')),
+    label: c.label ?? (c.id === 'all' ? t('cat_all')
+                    : c.id === 'alerted' ? t('cat_alerted')
+                    : t('cat_unknown')),
   }))
 
   return (
