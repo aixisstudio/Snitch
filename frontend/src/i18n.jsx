@@ -200,6 +200,19 @@ const en = {
   apps_top_dest: 'Top destinations',
   apps_history_60m: 'Last hour (bytes/min)',
   alertmsg_NEW_HOSTS: n => `${n} new host${n > 1 ? 's' : ''} contacted`,
+  settings_autolaunch: 'Launch at login',
+  settings_autolaunch_hint: 'Start Snitch automatically when you sign in',
+
+  // Onboarding / Premier lancement
+  onboard_title: 'Welcome to Snitch',
+  onboard_sub: 'Real-time network traffic visualizer — private by design.',
+  onboard_priv_title: 'Everything stays on this machine',
+  onboard_priv_body: 'Traffic metadata, alerts and history are stored in a local SQLite database. No account, no cloud, no telemetry.',
+  onboard_capture_title: 'What is captured',
+  onboard_capture_body: 'Packet headers only: destination IPs, ports, volumes, process names, DNS names and TLS server names (SNI). Payloads are never read.',
+  onboard_out_title: 'What leaves the machine',
+  onboard_out_body: 'Nothing by default. The only possible outbound call is the geolocation database download, which you trigger yourself in Settings.',
+  onboard_go: 'Got it',
 }
 
 // ── Dictionnaire français / French dictionary ────────────────────────────────
@@ -386,6 +399,19 @@ const fr = {
   apps_top_dest: 'Destinations principales',
   apps_history_60m: 'Dernière heure (octets/min)',
   alertmsg_NEW_HOSTS: n => `${n} nouvel${n > 1 ? 'x' : ''} hôte${n > 1 ? 's' : ''} contacté${n > 1 ? 's' : ''}`,
+  settings_autolaunch: 'Lancer à la connexion',
+  settings_autolaunch_hint: 'Démarrer Snitch automatiquement à l\'ouverture de session',
+
+  // Premier lancement / Onboarding
+  onboard_title: 'Bienvenue dans Snitch',
+  onboard_sub: 'Visualiseur de trafic réseau en temps réel — privé par conception.',
+  onboard_priv_title: 'Tout reste sur cette machine',
+  onboard_priv_body: 'Métadonnées de trafic, alertes et historique sont stockés dans une base SQLite locale. Pas de compte, pas de cloud, pas de télémétrie.',
+  onboard_capture_title: 'Ce qui est capturé',
+  onboard_capture_body: 'Les en-têtes de paquets seulement : IP de destination, ports, volumes, noms de processus, noms DNS et SNI TLS. Les contenus ne sont jamais lus.',
+  onboard_out_title: 'Ce qui quitte la machine',
+  onboard_out_body: 'Rien par défaut. Le seul appel sortant possible est le téléchargement de la base de géolocalisation, que vous déclenchez vous-même dans les Réglages.',
+  onboard_go: 'Compris',
 }
 
 // ── Context / Contexte ───────────────────────────────────────────────────────

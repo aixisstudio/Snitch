@@ -112,6 +112,20 @@ ipcMain.handle('snitch:get-version', () => app.getVersion())
 //     (contrat de shell.openPath).
 ipcMain.handle('snitch:open-logs', () => shell.openPath(logDir))
 
+// EN: "Launch at login" toggle — app.setLoginItemSettings is cross-platform
+//     (Windows registry Run key, macOS login items); a no-op on Linux where
+//     the API doesn't apply. The renderer reads the state with the same IPC.
+// FR: Bascule « lancer au démarrage » — app.setLoginItemSettings est
+//     multi-OS (clé Run Windows, login items macOS) ; sans effet sous Linux
+//     où l'API ne s'applique pas. Le renderer lit l'état via le même IPC.
+ipcMain.handle('snitch:get-auto-launch', () =>
+  process.platform === 'linux' ? false : app.getLoginItemSettings().openAtLogin)
+ipcMain.handle('snitch:set-auto-launch', (_evt, enabled) => {
+  if (process.platform === 'linux') return false
+  app.setLoginItemSettings({ openAtLogin: !!enabled })
+  return app.getLoginItemSettings().openAtLogin
+})
+
 /**
  * EN: Find a free loopback port by binding :0 and releasing — the backend
  *     then binds the same number. A tiny race window remains (another

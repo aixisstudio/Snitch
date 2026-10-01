@@ -1,0 +1,75 @@
+# Snitch — CDN / edge-infrastructure domain list.
+#
+# EN: One registrable domain per line, suffix-matched. These are delivery
+#     networks, not threats — flagging them as "cdn" keeps the graph honest
+#     about what is infrastructure vs. a real endpoint. License: CC0-1.0.
+#     Users may drop an overriding file at <data_dir>/lists/cdns.txt.
+# FR: Un domaine enregistrable par ligne, correspondance par suffixe. Ce sont
+#     des réseaux de distribution, pas des menaces — les marquer « cdn »
+#     distingue l'infrastructure des vrais endpoints. Licence : CC0-1.0.
+#     L'utilisateur peut poser un fichier prioritaire dans
+#     <data_dir>/lists/cdns.txt.
+
+cloudflare.com
+cloudflare.net
+cloudfront.net
+akamaiedge.net
+akamai.net
+akamaized.net
+edgekey.net
+edgesuite.net
+fastly.net
+fastlylb.net
+edgecastcdn.net
+azureedge.net
+cdn77.org
+stackpathdns.com
+incapdns.net
+impervadns.net
+gcdn.co
+cdnhwc1.com
+b-cdn.net
+jsdelivr.net
+unpkg.com
+cdnjs.cloudflare.com
+googleapis.com
+gstatic.com
+googlevideo.com
+ytimg.com
+ggpht.com
+windows.net
+msecnd.net
+licdn.com
+pinimg.com
+twimg.com
+cdninstagram.com
+fbcdn.net
+netflix.com
+nflxvideo.net
+nflximg.net
+nflximg.com
+nflxext.com
+spotifycdn.com
+scdn.co
+videodelivery.net
+vod-adaptive.akamaized.net
+live.net
+office.net
+apple-mapkit.apple.com
+icloud-content.com
+mzstatic.com
+cdn-apple.com
+aaplimg.com
+digicert.com
+verisign.com
+akadns.net
+cloudflare-dns.com
+dns.google
+quad9.net
+opendns.com
+llnwd.net
+hwcdn.net
+kxcdn.com
+footprint.net
+edgecast.net
+ecscdn.net

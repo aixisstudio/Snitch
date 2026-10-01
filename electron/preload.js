@@ -35,4 +35,9 @@ contextBridge.exposeInMainWorld('snitch', {
   // FR: Asynchrone — demande au processus principal d'ouvrir le dossier des
   //     logs dans le gestionnaire de fichiers (shell.openPath — multi-OS).
   openLogs:   () => ipcRenderer.invoke('snitch:open-logs'),
+  // EN: Launch-at-login getters/setters (Windows/macOS; Linux always false).
+  // FR: Lecture/écriture du lancement au démarrage (Windows/macOS ; toujours
+  //     false sous Linux).
+  getAutoLaunch: () => ipcRenderer.invoke('snitch:get-auto-launch'),
+  setAutoLaunch: (enabled) => ipcRenderer.invoke('snitch:set-auto-launch', enabled),
 })

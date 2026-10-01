@@ -49,3 +49,6 @@ py-modules = ["cli", "paths", "logging_config", "run_backend"]
 #     backend/frontend_dist par la chaîne de release avant le build.
 [tool.setuptools.package-data]
 "*" = ["frontend_dist/**/*"]
+# EN: Domain lists ship inside the wheel too (tracker + CDN suffix lists).
+# FR: Les listes de domaines sont aussi embarquées dans la wheel.
+"classifier" = ["lists/*.txt"]

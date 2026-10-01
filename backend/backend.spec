@@ -29,7 +29,11 @@ a = Analysis(
     pathex=['.'],           # EN: backend/ — so api.*, capture.*, etc. resolve
                           # FR: backend/ — pour que api.*, capture.*, etc. se résolvent
     binaries=[],
-    datas=[],
+    # EN: Bundle classifier/lists/ (tracker + CDN domain lists) so the frozen
+    #     app finds them — _list_dir() resolves via sys._MEIPASS.
+    # FR: Embarquer classifier/lists/ (listes trackers + CDN) pour que l'app
+    #     figée les trouve — _list_dir() résout via sys._MEIPASS.
+    datas=[('classifier/lists', 'classifier/lists')],
     hiddenimports=(
         # ── uvicorn internals / éléments internes d'uvicorn ─────────────
         collect_submodules('uvicorn')

@@ -20,6 +20,7 @@ import AppsView from './components/AppsView'
 import Sidebar from './components/Sidebar'
 import { AlertBell, AlertPanel, AlertToasts } from './components/AlertPanel'
 import { SettingsButton, SettingsPanel } from './components/Settings'
+import Onboarding from './components/Onboarding'
 import Timeline from './components/Timeline'
 import Dropdown from './components/Dropdown'
 import { apiBase, authHeaders } from './api'
@@ -36,6 +37,11 @@ export default function App() {
   const [view, setView] = useState('graph')
   const [showAlerts, setShowAlerts] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
+  // EN: First-run explainer — shown once, flag persisted in localStorage.
+  // FR: Explications de premier lancement — affichées une fois, drapeau
+  //     persisté en localStorage.
+  const [showOnboarding, setShowOnboarding] = useState(
+    () => !localStorage.getItem('snitch_onboarded'))
   const [filter, setFilter] = useState({ text: '', category: 'all' })
   const { lang, setLang } = useT()
 
@@ -163,6 +169,8 @@ export default function App() {
           {showSettings && (
             <SettingsPanel onClose={() => setShowSettings(false)} lang={lang} setLang={setLang} />
           )}
+
+          {showOnboarding && <Onboarding onDone={() => setShowOnboarding(false)} />}
 
           {/* EN: Floating toasts for warning/critical alerts.
               FR: Toasts flottants pour les alertes warning/critiques. */}

@@ -43,6 +43,7 @@ compatibles AGPL.
 |---|---|---|
 | DB-IP Lite (City + ASN) | CC BY 4.0 | "IP Geolocation by [DB-IP](https://db-ip.com)" — recommended default |
 | MaxMind GeoLite2 | GeoLite2 EULA | Optional alternative — requires a free MaxMind account; review the EULA before use |
+| `classifier/lists/*.txt` (bundled tracker + CDN domain lists) | CC0-1.0 | Curated in this repository — public domain, contributions welcome / listes maintenues dans ce dépôt — domaine public, contributions bienvenues |
 
 Both `.mmdb` databases are placed manually by the user in `<data_dir>/geo/`.
 No database is downloaded or contacted automatically.

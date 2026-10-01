@@ -33,6 +33,10 @@ The entire interface is available in **English and French**: use the `EN / FR` t
 | Process Attribution | Know which app generates which traffic (top 5 per connection) |
 | LAN Scanner | Passive discovery via the system ARP table (no broadcast scans) |
 | Privacy Score | Real-time score of your outgoing traffic exposure |
+| Per-app View | Per-process destinations, volumes and 60-min history |
+| Alert Suppression | Persisted "ignore host/type" rules, manageable in the UI |
+| Settings Panel | Language, retention, filters, consent-gated GeoIP download, diagnostics |
+| Tracker Detection | Suffix-matched domain lists shipped as editable data files (`backend/classifier/lists/`) |
 | Bandwidth Monitor | Live MB/s sparkline |
 | EN / FR UI | Full bilingual interface, one click to switch |
 
@@ -171,6 +175,10 @@ Toute l'interface est disponible en **français et en anglais** : utilisez le s�
 | Attribution processus | Sachez quelle app génère quel trafic (top 5 par connexion) |
 | Scanner LAN | Découverte passive via la table ARP système (aucun scan broadcast) |
 | Score de confidentialité | Score en temps réel de l'exposition de votre trafic sortant |
+| Vue par application | Destinations, volumes et historique 60 min par processus |
+| Suppression d'alertes | Règles « ignorer hôte/type » persistées, gérables dans l'UI |
+| Panneau Réglages | Langue, rétention, filtres, téléchargement GeoIP sous consentement, diagnostic |
+| Détection de trackers | Listes de domaines par suffixe, livrées en fichiers de données éditables (`backend/classifier/lists/`) |
 | Moniteur de débit | Sparkline MB/s en direct |
 | UI FR / EN | Interface entièrement bilingue, bascule en un clic |
 

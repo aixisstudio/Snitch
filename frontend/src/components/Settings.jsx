@@ -38,6 +38,7 @@ export function SettingsPanel({ onClose, lang, setLang }) {
   const [geoStatus, setGeoStatus] = useState(null)
   const [geoMsg, setGeoMsg] = useState('')
   const [saved, setSaved] = useState(false)
+  const [autoLaunch, setAutoLaunch] = useState(false)
 
   useEffect(() => {
     ;(async () => {
@@ -52,6 +53,9 @@ export function SettingsPanel({ onClose, lang, setLang }) {
         setRetention(s.settings?.retention_hours ?? 24)
         setGeoStatus(g)
       } catch { setSettings({}) }
+      if (window.snitch?.getAutoLaunch) {
+        setAutoLaunch(await window.snitch.getAutoLaunch())
+      }
     })()
   }, [])
 
@@ -156,6 +160,30 @@ export function SettingsPanel({ onClose, lang, setLang }) {
             {[6, 12, 24, 48, 72, 168].map(h => <option key={h} value={h}>{h}h</option>)}
           </select>
         </div>
+
+        {/* Auto-launch (Electron only) / Lancement auto (Electron seul) */}
+        {window.snitch?.setAutoLaunch && (
+          <div style={row}>
+            <div>
+              <div style={label}>{t('settings_autolaunch')}</div>
+              <div style={hint}>{t('settings_autolaunch_hint')}</div>
+            </div>
+            <button onClick={async () => setAutoLaunch(await window.snitch.setAutoLaunch(!autoLaunch))}
+              role="switch" aria-checked={autoLaunch}
+              style={{
+                width: 36, height: 20, borderRadius: 10, border: 'none',
+                background: autoLaunch ? '#3b82f6' : '#0f172a',
+                outline: '1px solid #334155', cursor: 'pointer',
+                position: 'relative', flexShrink: 0,
+              }}>
+              <div style={{
+                width: 14, height: 14, borderRadius: '50%', background: '#e2e8f0',
+                position: 'absolute', top: 3, left: autoLaunch ? 19 : 3,
+                transition: 'left 0.15s',
+              }} />
+            </button>
+          </div>
+        )}
 
         {/* GeoIP / GeoIP */}
         <div style={{ ...row, display: 'block' }}>

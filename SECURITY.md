@@ -12,7 +12,7 @@ N'ouvrez pas d'issue publique pour les problèmes de sécurité.
 
 ## Local attack surface / Surface d'attaque locale
 
-The API exposes your full traffic graph — it is protected by design:
+**EN:** The API exposes your full traffic graph — it is protected by design:
 
 - **Token auth** on every REST endpoint and the WebSocket
   (`X-Snitch-Token` or `?token=`). Generated per launch under Electron,
@@ -22,9 +22,20 @@ The API exposes your full traffic graph — it is protected by design:
   to block cross-site WebSocket hijacking.
 - **Restricted CORS** — loopback origins only, no credentials.
 
+**FR :** L'API expose tout votre graphe de trafic — elle est protégée par
+conception :
+
+- **Authentification par jeton** sur chaque endpoint REST et le WebSocket
+  (`X-Snitch-Token` ou `?token=`). Généré à chaque lancement sous Electron,
+  persisté en 0600 sinon.
+- **Bind loopback** (`127.0.0.1`) par défaut dans tous les modes.
+- **Liste blanche d'Origin** sur le handshake WebSocket (hôtes loopback +
+  `null`) pour bloquer le détournement de WebSocket cross-site.
+- **CORS restreint** — origines loopback uniquement, sans identifiants.
+
 ## Privileges / Privilèges
 
-Packet capture requires elevated privileges. Current limitation: under
+**EN:** Packet capture requires elevated privileges. Current limitation: under
 Electron the **whole app** (Chromium UI included) runs elevated on Windows
 (`requireAdministrator`). A privileged-daemon split (unprivileged UI +
 elevated capture backend) is a known roadmap item — see issues.
@@ -33,8 +44,22 @@ elevated capture backend) is a known roadmap item — see issues.
 - Linux: `setcap cap_net_raw,cap_net_admin` on the binary, or root
 - macOS: read access to `/dev/bpf*` (experimental support)
 
+**FR :** La capture de paquets exige des privilèges élevés. Limite actuelle :
+sous Electron, **toute l'app** (interface Chromium incluse) tourne en mode
+élevé sous Windows (`requireAdministrator`). Une séparation daemon privilégié
+(UI non élevée + backend de capture élevé) est un point de feuille de route
+connu — voir les issues.
+
+- Windows : Administrateur + Npcap (installé par vos soins depuis npcap.com)
+- Linux : `setcap cap_net_raw,cap_net_admin` sur le binaire, ou root
+- macOS : accès en lecture à `/dev/bpf*` (support expérimental)
+
 ## Dependencies / Dépendances
 
-Scapy was removed (GPL-2.0-only + large attack surface). Capture is a minimal
-ctypes binding to libpcap plus our own bounded parser. Dependencies are
-pinned and scanned by Dependabot.
+**EN:** Scapy was removed (GPL-2.0-only + large attack surface). Capture is a
+minimal ctypes binding to libpcap plus our own bounded parser. Dependencies
+are pinned and scanned by Dependabot.
+
+**FR :** Scapy a été retiré (GPL-2.0-only + large surface d'attaque). La
+capture est un binding ctypes minimal vers libpcap plus notre propre parseur
+borné. Les dépendances sont épinglées et surveillées par Dependabot.

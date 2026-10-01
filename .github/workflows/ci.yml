@@ -83,11 +83,32 @@ jobs:
         with:
           name: snitch-backend-${{ matrix.os }}
           path: dist/backend/*.tar.gz*
-      # EN: Code signing/notarization placeholders — wire your secrets here:
-      #     Windows: signtool + Azure Trusted Signing / cert in secrets
-      #     macOS:   codesign + notarytool (APPLE_ID/TEAM_ID secrets)
-      #     They are intentionally disabled until secrets are configured.
-      # FR: Placeholders signature/notarisation — branchez vos secrets ici :
-      #     Windows : signtool + Azure Trusted Signing / cert dans secrets
-      #     macOS   : codesign + notarytool (secrets APPLE_ID/TEAM_ID)
-      #     Volontairement désactivés tant que les secrets ne sont pas configurés.
+      # EN: Code signing/notarization placeholders — disabled until you set the
+      #     repository VARIABLE `ENABLE_CODESIGNING=true` and the secrets below.
+      #     Windows: AZURE_TENANT_ID / AZURE_CLIENT_ID / AZURE_CLIENT_SECRET +
+      #              Trusted Signing endpoint, or a PFX in WINDOWS_CERT_PFX.
+      #     macOS:   APPLE_ID / APPLE_TEAM_ID / APPLE_APP_PASSWORD +
+      #              MACOS_CERT_P12 (Developer ID) for codesign + notarytool.
+      # FR: Placeholders de signature/notarisation — désactivés tant que la
+      #     VARIABLE de dépôt `ENABLE_CODESIGNING=true` et les secrets
+      #     ci-dessous ne sont pas configurés.
+      #     Windows : AZURE_TENANT_ID / AZURE_CLIENT_ID / AZURE_CLIENT_SECRET +
+      #               endpoint Trusted Signing, ou un PFX dans WINDOWS_CERT_PFX.
+      #     macOS   : APPLE_ID / APPLE_TEAM_ID / APPLE_APP_PASSWORD +
+      #               MACOS_CERT_P12 (Developer ID) pour codesign + notarytool.
+      - name: Code-sign backend (Windows placeholder)
+        if: ${{ matrix.os == 'windows-latest' && vars.ENABLE_CODESIGNING == 'true' }}
+        shell: pwsh
+        run: |
+          # EN: Example — Azure Trusted Signing / signtool. Replace with your
+          #     certificate flow; keep secrets in GitHub Secrets, never inline.
+          # FR: Exemple — Azure Trusted Signing / signtool. Remplacez par votre
+          #     flux de certificat ; secrets dans GitHub Secrets, jamais en clair.
+          Write-Host "signing would run here: signtool sign dist/backend/snitch-backend/snitch-backend.exe"
+          exit 1  # EN: fail loudly if enabled but not implemented / FR: échouer si activé mais non implémenté
+      - name: Code-sign + notarize backend (macOS placeholder)
+        if: ${{ matrix.os == 'macos-latest' && vars.ENABLE_CODESIGNING == 'true' }}
+        shell: bash
+        run: |
+          echo "signing would run here: codesign --sign 'Developer ID' dist/backend/snitch-backend"
+          exit 1  # EN: fail loudly if enabled but not implemented / FR: échouer si activé mais non implémenté

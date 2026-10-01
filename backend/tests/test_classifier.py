@@ -43,3 +43,19 @@ def test_unknown_port_falls_back_to_protocol_label():
     r = classify(None, 9999, "TCP")
     assert r.category == "unknown"
     assert r.label == "TCP"
+
+
+def test_suffix_match_rejects_lookalike_domain():
+    """EN: "notdoubleclick.net" contains "doubleclick.net" as a substring but
+    is NOT a subdomain — the old `in` test falsely flagged it.
+    FR: « notdoubleclick.net » contient « doubleclick.net » en sous-chaîne
+    mais n'est PAS un sous-domaine — l'ancien test `in` le signalait à tort."""
+    r = classify("notdoubleclick.net", 443, "TCP")
+    assert r.category == "safe"
+
+
+def test_suffix_match_accepts_deep_subdomain():
+    """EN: a.b.c.doubleclick.net still matches doubleclick.net by suffix.
+    FR: a.b.c.doubleclick.net correspond toujours à doubleclick.net."""
+    r = classify("a.b.c.doubleclick.net", 443, "TCP")
+    assert r.category == "tracking"
