@@ -201,7 +201,18 @@ export default function ForceGraph({ nodes, edges, lanDevices, alertedNodes = ne
     //     brûler 300 ticks de sim serait du pur gaspillage.
     let newCount = 0
     allNodes.forEach(n => {
-      const c = posCache.current[n.id]
+      let c = posCache.current[n.id]
+      // EN: A cached position that ended up INSIDE the LAN perimeter for an
+      //     external host is a layout bug — evict it so the node respawns
+      //     on its proper outer ring instead of squatting in the local zone.
+      // FR: Une position en cache tombée DANS le périmètre LAN pour un hôte
+      //     externe est un bug de mise en page — on l'évince pour que le
+      //     nœud réapparaisse sur son anneau externe au lieu de squatter
+      //     la zone locale.
+      if (c && n.id !== 'local' && n.category !== 'lan_device') {
+        const dx = c.x - width / 2, dy = c.y - height / 2
+        if (Math.hypot(dx, dy) < ringInner + 55) c = null
+      }
       if (c) { n.x = c.x; n.y = c.y; n.fx = c.fx; n.fy = c.fy }
       else {
         newCount++
@@ -224,7 +235,12 @@ export default function ForceGraph({ nodes, edges, lanDevices, alertedNodes = ne
     sim.force('link', d3.forceLink(allEdges).id(d => d.id).distance(d => d.dashed ? 130 : 200).strength(0.25))
     sim.force('charge', d3.forceManyBody().strength(d => d.category === 'lan_device' ? -500 : -750))
     sim.force('radial', d3.forceRadial(ringOf, width / 2, height / 2)
-      .strength(d => d.id === 'local' ? 1 : d.category === 'lan_device' ? 0.45 : 0.3))
+      // EN: external hosts hold their outer ring firmly — a weak radial pull
+      //     let link tension drag them INSIDE the LAN perimeter visually.
+      // FR: les hôtes externes tiennent fermement leur anneau — une traction
+      //     radiale trop faible laissait les liens les faire entrer dans le
+      //     périmètre LAN à l'écran.
+      .strength(d => d.id === 'local' ? 1 : d.category === 'lan_device' ? 0.55 : 0.6))
     // EN: LAN perimeter — dashed orange ring enclosing the center + the LAN
     //     orbit, so "my network" reads as a distinct zone from the internet
     //     ring. Redrawn each rebuild (2 elements — cheap).
@@ -236,7 +252,7 @@ export default function ForceGraph({ nodes, edges, lanDevices, alertedNodes = ne
       const local = allNodes.find(n => n.id === 'local')
       const cx = local?.x ?? width / 2
       const cy = local?.y ?? height / 2
-      const pr = ringInner + 80
+      const pr = ringInner + 55
       perimG.current.selectAll('*').remove()
       perimG.current.append('circle')
         .attr('cx', cx).attr('cy', cy).attr('r', pr)
