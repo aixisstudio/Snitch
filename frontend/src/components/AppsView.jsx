@@ -63,8 +63,10 @@ export default function AppsView({ nodes }) {
   const maxBytes = apps[0].bytes || 1
   const maxHist = Math.max(...history.map(h => h.bytes), 1)
 
+  // EN: top padding clears the floating toolbar (top:16 + ~36px height).
+  // FR: le padding haut dégage la barre d'outils flottante (top:16 + ~36px).
   return (
-    <div style={{ height: '100%', overflowY: 'auto', padding: '16px 24px' }}>
+    <div style={{ height: '100%', overflowY: 'auto', padding: '56px 24px 16px' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
         <thead>
           <tr style={{ color: '#64748b', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>
