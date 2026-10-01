@@ -206,7 +206,12 @@ async def broadcast(message: dict) -> None:
         except Exception:
             dead.append(ws)
     for ws in dead:
-        connected_clients.remove(ws)
+        # EN: the WS handler may have already dropped it — remove() must not
+        #     raise on an absent element or the whole packet batch is lost.
+        # FR: le handler WS a pu le retirer avant — remove() ne doit pas
+        #     lever sur un élément absent sinon tout le batch est perdu.
+        if ws in connected_clients:
+            connected_clients.remove(ws)
 
 
 # ── Noise filtering / Filtrage du bruit ──────────────────────────────────────
