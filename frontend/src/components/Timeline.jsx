@@ -194,13 +194,12 @@ export default function Timeline() {
               {m}min
             </button>
           ))}
+          {/* EN: Live pulse dot — no label text.
+              FR: Point de pulsation « direct » — sans texte. */}
           <div style={{
-            display: 'flex', alignItems: 'center', gap: 5,
-            fontSize: 9, color: '#22c55e', marginLeft: 8,
-          }}>
-            <div style={{ width: 5, height: 5, borderRadius: '50%', background: '#22c55e' }} />
-            {t('timeline_live')}
-          </div>
+            width: 5, height: 5, borderRadius: '50%',
+            background: '#22c55e', marginLeft: 8,
+          }} />
         </div>
       </div>
 
