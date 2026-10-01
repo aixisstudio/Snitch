@@ -225,7 +225,7 @@ export default function App() {
             <div style={{
               position: 'absolute', bottom: 16, right: 16,
               display: 'flex', flexDirection: 'column', gap: 8,
-              alignItems: 'flex-end', width: 230,
+              alignItems: 'stretch', width: 230,
             }}>
               <div style={{
                 width: '100%', boxSizing: 'border-box',
@@ -811,6 +811,7 @@ function Legend() {
   ]
   return (
     <div style={{
+      width: '100%', boxSizing: 'border-box',
       background: '#0f0f0f', border: '1px solid #2a2a2a',
       borderRadius: 12, padding: '10px 14px',
     }}>
