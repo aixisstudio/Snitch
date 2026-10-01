@@ -32,6 +32,7 @@ import sqlite3
 import threading
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
+from typing import Optional
 
 from paths import data_dir
 
@@ -131,6 +132,27 @@ def _init_schema(conn: sqlite3.Connection) -> None:
             PRIMARY KEY (minute, dim, key)
         );
         CREATE INDEX IF NOT EXISTS idx_history_lookup ON history(dim, key, minute);
+
+        -- EN: Remembered LAN devices. Identities learned passively (mDNS,
+        --     DHCP, NBNS, LLMNR, OUI) persist across restarts — a device once
+        --     named never falls back to a bare IP again. NULL-safe upserts
+        --     keep the best-known value for every field.
+        -- FR: Appareils LAN mémorisés. Les identités apprises passivement
+        --     (mDNS, DHCP, NBNS, LLMNR, OUI) survivent aux redémarrages —
+        --     un appareil nommé une fois ne retombe jamais sur une IP nue.
+        --     Les upserts NULL-safe gardent la meilleure valeur de chaque
+        --     champ.
+        CREATE TABLE IF NOT EXISTS devices (
+            ip          TEXT PRIMARY KEY,
+            mac         TEXT,
+            vendor      TEXT,
+            device_type TEXT,
+            hostname    TEXT,
+            private_mac INTEGER DEFAULT 0,
+            first_seen  TEXT,
+            last_seen   TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_devices_mac ON devices(mac);
     """)
     conn.commit()
 
@@ -171,6 +193,96 @@ def all_settings() -> dict:
         except (json.JSONDecodeError, TypeError):
             pass
     return out
+
+
+# ── Remembered devices / Appareils mémorisés ─────────────────────────────────
+
+def upsert_device(ip: str, mac: Optional[str] = None,
+                  vendor: Optional[str] = None,
+                  device_type: Optional[str] = None,
+                  hostname: Optional[str] = None,
+                  private_mac: Optional[bool] = None) -> None:
+    """
+    EN: Persist the best-known identity of a LAN device. NULL/empty fields
+        never overwrite stored knowledge — a scan can only ENRICH a row.
+        Called on ARP discovery and each passive name learning.
+    FR: Persister la meilleure identité connue d'un appareil LAN. Les champs
+        NULL/vides n'écrasent jamais un savoir stocké — un scan ne peut
+        qu'ENRICHIR une ligne. Appelé à la découverte ARP et à chaque
+        apprentissage passif de nom.
+    """
+    now = _utcnow_iso()
+    try:
+        with _conn_lock:
+            conn = get_conn()
+            conn.execute("""
+                INSERT INTO devices (ip, mac, vendor, device_type, hostname,
+                                     private_mac, first_seen, last_seen)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(ip) DO UPDATE SET
+                    mac         = COALESCE(excluded.mac, devices.mac),
+                    vendor      = COALESCE(NULLIF(excluded.vendor, ''),
+                                           devices.vendor),
+                    device_type = COALESCE(NULLIF(excluded.device_type, ''),
+                                           devices.device_type),
+                    hostname    = COALESCE(NULLIF(excluded.hostname, ''),
+                                           devices.hostname),
+                    private_mac = COALESCE(excluded.private_mac,
+                                           devices.private_mac),
+                    last_seen   = excluded.last_seen
+            """, (ip, mac, vendor, device_type, hostname,
+                  None if private_mac is None else int(private_mac),
+                  now, now))
+            conn.commit()
+    except sqlite3.Error as exc:
+        logger.error("upsert_device(%s) failed: %s", ip, exc)
+
+
+def device_identity(ip: str, mac: Optional[str] = None) -> dict:
+    """
+    EN: Recall a stored identity for a device. MAC match wins (DHCP can
+        reassign IPs to OTHER devices — an IP-only name could misname a
+        newcomer); the IP row is only trusted when its MAC agrees or is
+        unknown.
+    FR: Rappeler l'identité stockée d'un appareil. La correspondance MAC
+        gagne (le DHCP peut réassigner une IP à un AUTRE appareil — un nom
+        par IP seule pourrait mal nommer un nouvel arrivant) ; la ligne IP
+        n'est crédible que si sa MAC concorde ou est inconnue.
+    """
+    def _merge(best: dict, row: tuple) -> dict:
+        r_mac, vendor, dtype, hostname, priv = row
+        if r_mac and not best.get("mac"):
+            best["mac"] = r_mac
+        for key, val in (("vendor", vendor), ("device_type", dtype),
+                         ("hostname", hostname)):
+            if val and key not in best:
+                best[key] = val
+        if priv is not None and "private_mac" not in best:
+            best["private_mac"] = bool(priv)
+        return best
+
+    with _conn_lock:
+        conn = get_conn()
+        best: dict = {}
+        if mac:
+            row = conn.execute(
+                "SELECT mac, vendor, device_type, hostname, private_mac "
+                "FROM devices WHERE mac = ?", (mac,)).fetchone()
+            if row:
+                _merge(best, row)
+        row = conn.execute(
+            "SELECT mac, vendor, device_type, hostname, private_mac "
+            "FROM devices WHERE ip = ?", (ip,)).fetchone()
+        # EN: The IP-keyed row is trusted only when its stored MAC agrees
+        #     with the device in front of us (or is unknown) — DHCP reassigns
+        #     IPs, a stale IP→name binding would misname the newcomer.
+        # FR: La ligne indexée par IP n'est fiable que si sa MAC stockée
+        #     concorde avec l'appareil en face de nous (ou est inconnue) —
+        #     le DHCP réassigne les IP, une liaison IP→nom périmée
+        #     nommerait mal le nouvel arrivant.
+        if row and (not mac or not row[0] or row[0] == mac):
+            _merge(best, row)
+    return best
 
 
 # ── Write helpers / Aides d'écriture ─────────────────────────────────────────

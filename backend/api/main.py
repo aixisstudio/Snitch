@@ -251,6 +251,21 @@ def _ensure_lan_device(ip: str) -> dict:
             "online": True, "bytes": 0, "packets": 0,
             "color": "#f97316" if is_gw else "#64748b", "alerted": False,
         }
+        # EN: A stub seen in traffic may already be a KNOWN device — recall
+        #     its persisted identity before showing a bare IP.
+        # FR: Un stub vu dans le trafic peut être un appareil déjà CONNU —
+        #     rappeler son identité persistée avant d'afficher une IP nue.
+        stored = db.device_identity(ip)
+        if stored.get("hostname"):
+            dev["hostname"] = stored["hostname"]
+            dev["label"] = stored["hostname"]
+        if stored.get("mac"):
+            dev["mac"] = stored["mac"]
+            dev["private_mac"] = stored.get("private_mac", False)
+        if stored.get("vendor"):
+            dev["vendor"] = stored["vendor"]
+        if stored.get("device_type") and dev["device_type"] == "unknown":
+            dev["device_type"] = stored["device_type"]
         lan_devices[key] = dev
         edges[f"lan-edge-{ip}"] = {
             "id": f"lan-edge-{ip}", "source": "local", "target": key,
@@ -340,6 +355,11 @@ def _learn_lan_hostname(ip: str, name: str,
     if dev.get("label") == dev.get("ip"):
         dev["label"] = name
     touched_devices[dev["id"]] = dev
+    # EN: A learned name is durable knowledge — persist it so a restart
+    #     doesn't drop the device back to a bare IP.
+    # FR: Un nom appris est un savoir durable — le persister pour qu'un
+    #     redémarrage ne fasse pas retomber l'appareil sur une IP nue.
+    db.upsert_device(ip=ip, mac=dev.get("mac"), hostname=name)
 
 
 def _devname(dns_name: str) -> Optional[str]:
@@ -737,8 +757,31 @@ async def _handle_device(device: Device, is_new: bool) -> None:
         if pending and not node["hostname"]:
             node["hostname"] = pending
             node["label"] = pending
-    else:
-        node["alerted"] = False
+
+    # EN: Recall the persisted identity — a device named in a previous
+    #     session keeps its name across restarts. MAC-verified (see db.py).
+    # FR: Rappeler l'identité persistée — un appareil nommé lors d'une
+    #     session précédente garde son nom entre redémarrages. Vérifiée par
+    #     MAC (voir db.py).
+    if not node["hostname"]:
+        stored = db.device_identity(device.ip, device.mac)
+        if stored.get("hostname"):
+            node["hostname"] = stored["hostname"]
+            node["label"] = stored["hostname"]
+        if stored.get("vendor") and not node.get("vendor"):
+            node["vendor"] = stored["vendor"]
+        if stored.get("device_type") and node.get("device_type") in (None, "unknown"):
+            node["device_type"] = stored["device_type"]
+
+    # EN: Persist the freshest identity — next boot starts from knowledge,
+    #     not from zero.
+    # FR: Persister l'identité la plus fraîche — le prochain démarrage part
+    #     d'un savoir, pas de zéro.
+    db.upsert_device(ip=device.ip, mac=device.mac, vendor=device.vendor,
+                     device_type=device.device_type,
+                     hostname=node.get("hostname"),
+                     private_mac=device.private_mac)
+
     lan_devices[node["id"]] = node
 
     edge_id = f"lan-edge-{device.ip}"
