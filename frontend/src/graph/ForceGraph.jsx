@@ -144,6 +144,12 @@ export default function ForceGraph({ nodes, edges, lanDevices, alertedNodes = ne
   // ── Mise à jour structurelle — jointures incrémentales par clé, sans
   //    effacer le SVG ni re-lier le zoom ────────────────────────────────────
   useEffect(() => {
+    // EN: Defer to the next frame — consecutive WS updates within one frame
+    //     coalesce into a single layout pass instead of one join+ticks each.
+    // FR: Reporter à la frame suivante — les mises à jour WS consécutives
+    //     dans une même frame fusionnent en un seul passage de layout au
+    //     lieu d'une jointure+ticks chacune.
+    const raf = requestAnimationFrame(() => {
     const g = gRef.current
     if (!g) return
 
@@ -181,14 +187,19 @@ export default function ForceGraph({ nodes, edges, lanDevices, alertedNodes = ne
     // EN: Restore cached positions — pinned nodes won't move at all.
     //     NEW nodes spawn ON their ring (random angle) instead of exploding
     //     out from the center — a center-burst + reheat reads as a "zoom".
+    //     newCount gates the convergence loop below: with zero arrivals the
+    //     layout cannot change, so burning 300 sim ticks would be pure waste.
     // FR: Restaurer les positions en cache — les nœuds épinglés ne bougent
     //     pas. Les NOUVEAUX nœuds apparaissent SUR leur anneau (angle
-    //     aléatoire) au lieu d'exploser depuis le centre — un départ du
-    //     centre + réchauffe se lit comme un « zoom ».
+    //     aléatoire) au lieu d'exploser depuis le centre. newCount pilote la
+    //     boucle de convergence : zéro arrivée = mise en page identique,
+    //     brûler 300 ticks de sim serait du pur gaspillage.
+    let newCount = 0
     allNodes.forEach(n => {
       const c = posCache.current[n.id]
       if (c) { n.x = c.x; n.y = c.y; n.fx = c.fx; n.fy = c.fy }
       else {
+        newCount++
         const a = Math.random() * Math.PI * 2
         const r = ringOf(n)
         n.x = width / 2 + Math.cos(a) * r
@@ -330,27 +341,27 @@ export default function ForceGraph({ nodes, edges, lanDevices, alertedNodes = ne
     }
     sim.on('tick', renderTick)
 
-    // EN: Converge the sim SYNCHRONOUSLY — ~300 manual ticks before the
-    //     view is painted, then the RAF loop is dead. Existing nodes are
-    //     pinned so they don't move; only new arrivals settle onto their
-    //     ring. No drift, no shuffle, no visible physics, no zoom touch.
-    //     Manual ticks don't fire 'end', so pin + cache + paint by hand.
-    //     Only a user drag briefly restarts the RAF loop.
-    // FR: Faire converger la sim de façon SYNCHRONE — ~300 ticks manuels
-    //     avant que la vue ne soit peinte, puis la boucle RAF est morte.
-    //     Les nœuds existants sont épinglés donc immobiles ; seuls les
-    //     nouveaux se placent sur leur anneau. Pas de dérive, pas de
-    //     brassage, pas de physique visible, le zoom n'est pas touché.
-    //     Les ticks manuels ne déclenchent pas « end », on épingle +
-    //     cache + peint à la main. Seul un drag relance brièvement la RAF.
+    // EN: Converge ONLY when something actually moved — new arrivals need
+    //     ~120 ticks to settle on their ring; with zero arrivals the pinned
+    //     layout is already final. This is what freezes the UI during busy
+    //     traffic otherwise.
+    // FR: Converger SEULEMENT quand quelque chose a bougé — les nouveaux
+    //     ont besoin de ~120 ticks pour se poser sur leur anneau ; sans
+    //     arrivée la mise en page épinglée est déjà finale. C'est ça qui
+    //     gelait l'UI pendant le trafic dense.
     sim.stop()
-    sim.alpha(0.4)
-    for (let i = 0; i < 300; i++) sim.tick()
+    if (newCount > 0) {
+      sim.alpha(0.4)
+      const ticks = Math.min(300, 60 + newCount * 6)
+      for (let i = 0; i < ticks; i++) sim.tick()
+    }
     allNodes.forEach(n => {
       n.fx = n.x; n.fy = n.y
       posCache.current[n.id] = { x: n.x, y: n.y, fx: n.x, fy: n.y }
     })
     renderTick()
+    })
+    return () => cancelAnimationFrame(raf)
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [structKey])

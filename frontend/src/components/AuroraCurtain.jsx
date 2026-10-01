@@ -19,7 +19,13 @@
 
 import { useEffect, useRef, useState } from "react";
 
-const MAX_DPR = 2;
+// EN: Cap the backing store at 1.5× — retina-full-screen × 5 ribbons is a
+//     real GPU load (it visibly froze video calls); the re-seeded grain
+//     hides the lower pixel density anyway.
+// FR: Plafonner le backing store à 1,5× — du retina plein écran × 5 rubans
+//     est une vraie charge GPU (ça gelait les appels vidéo) ; le grain
+//     re-seedé masque de toute façon la densité réduite.
+const MAX_DPR = 1.5;
 const MAX_COLORS = 6;
 const MAX_BANDS = 8;
 const MIN_BANDS = 1;
