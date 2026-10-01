@@ -854,6 +854,9 @@ function Legend() {
           //     les appareils non identifiés ou sans particularité ne
           //     portent aucun verdict.
           { color: '#475569', label: t('legend_ring_none'), dashed: true },
+          // EN: Dashed orange swatch = the LAN perimeter circle.
+          // FR: Pastille orange en pointillés = le cercle du périmètre LAN.
+          { color: '#f97316', label: t('legend_perimeter'), dashed: true },
         ].map(({ color, label, dashed }) => (
           <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
             <span style={{

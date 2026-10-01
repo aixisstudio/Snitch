@@ -52,6 +52,7 @@ const radius = d => d.id === 'local' ? 22 : d.category === 'lan_device' ? 18 : 1
 export default function ForceGraph({ nodes, edges, lanDevices, alertedNodes = new Set(), onNodeClick, filter }) {
   const svgRef   = useRef(null)
   const gRef     = useRef(null)   // EN: root <g> (zoom target) / FR: <g> racine (cible du zoom)
+  const perimG   = useRef(null)   // EN: <g> layer for the LAN perimeter ring / FR: calque <g> du périmètre LAN
   const linkG    = useRef(null)   // EN: <g> layer for edges / FR: calque <g> des arêtes
   const labelG   = useRef(null)   // EN: <g> layer for edge labels / FR: calque <g> des étiquettes d'arêtes
   const nodeG    = useRef(null)   // EN: <g> layer for nodes / FR: calque <g> des nœuds
@@ -73,6 +74,8 @@ export default function ForceGraph({ nodes, edges, lanDevices, alertedNodes = ne
   const displayName = d => d.label || (d.label_key ? t(d.label_key) : null) || d.ip
   const displayNameRef = useRef(displayName)
   displayNameRef.current = displayName
+  const tRef = useRef(t)
+  tRef.current = t
 
   // EN: Always-latest data for effects that don't rebuild the sim.
   // FR: Données toujours à jour pour les effets qui ne reconstruisent pas la sim.
@@ -123,6 +126,7 @@ export default function ForceGraph({ nodes, edges, lanDevices, alertedNodes = ne
 
     const g = svg.append('g')
     gRef.current    = g
+    perimG.current  = g.append('g')   // EN: under edges & nodes / FR: sous les arêtes et les nœuds
     linkG.current   = g.append('g')
     labelG.current  = g.append('g')
     nodeG.current   = g.append('g')
@@ -221,6 +225,35 @@ export default function ForceGraph({ nodes, edges, lanDevices, alertedNodes = ne
     sim.force('charge', d3.forceManyBody().strength(d => d.category === 'lan_device' ? -500 : -750))
     sim.force('radial', d3.forceRadial(ringOf, width / 2, height / 2)
       .strength(d => d.id === 'local' ? 1 : d.category === 'lan_device' ? 0.45 : 0.3))
+    // EN: LAN perimeter — dashed orange ring enclosing the center + the LAN
+    //     orbit, so "my network" reads as a distinct zone from the internet
+    //     ring. Redrawn each rebuild (2 elements — cheap).
+    // FR: Périmètre LAN — anneau orange en pointillés englobant le centre +
+    //     l'orbite des appareils locaux, pour que « mon réseau » se lise
+    //     comme une zone distincte de l'anneau internet. Redessiné à chaque
+    //     reconstruction (2 éléments — négligeable).
+    {
+      const local = allNodes.find(n => n.id === 'local')
+      const cx = local?.x ?? width / 2
+      const cy = local?.y ?? height / 2
+      const pr = ringInner + 80
+      perimG.current.selectAll('*').remove()
+      perimG.current.append('circle')
+        .attr('cx', cx).attr('cy', cy).attr('r', pr)
+        .attr('fill', '#f97316').attr('fill-opacity', 0.03)
+        .attr('stroke', '#f97316').attr('stroke-opacity', 0.4)
+        .attr('stroke-width', 1.2).attr('stroke-dasharray', '5,7')
+        .attr('pointer-events', 'none')
+      perimG.current.append('text')
+        .attr('x', cx).attr('y', cy - pr - 10)
+        .attr('text-anchor', 'middle')
+        .attr('font-size', 10).attr('font-weight', 700)
+        .attr('letter-spacing', 3)
+        .attr('fill', '#f97316').attr('fill-opacity', 0.75)
+        .attr('pointer-events', 'none')
+        .text(tRef.current('perim_lan'))
+    }
+
     // EN: Collision covers node + label (~90 px wide → half-width ~45-55).
     // FR: La collision couvre nœud + étiquette (~90 px de large →
     //     demi-largeur ~45-55).

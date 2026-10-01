@@ -103,6 +103,8 @@ const en = {
   legend_ring_warn: 'amber ring = suspicious',
   legend_ring_crit: 'red ring = alert',
   legend_ring_none: 'no ring = unidentified, neutral',
+  legend_perimeter: 'LAN perimeter',
+  perim_lan: 'LOCAL NETWORK',
 
   // Alert panel / Panneau d'alertes
   alerts_title: 'Alerts',
@@ -340,6 +342,8 @@ const fr = {
   legend_ring_warn: 'anneau orange = suspect',
   legend_ring_crit: 'anneau rouge = alerte',
   legend_ring_none: 'sans anneau = non identifié, neutre',
+  legend_perimeter: 'périmètre LAN',
+  perim_lan: 'RÉSEAU LOCAL',
 
   // Panneau d'alertes / Alert panel
   alerts_title: 'Alertes',
