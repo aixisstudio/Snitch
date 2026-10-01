@@ -357,10 +357,19 @@ class AnomalyDetector:
             return []
 
         with self._lock:
+            # EN: Compute "never seen" BEFORE _check_new_host records the IP —
+            #     otherwise the suspicious-port rule always read "old host"
+            #     and could never escalate to critical (ordering bug).
+            # FR: Calculer « jamais vu » AVANT que _check_new_host n'inscrive
+            #     l'IP — sinon la règle de port suspect lisait toujours
+            #     « hôte connu » et ne pouvait jamais monter en critique
+            #     (bug d'ordre).
+            is_new_host = remote_ip not in self._seen_hosts
             alerts: list[Alert] = []
             alerts += self._check_new_host(remote_ip, geo)
             alerts += self._check_suspicious_process(pkt, remote_ip, geo)
-            alerts += self._check_suspicious_port(pkt, remote_ip, geo)
+            alerts += self._check_suspicious_port(pkt, remote_ip, geo,
+                                                  is_new_host)
             alerts += self._check_port_scan(pkt, remote_ip, geo)
             alerts += self._check_beacon(remote_ip, geo)
             alerts += self._check_volume_spike(remote_ip, pkt, geo)
@@ -450,7 +459,8 @@ class AnomalyDetector:
             details={"process": pkt.process_name, "ip": remote_ip, "host": label, "port": pkt.dst_port},
         )]
 
-    def _check_suspicious_port(self, pkt: Packet, remote_ip: str, geo: dict) -> list[Alert]:
+    def _check_suspicious_port(self, pkt: Packet, remote_ip: str, geo: dict,
+                               is_new_host: bool = False) -> list[Alert]:
         """
         EN: Traffic involving a notorious REMOTE port → warning. remote_port
             is direction-aware — the old dst_port code flagged inbound
@@ -469,7 +479,6 @@ class AnomalyDetector:
             return []
         label = geo.get("hostname") or remote_ip
         reason = SUSPICIOUS_PORTS[port]
-        is_new_host = remote_ip not in self._seen_hosts
         return [Alert(
             type="SUSPICIOUS_PORT",
             severity="critical" if is_new_host else "warning",

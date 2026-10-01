@@ -200,12 +200,43 @@ class PacketSniffer:
 
     @staticmethod
     def _default_iface() -> Optional[str]:
-        """EN: First non-loopback capture device. / FR: Premier périphérique de capture non-loopback."""
+        """
+        EN: The interface that actually carries OUR traffic — the one owning
+            a non-loopback local IP (macOS's "ap1" AWDL device is listed
+            before the real Wi-Fi "en1": picking blindly by order captured
+            AirDrop chatter and missed every real packet — frames: 0).
+            Order: device owning a local IP → default-route iface → first
+            non-loopback.
+        FR: L'interface qui porte réellement NOTRE trafic — celle qui
+            possède une IP locale non-loopback (« ap1 » AWDL de macOS est
+            listée avant le vrai Wi-Fi « en1 » : choisir à l'aveugle
+            capturait le bavardage AirDrop et ratait chaque vrai paquet —
+            frames : 0). Ordre : périphérique possédant une IP locale →
+            interface de la route par défaut → premier non-loopback.
+        """
         try:
-            for d in list_devices():
+            devs = list_devices()
+            names = {d.name for d in devs}
+            # EN: iface → its IPv4/IPv6 addresses via psutil (same source as
+            #     self.local_ips, so the match is consistent).
+            # FR: interface → ses adresses IPv4/IPv6 via psutil (même source
+            #     que self.local_ips, donc la correspondance est cohérente).
+            import ipaddress as _ipa
+            try:
+                for iface, addrs in psutil.net_if_addrs().items():
+                    if iface not in names:
+                        continue
+                    for a in addrs:
+                        if a.family in (socket.AF_INET, socket.AF_INET6):
+                            ip = _ipa.ip_address(a.address.split("%")[0])
+                            if not (ip.is_loopback or ip.is_link_local
+                                    or ip.is_multicast):
+                                return iface
+            except Exception as exc:
+                logger.debug("net_if_addrs failed: %s", exc)
+            for d in devs:
                 if not d.loopback:
                     return d.name
-            devs = list_devices()
             return devs[0].name if devs else None
         except PcapError as exc:
             logger.warning("cannot list capture devices: %s", exc)
