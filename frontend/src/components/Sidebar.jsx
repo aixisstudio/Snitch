@@ -94,7 +94,7 @@ export default function Sidebar({ nodes, lanDevices, packets, selected, onClose,
            sur le rail noir, séparée par des espaces plutôt que des lignes. */
     <div style={{
       width: 308, height: '100vh', background: 'transparent',
-      borderRight: '1px solid rgba(255,255,255,0.06)', display: 'flex',
+      display: 'flex',
       flexDirection: 'column', overflow: 'hidden',
       padding: 8, gap: 8, boxSizing: 'border-box',
     }}>
