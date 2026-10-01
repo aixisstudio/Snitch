@@ -324,15 +324,16 @@ export default function ForceGraph({ nodes, edges, lanDevices, alertedNodes = ne
  *     coûte rien quand rien n'a changé.
  */
 function paintAlertRings(nodeSel, alertedNodes) {
-  // EN: Ring semantics — critical pulses red, warning pulses amber, and an
-  //     identified/online LAN device with NO alert gets a static green
-  //     "safe" ring (the user asked to SEE trusted devices, not just
-  //     flagged ones). Info alerts paint nothing.
-  // FR: Sémantique des anneaux — critique pulse en rouge, warning en
-  //     orange, et un appareil LAN identifié/en ligne SANS alerte reçoit
-  //     un anneau vert « sûr » fixe (l'utilisateur veut VOIR les appareils
-  //     de confiance, pas seulement les suspects). Les alertes info ne
-  //     peignent rien.
+  // EN: Severity theatre — a critical alert must be UNMISSABLE: a thick
+  //     red ring + an expanding radar ping + a "!" badge + a red-tinted
+  //     label. Warning gets a pulsing amber ring. An identified online
+  //     LAN device with no alert wears a static green "safe" ring.
+  //     Info alerts paint nothing.
+  // FR: Théâtre de sévérité — une alerte critique doit être IMPOSSIBLE À
+  //     RATER : anneau rouge épais + ping radar expansif + badge « ! » +
+  //     étiquette teintée rouge. Warning = anneau orange pulsant. Un
+  //     appareil LAN identifié/en ligne sans alerte porte un anneau vert
+  //     « sûr » fixe. Les alertes info ne peignent rien.
   const RING_COLORS = { critical: '#ef4444', warning: '#f59e0b' }
   nodeSel.each(function (d) {
     const g = d3.select(this)
@@ -345,26 +346,75 @@ function paintAlertRings(nodeSel, alertedNodes) {
     const ring = g.select('circle.status-ring')
     const have = ring.empty() ? null : ring.attr('data-kind')
     if (have === want) return
-    ring.remove()
+    // EN: Wipe every decoration layer — ring, ping, badge — then repaint
+    //     for the new state.
+    // FR: Effacer toutes les couches décoratives — anneau, ping, badge —
+    //     puis repeindre pour le nouvel état.
+    g.selectAll('.status-ring,.status-ping,.alert-badge,.alert-badge-txt').remove()
+
+    // EN: Label tint follows the verdict.
+    // FR: La teinte de l'étiquette suit le verdict.
+    g.select('text').attr('fill',
+      sev === 'critical' ? '#f87171'
+      : sev === 'warning' ? '#fbbf24'
+      : (d.category === 'lan_device' ? '#e2e8f0' : '#94a3b8'))
+
     if (!want) return
 
-    // EN: Insert BEFORE the body circle so the ring sits behind the node.
-    // FR: Insérer AVANT le cercle du corps pour que l'anneau soit derrière.
+    const baseR = radius(d)
     const c = g.insert('circle', ':first-child')
       .attr('class', 'status-ring')
       .attr('data-kind', want)
-      .attr('r', radius(d) + 9)
+      .attr('r', baseR + 9)
       .attr('fill', 'none')
-      .attr('stroke-width', want === 'safe' ? 1.2 : 1.5)
     if (want === 'safe') {
       c.attr('stroke', '#22c55e').attr('stroke-opacity', 0.5)
-    } else {
-      c.attr('stroke', RING_COLORS[sev] || '#f59e0b')
-        .attr('stroke-opacity', 0.7)
-        .append('animate')
-        .attr('attributeName', 'stroke-opacity')
-        .attr('values', '0.7;0.1;0.7')
-        .attr('dur', '1.5s').attr('repeatCount', 'indefinite')
+        .attr('stroke-width', 1.2)
+      return
     }
+    if (sev === 'critical') {
+      // EN: Thick steady ring …
+      // FR: Anneau fixe épais …
+      c.attr('stroke', '#ef4444').attr('stroke-opacity', 0.9)
+        .attr('stroke-width', 2.5)
+      // EN: … + radar ping expanding outward and fading — reads as an
+      //     alarm, not a status.
+      // FR: … + ping radar qui s'étend et s'estompe — se lit comme une
+      //     alarme, pas un statut.
+      const ping = g.insert('circle', ':first-child')
+        .attr('class', 'status-ping')
+        .attr('r', baseR + 6)
+        .attr('fill', 'none')
+        .attr('stroke', '#ef4444')
+        .attr('stroke-width', 2)
+      ping.append('animate')
+        .attr('attributeName', 'r')
+        .attr('values', `${baseR + 6};${baseR + 28}`)
+        .attr('dur', '1.4s').attr('repeatCount', 'indefinite')
+      ping.append('animate')
+        .attr('attributeName', 'stroke-opacity')
+        .attr('values', '0.8;0')
+        .attr('dur', '1.4s').attr('repeatCount', 'indefinite')
+      // EN: "!" badge pinned at the node's top-right.
+      // FR: Badge « ! » épinglé en haut à droite du nœud.
+      g.append('circle')
+        .attr('class', 'alert-badge')
+        .attr('cx', baseR - 1).attr('cy', -(baseR - 1))
+        .attr('r', 5.5).attr('fill', '#ef4444')
+      g.append('text')
+        .attr('class', 'alert-badge-txt')
+        .attr('x', baseR - 1).attr('y', -(baseR - 1) + 3)
+        .attr('text-anchor', 'middle')
+        .attr('fill', '#fff').attr('font-size', 8)
+        .attr('font-weight', 'bold').text('!')
+      return
+    }
+    c.attr('stroke', RING_COLORS[sev] || '#f59e0b')
+      .attr('stroke-opacity', 0.7)
+      .attr('stroke-width', 1.5)
+      .append('animate')
+      .attr('attributeName', 'stroke-opacity')
+      .attr('values', '0.7;0.1;0.7')
+      .attr('dur', '1.5s').attr('repeatCount', 'indefinite')
   })
 }
