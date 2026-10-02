@@ -45,18 +45,25 @@ Repo: https://github.com/aixisstudio/Snitch
 
 ## 2. Reddit
 
-### r/privacy — title + body
-```
-[Tool] Snitch – open-source, local-first network traffic visualizer (AGPL)
+> ⚠️ **NE PAS poster sur r/privacy** — leurs règles R3 (No Self-Promotion)
+> et R13 (App Posts On Hold, *includes open-source*) interdisent ce type
+> de post : suppression quasi-certaine, risque de ban du compte.
+> Subs qui acceptent les projets personnels : r/opensource, r/selfhosted,
+> r/netsec, r/SideProject, r/privacytoolsIO, r/macapps.
 
-I made a privacy-first tool that shows every connection your computer
-makes — live node graph + world map, all analysis on-device. No account,
-no cloud, no telemetry: the API only listens on 127.0.0.1 behind a token,
-and even geolocation is offline (bundled DB-IP Lite, CC BY 4.0).
+### r/opensource — title + body
+```
+Snitch — open-source, local-first network traffic visualizer (AGPL)
+
+I made this: a privacy-first tool that shows every connection your
+computer makes — live node graph + world map, all analysis on-device.
+No account, no cloud, no telemetry: the API only listens on 127.0.0.1
+behind a token, and even geolocation is offline (bundled DB-IP Lite).
 
 It flags port scans, beaconing and possible exfiltration, shows which
 process generates which traffic, and rates your exposure with a live
-privacy score. Bilingual EN/FR.
+privacy score. Bilingual EN/FR. SNITCH_DEMO=1 runs a synthetic-traffic
+preview without root.
 
 https://github.com/aixisstudio/Snitch
 ```
@@ -73,8 +80,8 @@ macOS/Windows/Linux. Demo mode (SNITCH_DEMO=1) needs no root.
 https://github.com/aixisstudio/Snitch
 ```
 
-### r/selfhosted & r/opensource & r/macapps — adapt from the r/privacy text.
-(Rule of thumb: one post per subreddit per day, comment "I made this"
+### r/selfhosted & r/SideProject & r/macapps — adapt from the r/opensource text.
+(Rule of thumb: one post per subreddit per day, keep the "I made this"
 disclosure, be ready to answer questions for the first hours.)
 
 ---
