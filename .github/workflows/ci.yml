@@ -8,6 +8,11 @@
 
 name: CI
 
+# EN: Least-privilege token — jobs only need to read the repo.
+# FR: Jeton à moindre privilège — les jobs n'ont besoin que de lire le dépôt.
+permissions:
+  contents: read
+
 on:
   push:
     branches: [main]

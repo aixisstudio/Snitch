@@ -511,8 +511,13 @@ export function I18nProvider({ children }) {
   const dict = lang === 'fr' ? fr : en
 
   function t(key, ...args) {
+    // EN: Own-property check — without it, keys like "constructor" would
+    //     resolve to inherited Object members (which are callable).
+    // FR: Vérification de propriété propre — sans elle, des clés comme
+    //     « constructor » résoudraient vers les membres hérités d'Object
+    //     (qui sont appelables).
+    if (!Object.hasOwn(dict, key)) return key
     const val = dict[key]
-    if (val === undefined) return key
     if (typeof val === 'function') return val(...args)
     return val
   }

@@ -1380,8 +1380,14 @@ async def get_diagnostics() -> dict:
     try:
         if log_file.exists():
             log_tail = log_file.read_text(errors="replace").splitlines()[-200:]
-    except OSError as exc:
-        log_tail = [f"<log read failed: {exc}>"]
+    except OSError:
+        # EN: Don't leak the exception text into the API response — the
+        #     details stay in the server log, the client gets a generic note.
+        # FR: Ne pas fuiter le texte d'exception dans la réponse API — les
+        #     détails restent dans le log serveur, le client reçoit un
+        #     message générique.
+        logger.exception("diagnostics: could not read log tail")
+        log_tail = ["<log read failed>"]
 
     db_file = data_dir() / "snitch.db"
     return {
