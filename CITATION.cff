@@ -1,0 +1,21 @@
+# EN: Citation metadata — GitHub renders this in the "Cite this repository"
+#     sidebar widget, and reference managers (Zotero etc.) can import it.
+# FR: Métadonnées de citation — GitHub l'affiche dans le widget « Cite this
+#     repository » et les gestionnaires de références peuvent l'importer.
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below. / Si vous utilisez ce logiciel, merci de le citer ainsi."
+title: "Snitch — Real-time network traffic visualizer"
+authors:
+  - name: "aiXis"
+    website: "https://aixis.fr/"
+url: "https://github.com/aixisstudio/Snitch"
+repository-code: "https://github.com/aixisstudio/Snitch"
+license: AGPL-3.0-or-later
+keywords:
+  - network monitor
+  - packet capture
+  - privacy
+  - traffic visualization
+  - cybersecurity
+version: "1.1.0"
+date-released: "2026-10-01"

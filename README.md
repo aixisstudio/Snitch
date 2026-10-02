@@ -23,6 +23,13 @@ See every connection your computer makes — who it talks to, where they are, an
 
 The entire interface is available in **English and French**: use the `EN / FR` toggle in the top-right toolbar.
 
+### Why Snitch?
+
+- **vs Little Snitch / Lulu** — those are macOS firewalls that *block* connections; Snitch *visualizes and explains* traffic, is cross-platform, free and open-source.
+- **vs GlassWire** — Snitch is free, open-source (AGPL), requires no account and makes **zero outbound calls**; even geolocation is offline.
+- **vs Wireshark** — Snitch gives a live, high-level overview anyone can read, instead of raw packet dissection.
+- **vs cloud-based monitors** — everything runs on `127.0.0.1` behind a token; your traffic data never leaves the machine.
+
 ### Features
 
 | Feature | Description |
@@ -48,7 +55,7 @@ The entire interface is available in **English and French**: use the `EN / FR` t
 | Packet capture | ctypes → libpcap — Npcap (Windows) / libpcap (Linux/macOS) — own parser (IPv4/IPv6/TCP/UDP/DNS/TLS-SNI) |
 | Backend API | FastAPI — WebSockets — SQLite |
 | Frontend | React 18 — Vite — D3.js v7 — TopoJSON |
-| Desktop wrapper | Electron 33 |
+| Desktop wrapper | Electron 44 |
 | Geolocation | **Offline only** — DB-IP Lite (CC BY 4.0) bundled gzip'd in `backend/data/geo/`, decompressed on first run; MaxMind GeoLite2 `.mmdb` also supported |
 
 ### Security & privacy
@@ -165,6 +172,13 @@ Voyez chaque connexion que votre ordinateur établit — à qui il parle, où se
 
 Toute l'interface est disponible en **français et en anglais** : utilisez le sélecteur `EN / FR` dans la barre d'outils en haut à droite.
 
+### Pourquoi Snitch ?
+
+- **vs Little Snitch / Lulu** — ce sont des pare-feux macOS qui *bloquent* les connexions ; Snitch *visualise et explique* le trafic, est multiplateforme, gratuit et open-source.
+- **vs GlassWire** — Snitch est gratuit, open-source (AGPL), sans compte et n'effectue **aucun appel sortant** ; même la géolocalisation est hors ligne.
+- **vs Wireshark** — Snitch offre une vue d'ensemble en direct lisible par tous, plutôt qu'une dissection brute de paquets.
+- **vs les moniteurs cloud** — tout tourne sur `127.0.0.1` derrière un jeton ; vos données de trafic ne quittent jamais la machine.
+
 ### Fonctionnalités
 
 | Fonctionnalité | Description |
@@ -190,7 +204,7 @@ Toute l'interface est disponible en **français et en anglais** : utilisez le s�
 | Capture de paquets | ctypes → libpcap — Npcap (Windows) / libpcap (Linux/macOS) — parseur maison (IPv4/IPv6/TCP/UDP/DNS/SNI-TLS) |
 | API backend | FastAPI — WebSockets — SQLite |
 | Frontend | React 18 — Vite — D3.js v7 — TopoJSON |
-| Conteneur bureau | Electron 33 |
+| Conteneur bureau | Electron 44 |
 | Géolocalisation | **Hors ligne uniquement** — DB-IP Lite (CC BY 4.0) embarquée gzipée dans `backend/data/geo/`, décompressée au premier lancement ; MaxMind GeoLite2 `.mmdb` aussi pris en charge |
 
 ### Sécurité & confidentialité

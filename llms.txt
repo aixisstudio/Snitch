@@ -1,0 +1,72 @@
+# Snitch
+
+> Snitch is a free, open-source (AGPL-3.0), privacy-first real-time network
+> traffic visualizer for macOS, Windows and Linux. It shows every connection
+> your computer makes — which remote hosts, where they are located, and which
+> local process is responsible — as a living node graph and world map.
+> All analysis is 100% local: no telemetry, no cloud calls, offline GeoIP.
+> Snitch est un visualiseur de trafic réseau en temps réel, gratuit,
+> open-source et respectueux de la vie privée — interface entièrement
+> bilingue anglais/français.
+
+Snitch passively captures packets on the local machine (libpcap/Npcap),
+enriches them locally (DNS answers, TLS SNI, reverse DNS, offline
+DB-IP Lite geolocation, IEEE OUI vendor table), and renders a live D3.js
+force graph plus an interactive world map. A privacy score rates the
+outgoing traffic exposure in real time, and anomaly detection flags port
+scans, beaconing and possible exfiltration.
+
+## What it does
+
+- Live force graph: your machine at the center, LAN devices inside a dashed
+  perimeter ring, external hosts on an outer orbit
+- Interactive world map with geolocated IPs and animated arcs (offline GeoIP
+  — DB-IP Lite bundled, zero network calls)
+- Anomaly detection: port scans, beaconing, exfiltration heuristics
+- Process attribution: which app generates which traffic, per-app history
+- Passive LAN discovery via the system ARP table (no broadcast scans)
+- Privacy score, bandwidth sparkline, 15/30/60-min sliding timeline (SQLite,
+  24 h retention), persisted alert-suppression rules
+- Fully bilingual UI: English and French, one-click toggle
+
+## Security model
+
+- Loopback-only by default (127.0.0.1); token auth on every REST endpoint
+  and the WebSocket; origin allowlist for CORS/WS
+- No outbound calls at runtime except one explicitly consent-gated,
+  optional DB-IP Lite update from the Settings panel
+- Capture requires privileges: root/sudo on macOS (/dev/bpf) and Linux
+  (cap_net_raw), Administrator + Npcap on Windows
+
+## Tech stack
+
+- Backend: Python 3.11+, FastAPI, WebSockets, SQLite, ctypes→libpcap
+  (own IPv4/IPv6/TCP/UDP/DNS/TLS-SNI parser — no Scapy)
+- Frontend: React 18, Vite, D3.js v7, TopoJSON
+- Desktop: Electron 44 (Windows installer via electron-builder)
+- Installable 1-click via Pinokio (launcher scripts at repo root)
+
+## Compared to similar tools
+
+- vs **Little Snitch / Lulu** (macOS firewalls): Snitch visualizes and
+  explains traffic rather than blocking it; cross-platform, free,
+  open-source
+- vs **GlassWire**: free, open-source, no account, no cloud, offline GeoIP
+- vs **Wireshark**: high-level live overview for non-specialists instead of
+  raw packet dissection
+
+## Links
+
+- Repository: https://github.com/aixisstudio/Snitch
+- Documentation: README.md (English + Français), docs/threat-model.md,
+  PRIVACY.md, SECURITY.md, CONTRIBUTING.md
+- License: AGPL-3.0-or-later (LICENSE)
+- Third-party notices: THIRD_PARTY_NOTICES.md (DB-IP Lite CC BY 4.0)
+- Author: aiXis — https://aixis.fr/
+
+## Français
+
+Snitch visualise en temps réel tout le trafic réseau de votre machine :
+graphe de nœuds vivant, carte du monde géolocalisée (GeoIP hors ligne),
+score de confidentialité, détection d'anomalies, attribution par processus.
+100 % local, sans télémétrie, bilingue EN/FR, open-source AGPL.
