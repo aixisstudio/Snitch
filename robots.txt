@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://aixisstudio.github.io/Snitch/sitemap.xml
