@@ -6,11 +6,14 @@
 
 [English](#english) | [Français](#français)
 
+⭐ **If Snitch helps you, a star means a lot! / Si Snitch vous aide, une étoile compte beaucoup !** ⭐
+
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](LICENSE)
 [![Platform: macOS](https://img.shields.io/badge/Platform-macOS-blue.svg)]()
 [![Platform: Windows](https://img.shields.io/badge/Platform-Windows%2010%2F11-blue.svg)]()
 [![Platform: Linux](https://img.shields.io/badge/Platform-Linux%20(Docker)-blue.svg)]()
 [![Version](https://img.shields.io/badge/Version-1.0.0-green.svg)]()
+[![GitHub stars](https://img.shields.io/github/stars/aixisstudio/Snitch?style=social)](https://github.com/aixisstudio/Snitch/stargazers)
 
 <!-- EN: Live capture of the demo mode (SNITCH_DEMO=1) — synthetic traffic only.
      FR: Capture du mode démo (SNITCH_DEMO=1) — trafic synthétique uniquement. -->
