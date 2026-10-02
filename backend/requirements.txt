@@ -16,5 +16,4 @@ uvicorn[standard]==0.30.6 # EN: ASGI server / FR: serveur ASGI
 websockets==13.0.1        # EN: WebSocket support / FR: support WebSocket
 maxminddb==2.6.3          # EN: raw .mmdb reader — GeoLite2 AND DB-IP Lite / FR: lecteur .mmdb brut — GeoLite2 ET DB-IP Lite
 psutil==6.1.0             # EN: process + network interface info / FR: infos processus + interfaces réseau
-python-dotenv==1.2.2      # EN: .env file support / FR: support des fichiers .env
 aiofiles==24.1.0          # EN: async file I/O / FR: E/S fichiers asynchrones
