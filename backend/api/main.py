@@ -80,6 +80,7 @@ from pydantic import BaseModel, Field
 
 from api.security import ALLOWED_ORIGIN_REGEX, require_token, ws_authorized
 from capture.sniffer import Packet, PacketSniffer, get_local_ips
+import demo
 from capture.media_monitor import MediaMonitor, MediaState
 from classifier.traffic import classify
 from resolver.dns_geo import (enrich_ip, is_private, learn_dns_answers,
@@ -939,11 +940,19 @@ def _cleanup_loop() -> None:
 
 def _start_capture() -> None:
     """EN: (Re)start sniffer + ARP-table scanner in daemon threads.
-    FR: (Re)démarrer sniffer + scanner de table ARP dans des threads daemon."""
+        With SNITCH_DEMO=1 the sniffer is replaced by the synthetic demo
+        feeder — no root, no libpcap, no real traffic touched.
+    FR: (Re)démarrer sniffer + scanner de table ARP dans des threads daemon.
+        Avec SNITCH_DEMO=1 le sniffer est remplacé par le générateur de démo
+        — ni root ni libpcap ni trafic réel."""
     global _sniffer, _scanner, _capturing
-    _sniffer = PacketSniffer(callback=on_packet, ports=_port_filter,
-                             iface=db.get_setting("interface"))
-    threading.Thread(target=_sniffer.start, daemon=True).start()
+    if demo.enabled():
+        _sniffer = demo.start(on_packet)
+        logger.warning("DEMO MODE — synthetic traffic only")
+    else:
+        _sniffer = PacketSniffer(callback=on_packet, ports=_port_filter,
+                                 iface=db.get_setting("interface"))
+        threading.Thread(target=_sniffer.start, daemon=True).start()
     _scanner = ARPScanner(callback=on_device, interval=30)
     threading.Thread(target=_scanner.start, daemon=True).start()
     _capturing = True

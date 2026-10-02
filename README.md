@@ -12,6 +12,10 @@
 [![Platform: Linux](https://img.shields.io/badge/Platform-Linux%20(Docker)-blue.svg)]()
 [![Version](https://img.shields.io/badge/Version-1.0.0-green.svg)]()
 
+<!-- EN: Live capture of the demo mode (SNITCH_DEMO=1) — synthetic traffic only.
+     FR: Capture du mode démo (SNITCH_DEMO=1) — trafic synthétique uniquement. -->
+![Snitch live graph — LAN perimeter, geolocated hosts, alerts](docs/assets/demo.gif)
+
 </div>
 
 ---
@@ -108,6 +112,12 @@ Requirements:
 - Node.js 18+
 - [Npcap](https://npcap.com/) installed (Windows only)
 - Administrator/root terminal for the backend (raw packet capture)
+
+> **Demo mode / Mode démo** — run the backend with `SNITCH_DEMO=1` to feed
+> synthetic traffic through the real pipeline: no root, no libpcap, no real
+> packets touched. Ideal for screenshots, tests and previews.
+> *Lancez le backend avec `SNITCH_DEMO=1` pour injecter un trafic synthétique
+> dans le pipeline réel — ni root ni libpcap ni paquets réels.*
 
 ```bash
 # Backend (admin terminal) — API at http://127.0.0.1:8000
