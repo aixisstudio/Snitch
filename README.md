@@ -13,6 +13,8 @@
 [![Platform: Windows](https://img.shields.io/badge/Platform-Windows%2010%2F11-blue.svg)]()
 [![Platform: Linux](https://img.shields.io/badge/Platform-Linux%20(Docker)-blue.svg)]()
 [![Version](https://img.shields.io/badge/Version-1.0.0-green.svg)]()
+[![GitHub release](https://img.shields.io/github/v/release/aixisstudio/Snitch?include_prereleases&label=release)](https://github.com/aixisstudio/Snitch/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/aixisstudio/Snitch/total?color=brightgreen)](https://github.com/aixisstudio/Snitch/releases/latest)
 [![GitHub stars](https://img.shields.io/github/stars/aixisstudio/Snitch?style=social)](https://github.com/aixisstudio/Snitch/stargazers)
 
 <!-- EN: Live capture of the demo mode (SNITCH_DEMO=1) — synthetic traffic only.
@@ -54,6 +56,16 @@ The entire interface is available in **English and French**: use the `EN / FR` t
 | Tracker Detection | Suffix-matched domain lists shipped as editable data files (`backend/classifier/lists/`) |
 | Bandwidth Monitor | Live MB/s sparkline |
 | EN / FR UI | Full bilingual interface, one click to switch |
+
+### Download
+
+| Platform | Package |
+|---|---|
+| **macOS (Apple Silicon)** | [Snitch-1.0.0-macos-arm64.zip](https://github.com/aixisstudio/Snitch/releases/download/v1.0.0/Snitch-1.0.0-macos-arm64.zip) — unsigned build: right-click → Open |
+| **Linux** | `sudo docker compose up --build` — see [Docker (Linux)](#docker-linux) |
+| **Windows** | Build from source — see [Build the installer](#build-the-installer) |
+
+Or grab the latest release: **[github.com/aixisstudio/Snitch/releases](https://github.com/aixisstudio/Snitch/releases)**
 
 ### Stack
 
@@ -209,6 +221,16 @@ Toute l'interface est disponible en **français et en anglais** : utilisez le s�
 | Détection de trackers | Listes de domaines par suffixe, livrées en fichiers de données éditables (`backend/classifier/lists/`) |
 | Moniteur de débit | Sparkline MB/s en direct |
 | UI FR / EN | Interface entièrement bilingue, bascule en un clic |
+
+### Téléchargement
+
+| Plateforme | Paquet |
+|---|---|
+| **macOS (Apple Silicon)** | [Snitch-1.0.0-macos-arm64.zip](https://github.com/aixisstudio/Snitch/releases/download/v1.0.0/Snitch-1.0.0-macos-arm64.zip) — build non signée : clic droit → Ouvrir |
+| **Linux** | `sudo docker compose up --build` — voir [Docker (Linux)](#docker-linux-1) |
+| **Windows** | Build depuis les sources — voir [Développement](#développement) |
+
+Ou récupérez la dernière release : **[github.com/aixisstudio/Snitch/releases](https://github.com/aixisstudio/Snitch/releases)**
 
 ### Stack technique
 
