@@ -399,7 +399,18 @@ function backendDataDir() {
 function launchBackendElevated() {
   const dataDir = backendDataDir()
   fs.mkdirSync(dataDir, { recursive: true })
-  fs.writeFileSync(path.join(dataDir, 'api_token.txt'), API_TOKEN, { mode: 0o600 })
+  // EN: The token file is the Windows auth path (env can't cross UAC). It can
+  //     fail with EACCES when a previous ELEVATED run left the data dir
+  //     root-owned — on POSIX the env vars below carry the token anyway, so a
+  //     failed write must not abort the launch.
+  // FR: Le fichier de jeton est le chemin d'auth Windows (l'env ne traverse
+  //     pas l'UAC). Il peut échouer en EACCES quand un lancement ÉLEVÉ
+  //     précédent a laissé le dossier de données en root — sous POSIX les
+  //     variables d'environnement ci-dessous portent le jeton de toute façon,
+  //     donc une écriture ratée ne doit pas interrompre le démarrage.
+  try {
+    fs.writeFileSync(path.join(dataDir, 'api_token.txt'), API_TOKEN, { mode: 0o600 })
+  } catch { /* EN: token still reaches the backend via env / FR: le jeton arrive quand même via l'env */ }
 
   if (isWindows) {
     // EN: -FilePath/-ArgumentList carefully quoted (paths may contain spaces).
@@ -410,24 +421,33 @@ function launchBackendElevated() {
     ], { windowsHide: true, stdio: 'ignore' })
   } else if (process.platform === 'darwin') {
     // EN: Escape for the AppleScript double-quoted string, then the shell.
+    //     SNITCH_TOKEN travels in the command env — osascript runs it through
+    //     `sh -c`, so assignment prefixes survive elevation. (Token exposure in
+    //     `ps` is acceptable: it is a per-launch random secret on a loopback
+    //     API, gone with the process.)
     // FR: Échapper pour la chaîne AppleScript entre guillemets, puis le shell.
+    //     SNITCH_TOKEN voyage dans l'env de la commande — osascript l'exécute
+    //     via `sh -c`, donc les préfixes d'affectation survivent à l'élévation.
+    //     (Exposition du jeton dans `ps` acceptable : secret aléatoire par
+    //     lancement sur une API loopback, mort avec le processus.)
     const esc = s => s.replace(/(["\\$`])/g, '\\$1')
-    const shellCmd = `SNITCH_DATA_DIR="${dataDir}" "${backendExe}" --port ${backendPort}`
+    const shellCmd = `SNITCH_DATA_DIR="${dataDir}" SNITCH_TOKEN="${API_TOKEN}" "${backendExe}" --port ${backendPort}`
     backendProc = spawn('osascript', [
       '-e', `do shell script "${esc(shellCmd)}" with administrator privileges`,
     ], { stdio: 'ignore' })
   } else {
-    // EN: pkexec strips the environment — `env` re-injects SNITCH_DATA_DIR.
+    // EN: pkexec strips the environment — `env` re-injects both vars.
     //     If polkit isn't installed (minimal distros), fall back to a plain
     //     spawn: the UI still works, capture just won't start.
-    // FR: pkexec purge l'environnement — `env` réinjecte SNITCH_DATA_DIR.
+    // FR: pkexec purge l'environnement — `env` réinjecte les deux variables.
     //     Si polkit n'est pas installé (distros minimales), repli sur un
     //     spawn simple : l'UI marche, la capture ne démarrera juste pas.
     const pkexecBin = ['/usr/bin/pkexec', '/bin/pkexec', '/usr/local/bin/pkexec']
       .find(p => fs.existsSync(p))
     if (!pkexecBin) { spawnBackendPlain(); return }
     backendProc = spawn(pkexecBin, [
-      'env', `SNITCH_DATA_DIR=${dataDir}`, backendExe, '--port', String(backendPort),
+      'env', `SNITCH_DATA_DIR=${dataDir}`, `SNITCH_TOKEN=${API_TOKEN}`,
+      backendExe, '--port', String(backendPort),
     ], { stdio: 'ignore' })
   }
   backendElevated = true
