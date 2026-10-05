@@ -47,6 +47,26 @@ logger = logging.getLogger("snitch.capture.sniffer")
 PCAP_AVAILABLE = is_available()
 
 
+def _default_route_ip() -> Optional[str]:
+    """
+    EN: Local IP the OS would use for outbound traffic. A UDP connect() only
+        asks the routing table — no packet is ever sent (zero outbound
+        calls, as promised).
+    FR: IP locale que l'OS utiliserait pour le trafic sortant. Un connect()
+        UDP interroge seulement la table de routage — aucun paquet n'est
+        envoyé (zéro appel sortant, comme promis).
+    """
+    for family, target in ((socket.AF_INET, "192.0.2.1"),
+                           (socket.AF_INET6, "2001:db8::1")):
+        try:
+            with socket.socket(family, socket.SOCK_DGRAM) as s:
+                s.connect((target, 9))
+                return s.getsockname()[0].split("%")[0]
+        except OSError:
+            continue
+    return None
+
+
 @dataclass
 class Packet:
     """
@@ -205,18 +225,32 @@ class PacketSniffer:
             a non-loopback local IP (macOS's "ap1" AWDL device is listed
             before the real Wi-Fi "en1": picking blindly by order captured
             AirDrop chatter and missed every real packet — frames: 0).
-            Order: device owning a local IP → default-route iface → first
-            non-loopback.
+            Order: device owning the default-route source IP → device owning
+            a local IP → first non-loopback. The default-route step matters
+            on Windows, where WSL/Hyper-V virtual adapters are listed first
+            and also own private IPs.
         FR: L'interface qui porte réellement NOTRE trafic — celle qui
             possède une IP locale non-loopback (« ap1 » AWDL de macOS est
             listée avant le vrai Wi-Fi « en1 » : choisir à l'aveugle
             capturait le bavardage AirDrop et ratait chaque vrai paquet —
             frames : 0). Ordre : périphérique possédant une IP locale →
-            interface de la route par défaut → premier non-loopback.
+            interface de la route par défaut → premier non-loopback. L'étape
+            route par défaut compte sous Windows, où les cartes virtuelles
+            WSL/Hyper-V sont listées en premier et possèdent aussi des IP
+            privées.
         """
         try:
             devs = list_devices()
             names = {d.name for d in devs}
+            # EN: Match on libpcap's own addresses first (works on Windows,
+            #     where Npcap names differ from psutil's friendly names).
+            # FR: Correspondance d'abord sur les adresses de libpcap (marche
+            #     sous Windows, où les noms Npcap diffèrent de ceux de psutil).
+            route_ip = _default_route_ip()
+            if route_ip:
+                for d in devs:
+                    if route_ip in d.addresses:
+                        return d.name
             # EN: iface → its IPv4/IPv6 addresses via psutil (same source as
             #     self.local_ips, so the match is consistent).
             # FR: interface → ses adresses IPv4/IPv6 via psutil (même source

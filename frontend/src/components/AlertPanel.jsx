@@ -89,7 +89,7 @@ export function AlertPanel({ alerts, onClose, onIgnore }) {
       _grouped: true,
     })
   }
-  rows.sort((a, b) => new Date(b.timestamp + 'Z') - new Date(a.timestamp + 'Z'))
+  rows.sort((a, b) => parseTs(b.timestamp) - parseTs(a.timestamp))
 
   return (
     <div style={{
@@ -197,9 +197,22 @@ function AlertRow({ alert, onIgnore }) {
   )
 }
 
+/**
+ * EN: Parse a backend timestamp. They are ISO 8601 with an offset
+ *     ("+00:00"); only naive ones get a "Z" — "…+00:00Z" is NaN
+ *     ("NaNh ago").
+ * FR: Analyser un horodatage du backend. Ils sont en ISO 8601 avec
+ *     décalage (« +00:00 ») ; seuls les naïfs reçoivent un « Z » —
+ *     « …+00:00Z » donne NaN (« NaNh ago »).
+ */
+export function parseTs(iso) {
+  return new Date(/(Z|[+-]\d{2}:?\d{2})$/.test(iso) ? iso : iso + 'Z')
+}
+
 /** EN: Relative timestamp via i18n keys. / FR: Horodatage relatif via les clés i18n. */
-function timeAgo(iso, t) {
-  const diff = Math.floor((Date.now() - new Date(iso + 'Z')) / 1000)
+export function timeAgo(iso, t, now = Date.now()) {
+  const diff = Math.max(0, Math.floor((now - parseTs(iso)) / 1000))
+  if (Number.isNaN(diff)) return ''
   if (diff < 5)    return t('time_just_now')
   if (diff < 60)   return t('time_seconds', diff)
   if (diff < 3600) return t('time_minutes', Math.floor(diff / 60))

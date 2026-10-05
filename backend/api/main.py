@@ -89,6 +89,7 @@ from scanner.arp_scanner import ARPScanner, Device, default_gateway as _default_
 from scanner.arp_scanner import READ_STATS as _arp_stats
 from detection.anomaly import AnomalyDetector
 import storage.db as db
+from version import __version__
 
 logger = logging.getLogger("snitch.api")
 
@@ -1400,7 +1401,7 @@ async def get_diagnostics() -> dict:
 
     db_file = data_dir() / "snitch.db"
     return {
-        "version": "1.1.0",
+        "version": __version__,
         "python": platform.python_version(),
         "platform": platform.platform(),
         "capture": {

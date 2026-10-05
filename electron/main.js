@@ -204,6 +204,28 @@ async function offerNpcapDownload() {
 }
 
 // ── Windows / Fenêtres ───────────────────────────────────────────────────────
+/**
+ * EN: The splash is always-on-top — drop it below dialogs, otherwise it hides
+ *     the very error the user needs to read.
+ * FR: Le splash est toujours au premier plan — le passer sous les dialogues,
+ *     sinon il masque justement l'erreur que l'utilisateur doit lire.
+ */
+function lowerSplash() {
+  if (splashWindow && !splashWindow.isDestroyed()) {
+    splashWindow.setAlwaysOnTop(false)
+    splashWindow.hide()
+  }
+}
+
+/** EN: Bring the splash back after a dialog (retry path).
+ *  FR: Réafficher le splash après un dialogue (chemin « réessayer »). */
+function raiseSplash() {
+  if (splashWindow && !splashWindow.isDestroyed()) {
+    splashWindow.setAlwaysOnTop(true)
+    splashWindow.show()
+  }
+}
+
 function createSplash() {
   /** EN: Frameless transparent splash shown while the backend boots.
    *  FR: Splash sans cadre et transparent affiché pendant le démarrage du backend. */
@@ -575,15 +597,21 @@ app.whenReady().then(async () => {
       await waitForBackend(backendElevated ? 90 : 40)
       booted = true
     } catch (e) {
+      lowerSplash()
       if (!backendElevated) {
         dialog.showErrorBox('Snitch', `Backend unavailable / Backend indisponible :\n${e.message}`)
         app.quit(); return
       }
       const choice = await dialog.showMessageBox({
         type: 'warning', title: 'Snitch',
-        message: 'The admin prompt was declined or timed out. Capture needs it to watch traffic.\n' +
-                 'L\'invite administrateur a été refusée ou a expiré. La capture en a besoin pour observer le trafic.',
-        detail: `Backend unavailable / Backend indisponible : ${e.message}`,
+        // EN: Don't guess the cause — a crashing backend looks exactly like a
+        //     declined prompt from here. Point to the log that tells which.
+        // FR: Ne pas deviner la cause — un backend qui plante ressemble ici
+        //     exactement à une invite refusée. Pointer vers le log qui le dit.
+        message: 'The capture backend did not start (admin prompt declined or timed out, or backend error).\n' +
+                 'Le backend de capture n\'a pas démarré (invite administrateur refusée ou expirée, ou erreur du backend).',
+        detail: `Backend unavailable / Backend indisponible : ${e.message}\n` +
+                `Logs / Journaux : ${logDir}`,
         buttons: [
           'Retry / Réessayer',
           'Continue without capture / Continuer sans capture',
@@ -603,6 +631,7 @@ app.whenReady().then(async () => {
           app.quit(); return
         }
       }
+      raiseSplash()
       // EN: response 0 loops back to launchBackend() → fresh admin prompt.
       // FR: la réponse 0 reboucle vers launchBackend() → nouvelle invite admin.
     }
