@@ -63,9 +63,11 @@
     <h1 data-i18n="h1">Track every <span>hidden flow</span>.</h1>
     <p data-i18n="sub">See every connection your computer makes — who it talks to, where they are, and which app is responsible. 100% local. No telemetry. Ever.</p>
     <div class="cta">
-      <a class="btn primary" href="https://github.com/aixisstudio/Snitch" data-i18n="star">⭐ Star on GitHub</a>
+      <a class="btn primary" id="dlBtn" href="https://github.com/aixisstudio/Snitch/releases/latest">⬇ Download</a>
+      <a class="btn ghost" href="https://github.com/aixisstudio/Snitch" data-i18n="star">⭐ Star on GitHub</a>
       <a class="btn ghost" href="https://github.com/aixisstudio/Snitch#english" data-i18n="install">Install guide</a>
     </div>
+    <p id="osHint" style="color:var(--dim);font-size:12px;margin-top:10px"></p>
   </div>
 
   <div class="demo">
@@ -116,8 +118,41 @@ function toggleLang() {
     el.innerHTML = fr ? (i18n.fr[k] || orig[k]) : orig[k];
   });
   document.documentElement.lang = fr ? 'fr' : 'en';
+  applyDl();
 }
 if (navigator.language.startsWith('fr')) toggleLang();
+
+// EN: OS-aware download button — detects the visitor's platform and points
+//     to the right artifact. Only macOS ships a ready binary; Windows/Linux
+//     get their build instructions.
+// FR: Bouton de téléchargement adapté à l'OS — détecte la plateforme du
+//     visiteur et pointe vers le bon artefact. Seul macOS a un binaire prêt ;
+//     Windows/Linux reçoivent leurs instructions de build.
+const detectedOS = /Win/i.test(navigator.platform + ' ' + navigator.userAgent) ? 'win'
+                 : /Linux|Android|X11/i.test(navigator.platform + ' ' + navigator.userAgent) ? 'linux'
+                 : 'mac';
+const DL = {
+  mac:   { en: '⬇ Download for macOS',            fr: '⬇ Télécharger pour macOS',
+           href: 'https://github.com/aixisstudio/Snitch/releases/latest/download/Snitch-1.0.4-macos-arm64.zip',
+           hintEn: 'Apple Silicon · or: brew install --cask aixisstudio/tap/snitch',
+           hintFr: 'Apple Silicon · ou : brew install --cask aixisstudio/tap/snitch' },
+  win:   { en: '🪟 Windows — build from source',   fr: '🪟 Windows — compiler depuis les sources',
+           href: 'https://github.com/aixisstudio/Snitch#build-the-installer',
+           hintEn: 'Electron + Npcap — installer build instructions in the README',
+           hintFr: 'Electron + Npcap — instructions de build dans le README' },
+  linux: { en: '🐧 Linux — Docker / from source',  fr: '🐧 Linux — Docker / sources',
+           href: 'https://github.com/aixisstudio/Snitch#docker-linux',
+           hintEn: 'sudo docker compose up --build — see the README',
+           hintFr: 'sudo docker compose up --build — voir le README' },
+};
+function applyDl() {
+  const d = DL[detectedOS];
+  const b = document.getElementById('dlBtn');
+  b.textContent = fr ? d.fr : d.en;
+  b.href = d.href;
+  document.getElementById('osHint').textContent = fr ? d.hintFr : d.hintEn;
+}
+applyDl();
 </script>
 </body>
 </html>
