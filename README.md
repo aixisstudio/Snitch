@@ -12,7 +12,7 @@
 [![Platform: macOS](https://img.shields.io/badge/Platform-macOS-blue.svg)]()
 [![Platform: Windows](https://img.shields.io/badge/Platform-Windows%2010%2F11-blue.svg)]()
 [![Platform: Linux](https://img.shields.io/badge/Platform-Linux%20(Docker)-blue.svg)]()
-[![Version](https://img.shields.io/badge/Version-1.0.0-green.svg)]()
+[![Version](https://img.shields.io/badge/Version-1.0.1-green.svg)]()
 [![GitHub release](https://img.shields.io/github/v/release/aixisstudio/Snitch?include_prereleases&label=release)](https://github.com/aixisstudio/Snitch/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/aixisstudio/Snitch/total?color=brightgreen)](https://github.com/aixisstudio/Snitch/releases/latest)
 [![GitHub stars](https://img.shields.io/github/stars/aixisstudio/Snitch?style=social)](https://github.com/aixisstudio/Snitch/stargazers)
@@ -61,15 +61,15 @@ The entire interface is available in **English and French**: use the `EN / FR` t
 
 | Platform | Package |
 |---|---|
-| **macOS (Apple Silicon)** | `brew install --cask --no-quarantine aixisstudio/tap/snitch` — or [Snitch-1.0.1-macos-arm64.zip](https://github.com/aixisstudio/Snitch/releases/download/v1.0.1/Snitch-1.0.1-macos-arm64.zip) |
+| **macOS (Apple Silicon)** | `brew install --cask aixisstudio/tap/snitch` — or [Snitch-1.0.1-macos-arm64.zip](https://github.com/aixisstudio/Snitch/releases/download/v1.0.1/Snitch-1.0.1-macos-arm64.zip) |
 | **Linux** | `sudo docker compose up --build` — see [Docker (Linux)](#docker-linux) |
 | **Windows** | Build from source — see [Build the installer](#build-the-installer) |
 
 Or grab the latest release: **[github.com/aixisstudio/Snitch/releases](https://github.com/aixisstudio/Snitch/releases)**
 
-> **macOS first run / Premier lancement macOS** — Snitch is ad-hoc signed, not notarized (no paid Apple Developer ID). If Gatekeeper says the app "cannot be opened": right-click → **Open**, or run `xattr -dr com.apple.quarantine /Applications/Snitch.app`. The `brew --no-quarantine` install above skips this entirely. On first launch Snitch asks for your admin password **once** — packet capture requires it, same as tcpdump/Wireshark; the UI itself stays unprivileged.
+> **macOS first run / Premier lancement macOS** — Snitch is ad-hoc signed, not notarized (no paid Apple Developer ID). The `brew install --cask` above removes the quarantine flag for you. For the manual zip: right-click → **Open**, or run `xattr -dr com.apple.quarantine /Applications/Snitch.app`. On first launch Snitch asks for your admin password **once** — packet capture requires it, same as tcpdump/Wireshark; the UI itself stays unprivileged.
 >
-> **FR** — Snitch est signé ad-hoc, pas notarisé (pas de Developer ID payant). Si Gatekeeper dit que l'app « ne peut pas être ouverte » : clic droit → **Ouvrir**, ou `xattr -dr com.apple.quarantine /Applications/Snitch.app`. L'installation `brew --no-quarantine` ci-dessus évite tout ça. Au premier lancement, Snitch demande le mot de passe admin **une fois** — la capture de paquets l'exige, comme tcpdump/Wireshark ; l'UI reste non privilégiée.
+> **FR** — Snitch est signé ad-hoc, pas notarisé (pas de Developer ID payant). Le `brew install --cask` ci-dessus retire le drapeau de quarantaine pour vous. Pour le zip manuel : clic droit → **Ouvrir**, ou `xattr -dr com.apple.quarantine /Applications/Snitch.app`. Au premier lancement, Snitch demande le mot de passe admin **une fois** — la capture de paquets l'exige, comme tcpdump/Wireshark ; l'UI reste non privilégiée.
 
 ### Stack
 
@@ -230,13 +230,13 @@ Toute l'interface est disponible en **français et en anglais** : utilisez le s�
 
 | Plateforme | Paquet |
 |---|---|
-| **macOS (Apple Silicon)** | `brew install --cask --no-quarantine aixisstudio/tap/snitch` — ou [Snitch-1.0.1-macos-arm64.zip](https://github.com/aixisstudio/Snitch/releases/download/v1.0.1/Snitch-1.0.1-macos-arm64.zip) |
+| **macOS (Apple Silicon)** | `brew install --cask aixisstudio/tap/snitch` — ou [Snitch-1.0.1-macos-arm64.zip](https://github.com/aixisstudio/Snitch/releases/download/v1.0.1/Snitch-1.0.1-macos-arm64.zip) |
 | **Linux** | `sudo docker compose up --build` — voir [Docker (Linux)](#docker-linux-1) |
 | **Windows** | Build depuis les sources — voir [Développement](#développement) |
 
 Ou récupérez la dernière release : **[github.com/aixisstudio/Snitch/releases](https://github.com/aixisstudio/Snitch/releases)**
 
-> **Premier lancement macOS** — Snitch est signé ad-hoc, pas notarisé. Si Gatekeeper dit que l'app « ne peut pas être ouverte » : clic droit → **Ouvrir**, ou `xattr -dr com.apple.quarantine /Applications/Snitch.app`. Le `brew --no-quarantine` évite tout ça. Premier lancement : mot de passe admin demandé **une fois** (la capture de paquets l'exige, comme tcpdump/Wireshark).
+> **Premier lancement macOS** — Snitch est signé ad-hoc, pas notarisé. Le `brew install --cask` retire la quarantaine pour vous. Pour le zip manuel : clic droit → **Ouvrir**, ou `xattr -dr com.apple.quarantine /Applications/Snitch.app`. Premier lancement : mot de passe admin demandé **une fois** (la capture de paquets l'exige, comme tcpdump/Wireshark).
 
 ### Stack technique
 
