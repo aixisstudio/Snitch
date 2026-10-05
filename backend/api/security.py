@@ -64,14 +64,26 @@ def _is_loopback_origin(origin: str) -> bool:
 def origin_allowed(origin: str | None) -> bool:
     """
     EN: An absent Origin header means a non-browser client (curl, Electron's
-        main process) — allowed. Present origins must be loopback or `null`.
+        main process) — allowed. Present origins must be loopback, `null`,
+        or `file://` — Chromium inside Electron serialises the WebSocket
+        Origin of a file:// page as literally `file://` (not `null` like a
+        browser does), so without this the packaged app's own renderer was
+        rejected with 403 and the UI stayed "Disconnected". A file:// origin
+        can only come from a local page, and the token check still applies.
     FR: Un en-tête Origin absent signifie un client non-navigateur (curl,
         processus principal d'Electron) — autorisé. Les origines présentes
-        doivent être loopback ou `null`.
+        doivent être loopback, `null` ou `file://` — Chromium sous Electron
+        sérialise l'Origin WebSocket d'une page file:// littéralement en
+        `file://` (pas `null` comme un navigateur), donc sans cela le renderer
+        de l'app empaquetée était rejeté en 403 et l'UI restait « Déconnecté ».
+        Une origine file:// ne peut venir que d'une page locale, et le
+        contrôle du jeton s'applique toujours.
     """
     if origin is None:
         return True
-    return origin == "null" or _is_loopback_origin(origin)
+    if origin == "null" or origin.startswith("file:"):
+        return True
+    return _is_loopback_origin(origin)
 
 
 # EN: CORS needs literal strings/regex — a loopback regex mirrors the rule.
