@@ -25,6 +25,13 @@ import { useEffect, useRef, useState } from 'react'
 import * as d3 from 'd3'
 import * as topojson from 'topojson-client'
 import { useT } from '../i18n'
+// EN: The world map is bundled, not fetched — fetch() of a local file is
+//     blocked for file:// pages in Electron (opaque origin), so the map
+//     stayed blank in the packaged app.
+// FR: La carte du monde est embarquée dans le bundle, pas fetchée —
+//     fetch() d'un fichier local est bloqué pour les pages file:// sous
+//     Electron (origine opaque), donc la carte restait vide dans l'app.
+import worldTopoJson from './countries-110m.json'
 
 const STYLE = `
   @keyframes arcFlow {
@@ -122,15 +129,23 @@ export default function MapView({ nodes, onNodeClick }) {
   // EN: Load the world TopoJSON + resolve the user's position once.
   // FR: Charger le TopoJSON du monde + résoudre la position utilisateur une fois.
   useEffect(() => {
-    const worldUrl = window.location.protocol === 'file:'
-      ? new URL('countries-110m.json', window.location.href).href
-      : '/countries-110m.json'
-    fetch(worldUrl).then(r => r.json()).then(setWorldTopo)
+    // EN: Bundled import — no network, works identically under file://
+    //     (Electron) and http(s) (browser/Docker).
+    // FR: Import embarqué — aucun réseau, fonctionne pareil sous file://
+    //     (Electron) et http(s) (navigateur/Docker).
+    setWorldTopo(worldTopoJson)
     navigator.geolocation?.getCurrentPosition(
       p => setUserPos([p.coords.longitude, p.coords.latitude]),
-      () => setUserPos([2.35, 48.85])   // EN: Paris fallback / FR: repli sur Paris
+      () => setUserPos([2.35, 48.85]),  // EN: Paris fallback / FR: repli sur Paris
+      { timeout: 4000, maximumAge: 3600000 }
     )
-    if (!navigator.geolocation) setUserPos([2.35, 48.85])
+    // EN: Electron has no location provider — getCurrentPosition can hang
+    //     forever without ever calling back, leaving userPos null and the
+    //     map blank. Belt-and-braces: force the fallback after 5 s either way.
+    // FR: Electron n'a pas de fournisseur de localisation — getCurrentPosition
+    //     peut rester muet indéfiniment sans jamais rappeler, laissant userPos
+    //     null et la carte vide. Double sécurité : forcer le repli après 5 s.
+    setTimeout(() => setUserPos(pos => pos ?? [2.35, 48.85]), 5000)
   }, [])
 
   useEffect(() => {
