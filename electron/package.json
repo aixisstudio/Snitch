@@ -1,6 +1,6 @@
 {
   "name": "snitch",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Snitch — real-time network traffic visualizer / visualiseur de trafic réseau en temps réel",
   "main": "main.js",
   "license": "AGPL-3.0-or-later",
@@ -23,7 +23,8 @@
       "main.js",
       "preload.js",
       "splash.html",
-      "icon.png"
+      "icon.png",
+      "logo.png"
     ],
     "extraResources": [
       {

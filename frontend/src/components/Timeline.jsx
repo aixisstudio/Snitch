@@ -10,7 +10,7 @@
  */
 import { useEffect, useRef, useState, useCallback } from 'react'
 import * as d3 from 'd3'
-import { API_BASE, authHeaders } from '../api'
+import { apiBase, authHeaders } from '../api'
 import { useT } from '../i18n'
 
 const EXPANDED_H  = 110
@@ -42,9 +42,15 @@ export default function Timeline() {
 
   const fetchTimeline = useCallback(() => {
     // EN: Auth header required — the API token protects every endpoint.
+    //     apiBase() (not the static API_BASE constant) resolves the dynamic
+    //     port Electron picked at launch — the fixed :8000 never works in
+    //     the packaged app.
     // FR: En-tête d'auth requis — le jeton API protège tous les endpoints.
-    authHeaders()
-      .then(headers => fetch(`${API_BASE}/timeline?minutes=${range}`, { headers }))
+    //     apiBase() (pas la constante statique API_BASE) résout le port
+    //     dynamique choisi par Electron au lancement — le :8000 fixe ne
+    //     marche jamais dans l'app empaquetée.
+    Promise.all([apiBase(), authHeaders()])
+      .then(([base, headers]) => fetch(`${base}/timeline?minutes=${range}`, { headers }))
       .then(r => r.json())
       .then(d => setData(d.timeline || []))
       .catch(() => {})

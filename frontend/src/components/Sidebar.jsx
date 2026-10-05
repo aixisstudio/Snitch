@@ -116,7 +116,7 @@ export default function Sidebar({ nodes, lanDevices, packets, selected, onClose,
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
           {/* EN: Snitch mark — the white radar-eye sigil.
               FR: Emblème Snitch — le sigle radar-œil blanc. */}
-          <img src="/logo.png" alt="Snitch" style={{ width: 22, height: 22, borderRadius: 5 }} />
+          <img src="./logo.png" alt="Snitch" style={{ width: 22, height: 22, borderRadius: 5 }} />
           <span style={{ fontSize: 17, fontWeight: 800, color: '#f1f5f9', letterSpacing: 1 }}>{t('app_name')}</span>
         </div>
         <span style={{ fontSize: 10, color: '#475569', letterSpacing: 1 }}>{t('tagline')}</span>
