@@ -169,16 +169,19 @@ cd frontend && npm test
 ```bash
 # 1 — Compile backend (PyInstaller)
 cd backend
-pip install pyinstaller
+pip install -r requirements.txt pyinstaller
 pyinstaller backend.spec --distpath ../dist/backend
 
 # 2 — Build frontend
-cd frontend
+cd ../frontend
+npm ci
 npm run build
 
-# 3 — Build Electron installer
-cd electron
-npm run build:dir
+# 3 — Build Electron installer (the icon is generated automatically)
+cd ../electron
+npm ci
+npm run build       # NSIS installer -> dist/installer/Snitch Setup <version>.exe
+# npm run build:dir # unpacked app only -> dist/installer/win-unpacked/
 ```
 
 ### Project structure
