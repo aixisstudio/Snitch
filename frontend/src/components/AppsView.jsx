@@ -11,6 +11,7 @@
 import { useState, useEffect, useMemo, Fragment } from 'react'
 import { useT } from '../i18n'
 import { apiBase, authHeaders } from '../api'
+import { processIcon } from './processIcons'
 
 function fmtBytes(b) {
   if (b >= 1e9) return (b / 1e9).toFixed(1) + ' GB'
@@ -83,7 +84,17 @@ export default function AppsView({ nodes }) {
                 onClick={() => setExpanded(expanded === app.name ? null : app.name)}
                 style={{ cursor: 'pointer', borderTop: '1px solid #0f0f0f' }}
               >
-                <td style={{ padding: '8px', color: '#e2e8f0', fontFamily: 'monospace' }}>{app.name}</td>
+                <td style={{ padding: '8px', color: '#e2e8f0', fontFamily: 'monospace' }}>
+                  {(() => {
+                    const Icon = processIcon(app.name)
+                    return (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                        <Icon size={14} style={{ color: '#3b82f6', flexShrink: 0 }} />
+                        {app.name}
+                      </span>
+                    )
+                  })()}
+                </td>
                 <td style={{ padding: '8px', textAlign: 'right', color: '#94a3b8' }}>{app.destinations.length}</td>
                 <td style={{ padding: '8px', textAlign: 'right', color: '#94a3b8' }}>{app.packets}</td>
                 <td style={{ padding: '8px' }}>
