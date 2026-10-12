@@ -259,7 +259,7 @@ const fr = {
   nav_map: 'Carte',
 
   // Badge de statut / Status badge
-  status_connected: 'Live',
+  status_connected: 'En direct',
   status_connecting: 'Connexion…',
   status_disconnected: 'Déconnecté',
   status_error: 'Erreur',
@@ -392,7 +392,7 @@ const fr = {
   timeline_live: 'Direct',
 
   // Bascule de capture / Capture toggle
-  capture_stop: 'Stop',
+  capture_stop: 'Arrêter',
   capture_start: 'Démarrer',
   capture_stopping: 'Arrêt…',
   capture_starting: 'Démarrage…',
@@ -411,7 +411,7 @@ const fr = {
   export_alerts_csv: 'Alertes (CSV)',
 
   // Filtre de processus / Process filter
-  process_filter: 'Apps',
+  process_filter: 'Applications',
   process_filter_hint: 'Cliquer pour masquer une app du graphe',
   process_none: 'Aucun processus détecté pour l\'instant',
   process_clear: 'Tout afficher',
@@ -461,7 +461,7 @@ const fr = {
   diag_open_logs: 'Logs',
   diag_export: 'Exporter',
   settings_note: 'Tous les réglages sont stockés localement. Snitch n\'envoie rien à des tiers.',
-  nav_apps: 'Apps',
+  nav_apps: 'Applications',
   ignore_alert: 'Ignorer ce type/cet hôte',
 
   // Vue applications / Apps view
