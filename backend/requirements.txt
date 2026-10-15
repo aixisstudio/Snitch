@@ -12,7 +12,7 @@
 #     réponses DNS sont analysées par notre parseur.
 
 fastapi==0.115.0          # EN: REST + WebSocket API framework / FR: framework API REST + WebSocket
-uvicorn[standard]==0.30.6 # EN: ASGI server / FR: serveur ASGI
+uvicorn[standard]==0.54.0 # EN: ASGI server / FR: serveur ASGI
 websockets==17.2        # EN: WebSocket support / FR: support WebSocket
 maxminddb==3.2.0          # EN: raw .mmdb reader — GeoLite2 AND DB-IP Lite / FR: lecteur .mmdb brut — GeoLite2 ET DB-IP Lite
 psutil==6.1.0             # EN: process + network interface info / FR: infos processus + interfaces réseau
