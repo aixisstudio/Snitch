@@ -5,5 +5,5 @@
 #     Installation : pip install -r requirements.txt -r requirements-dev.txt
 
 pytest==9.1.1
-ruff==0.16.10
+ruff==0.17.0
 httpx==0.27.2      # EN: needed by FastAPI's TestClient / FR: requis par le TestClient FastAPI
