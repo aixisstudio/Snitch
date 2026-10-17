@@ -31,6 +31,15 @@ if getattr(sys, 'frozen', False):
     if bundle_dir not in sys.path:
         sys.path.insert(0, bundle_dir)
 
+# EN: console=False PyInstaller builds on Windows have no stdout/stderr (None),
+#     which crashes uvicorn's log formatter (isatty) at startup.
+# FR: Les builds PyInstaller console=False sous Windows n'ont pas de
+#     stdout/stderr (None), ce qui fait planter le formateur de uvicorn (isatty).
+if sys.stdout is None:
+    sys.stdout = open(os.devnull, 'w', encoding='utf-8')
+if sys.stderr is None:
+    sys.stderr = open(os.devnull, 'w', encoding='utf-8')
+
 # EN: Configure logging BEFORE importing app modules so they inherit handlers.
 # FR: Configurer les logs AVANT d'importer les modules pour qu'ils héritent des handlers.
 from logging_config import setup_logging  # noqa: E402

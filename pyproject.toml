@@ -15,7 +15,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "snitch"
-version = "1.1.0"
+version = "1.0.4"
 description = "Real-time network traffic visualizer — EN/FR, privacy-first, local-only"
 readme = "README.md"
 license = { text = "AGPL-3.0-or-later" }
@@ -38,7 +38,7 @@ packages = [
     "api", "capture", "classifier", "detection", "resolver", "scanner",
     "storage",
 ]
-py-modules = ["cli", "paths", "logging_config", "run_backend"]
+py-modules = ["cli", "paths", "logging_config", "run_backend", "version"]
 
 # EN: The built frontend ships inside the wheel — `npm run build` output is
 #     expected at frontend/dist and gets copied to backend/frontend_dist by

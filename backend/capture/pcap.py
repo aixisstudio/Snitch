@@ -31,6 +31,7 @@ FR: Liaison ctypes minimale et sans dépendance vers la bibliothèque système d
 import ctypes
 import ctypes.util
 import logging
+import socket
 import sys
 from dataclasses import dataclass
 from typing import Optional
@@ -226,6 +227,34 @@ class PcapDevice:
     name: str
     description: str
     loopback: bool = False
+    # EN: IPv4/IPv6 addresses owned by the device, as reported by libpcap.
+    #     Needed on Windows, where Npcap names (\Device\NPF_{GUID}) never
+    #     match psutil's friendly names ("Ethernet 2").
+    # FR: Adresses IPv4/IPv6 du périphérique, telles que rapportées par
+    #     libpcap. Indispensable sous Windows, où les noms Npcap
+    #     (\Device\NPF_{GUID}) ne correspondent jamais aux noms
+    #     conviviaux de psutil (« Ethernet 2 »).
+    addresses: tuple[str, ...] = ()
+
+
+def _sockaddr_ip(ptr: Optional[int]) -> Optional[str]:
+    """
+    EN: Decode a `struct sockaddr *` into an IP string (IPv4/IPv6 only).
+        BSD/macOS start with a 1-byte sa_len then a 1-byte family; Windows
+        and Linux use a 2-byte little-endian family.
+    FR: Décoder un `struct sockaddr *` en chaîne IP (IPv4/IPv6 seulement).
+        BSD/macOS commencent par sa_len sur 1 octet puis la famille sur 1
+        octet ; Windows et Linux utilisent une famille sur 2 octets LE.
+    """
+    if not ptr:
+        return None
+    raw = ctypes.string_at(ptr, 24)
+    family = raw[1] if sys.platform == "darwin" else int.from_bytes(raw[0:2], "little")
+    if family == socket.AF_INET:
+        return socket.inet_ntop(socket.AF_INET, raw[4:8])
+    if family == socket.AF_INET6:
+        return socket.inet_ntop(socket.AF_INET6, raw[8:24])
+    return None
 
 
 def list_devices() -> list[PcapDevice]:
@@ -245,8 +274,16 @@ def list_devices() -> list[PcapDevice]:
             d = cur.contents
             name = d.name.decode(errors="replace") if d.name else ""
             desc = d.description.decode(errors="replace") if d.description else ""
+            addrs = []
+            a = d.addresses
+            while a:
+                ip = _sockaddr_ip(a.contents.addr)
+                if ip:
+                    addrs.append(ip)
+                a = a.contents.next
             out.append(PcapDevice(name=name, description=desc,
-                                  loopback=bool(d.flags & 0x1)))
+                                  loopback=bool(d.flags & 0x1),
+                                  addresses=tuple(addrs)))
             cur = d.next
         return out
     finally:
