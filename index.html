@@ -123,23 +123,23 @@ function toggleLang() {
 if (navigator.language.startsWith('fr')) toggleLang();
 
 // EN: OS-aware download button — detects the visitor's platform and points
-//     to the right artifact. Only macOS ships a ready binary; Windows/Linux
-//     get their build instructions.
+//     to the right artifact. macOS ships a ready app; Windows ships a
+//     prebuilt backend tarball (Npcap required); Linux gets Docker/build.
 // FR: Bouton de téléchargement adapté à l'OS — détecte la plateforme du
-//     visiteur et pointe vers le bon artefact. Seul macOS a un binaire prêt ;
-//     Windows/Linux reçoivent leurs instructions de build.
+//     visiteur et pointe vers le bon artefact. macOS a une app prête ;
+//     Windows a un tarball backend précompilé (Npcap requis) ; Linux a Docker.
 const detectedOS = /Win/i.test(navigator.platform + ' ' + navigator.userAgent) ? 'win'
                  : /Linux|Android|X11/i.test(navigator.platform + ' ' + navigator.userAgent) ? 'linux'
                  : 'mac';
 const DL = {
   mac:   { en: '⬇ Download for macOS',            fr: '⬇ Télécharger pour macOS',
-           href: 'https://github.com/aixisstudio/Snitch/releases/latest/download/Snitch-1.0.4-macos-arm64.zip',
+           href: 'https://github.com/aixisstudio/Snitch/releases/latest/download/Snitch-1.0.5-macos-arm64.zip',
            hintEn: 'Apple Silicon · or: brew install --cask aixisstudio/tap/snitch',
            hintFr: 'Apple Silicon · ou : brew install --cask aixisstudio/tap/snitch' },
-  win:   { en: '🪟 Windows — build from source',   fr: '🪟 Windows — compiler depuis les sources',
-           href: 'https://github.com/aixisstudio/Snitch#build-the-installer',
-           hintEn: 'Electron + Npcap — installer build instructions in the README',
-           hintFr: 'Electron + Npcap — instructions de build dans le README' },
+  win:   { en: '⬇ Windows — backend tarball',   fr: '⬇ Windows — tarball backend',
+           href: 'https://github.com/aixisstudio/Snitch/releases/latest/download/snitch-backend-windows-latest.tar.gz',
+           hintEn: 'since v1.0.5 · run as admin · requires Npcap',
+           hintFr: 'depuis la v1.0.5 · lancer en admin · nécessite Npcap' },
   linux: { en: '🐧 Linux — Docker / from source',  fr: '🐧 Linux — Docker / sources',
            href: 'https://github.com/aixisstudio/Snitch#docker-linux',
            hintEn: 'sudo docker compose up --build — see the README',
