@@ -15,7 +15,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "snitch"
-version = "1.0.4"
+version = "1.0.5"
 description = "Real-time network traffic visualizer — EN/FR, privacy-first, local-only"
 readme = "README.md"
 license = { text = "AGPL-3.0-or-later" }

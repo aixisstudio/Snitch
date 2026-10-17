@@ -12,7 +12,7 @@
 [![Platform: macOS](https://img.shields.io/badge/Platform-macOS-blue.svg)]()
 [![Platform: Windows](https://img.shields.io/badge/Platform-Windows%2010%2F11-blue.svg)]()
 [![Platform: Linux](https://img.shields.io/badge/Platform-Linux%20(Docker)-blue.svg)]()
-[![Version](https://img.shields.io/badge/Version-1.0.4-green.svg)]()
+[![Version](https://img.shields.io/badge/Version-1.0.5-green.svg)]()
 [![GitHub release](https://img.shields.io/github/v/release/aixisstudio/Snitch?include_prereleases&label=release)](https://github.com/aixisstudio/Snitch/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/aixisstudio/Snitch/total?color=brightgreen)](https://github.com/aixisstudio/Snitch/releases/latest)
 [![GitHub stars](https://img.shields.io/github/stars/aixisstudio/Snitch?style=social)](https://github.com/aixisstudio/Snitch/stargazers)
@@ -61,9 +61,9 @@ The entire interface is available in **English and French**: use the `EN / FR` t
 
 | Platform | Package |
 |---|---|
-| **macOS (Apple Silicon)** | `brew install --cask aixisstudio/tap/snitch` — or [Snitch-1.0.4-macos-arm64.zip](https://github.com/aixisstudio/Snitch/releases/download/v1.0.4/Snitch-1.0.4-macos-arm64.zip) |
+| **macOS (Apple Silicon)** | `brew install --cask aixisstudio/tap/snitch` — or [Snitch-1.0.5-macos-arm64.zip](https://github.com/aixisstudio/Snitch/releases/download/v1.0.5/Snitch-1.0.5-macos-arm64.zip) |
 | **Linux** | `sudo docker compose up --build` — see [Docker (Linux)](#docker-linux) |
-| **Windows** | Build from source — see [Build the installer](#build-the-installer) |
+| **Windows** | [snitch-backend-windows-latest.tar.gz](https://github.com/aixisstudio/Snitch/releases/latest) (backend, requires [Npcap](https://npcap.com/)) — or build from source, see [Build the installer](#build-the-installer) |
 
 Or grab the latest release: **[github.com/aixisstudio/Snitch/releases](https://github.com/aixisstudio/Snitch/releases)**
 
@@ -233,9 +233,9 @@ Toute l'interface est disponible en **français et en anglais** : utilisez le s�
 
 | Plateforme | Paquet |
 |---|---|
-| **macOS (Apple Silicon)** | `brew install --cask aixisstudio/tap/snitch` — ou [Snitch-1.0.4-macos-arm64.zip](https://github.com/aixisstudio/Snitch/releases/download/v1.0.4/Snitch-1.0.4-macos-arm64.zip) |
+| **macOS (Apple Silicon)** | `brew install --cask aixisstudio/tap/snitch` — ou [Snitch-1.0.5-macos-arm64.zip](https://github.com/aixisstudio/Snitch/releases/download/v1.0.5/Snitch-1.0.5-macos-arm64.zip) |
 | **Linux** | `sudo docker compose up --build` — voir [Docker (Linux)](#docker-linux-1) |
-| **Windows** | Build depuis les sources — voir [Développement](#développement) |
+| **Windows** | [snitch-backend-windows-latest.tar.gz](https://github.com/aixisstudio/Snitch/releases/latest) (backend, nécessite [Npcap](https://npcap.com/)) — ou build depuis les sources, voir [Développement](#développement) |
 
 Ou récupérez la dernière release : **[github.com/aixisstudio/Snitch/releases](https://github.com/aixisstudio/Snitch/releases)**
 
