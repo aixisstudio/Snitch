@@ -42,8 +42,9 @@ scans, beaconing and possible exfiltration.
 
 - Backend: Python 3.11+, FastAPI, WebSockets, SQLite, ctypes→libpcap
   (own IPv4/IPv6/TCP/UDP/DNS/TLS-SNI parser — no Scapy)
-- Frontend: React 18, Vite, D3.js v7, TopoJSON
-- Desktop: Electron 44 (Windows installer via electron-builder)
+- Frontend: React 19, Vite, D3.js v7, TopoJSON
+- Desktop: Electron 44 (macOS app; Windows supported via prebuilt
+  backend tarball or Electron from source — NSIS installer on roadmap)
 - Installable 1-click via Pinokio (launcher scripts at repo root)
 
 ## Compared to similar tools
@@ -58,7 +59,9 @@ scans, beaconing and possible exfiltration.
 ## Links
 
 - Repository: https://github.com/aixisstudio/Snitch
-- Documentation: README.md (English + Français), docs/threat-model.md,
+- Current release: v1.0.5 (macOS app zip, per-OS backend tarballs,
+  Homebrew cask `aixisstudio/tap/snitch`)
+- Documentation: README.md (English + Français), CHANGELOG.md, docs/threat-model.md,
   PRIVACY.md, SECURITY.md, CONTRIBUTING.md
 - License: AGPL-3.0-or-later (LICENSE)
 - Third-party notices: THIRD_PARTY_NOTICES.md (DB-IP Lite CC BY 4.0)
