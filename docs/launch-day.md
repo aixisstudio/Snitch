@@ -92,3 +92,11 @@ Update: Snitch is now live on Product Hunt — link in comments. If the project 
 - **Juejin** : téléphone chinois requis → bloqué
 - **HelloGitHub #4028** : ✅ issue créée (canal officiel de soumission)
 - Posts prêts dans `~/Downloads/chinese-posts.md` si un contact a des comptes
+
+## Vague 3 — contenu & plateformes internationales
+
+| Canal | Résultat | Leçon |
+|---|---|---|
+| dev.to ×5 | ✅ 5 articles publiés (canonical unique → fichier source GitHub) | `canonical_url` doit être unique par article — sinon « has already been taken » |
+| Medium | ✅ article fondateur publié | Import via URL (canonical auto) ; signup = magic link email ; bypass paywall via option gratuite |
+| Qiita | ✅ article japonais publié qiita.com/aixis/items/f7686017adaa0b8be861 | Vérif email obligatoire avant de poster (récupérer le lien dans Gmail puis /drafts/new) ; éditeur = CodeMirror (`.cm-content`) → paste via Cmd+V réel ; checkbox ToS+privacy à cocher dans le dialog de publication |
