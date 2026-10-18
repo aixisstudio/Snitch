@@ -1,4 +1,4 @@
-# Launch day — Product Hunt (3 oct., 09:01 FR)
+# Launch day — Product Hunt (20 oct., 09:01 FR)
 
 > Objectif : concentrer tout le trafic le même jour pour maximiser
 > la vélocité d'étoiles GitHub (c'est ce qui déclenche le Trending).
