@@ -31,7 +31,7 @@
 | Vague 4 — éditorial | ⏳ en attente | Console.dev (pitch envoyé), LinuxFR (modération), Journal du hacker (invitation demandée) |
 | Zenn 🇯🇵 | ✅ article publié | zenn.dev/aixisstudio/articles/1b0a285e1bc8a5 |
 | IndieHackers | ✅ page produit live | indiehackers.com/product/snitch — 11 tags, motivation, France |
-| Homebrew cask | ❌ bloqué | conflit token `snitch` (formula existante, même domaine) + app ad-hoc signée |
+| Homebrew | ⚠️ tap perso OK, upstream bloqué | `brew install --cask aixisstudio/tap/snitch` fonctionne (repo homebrew-tap, cask v1.0.5, postflight enlève la quarantaine) ; upstream homebrew-cask bloqué : conflit token `snitch` + app ad-hoc signée |
 | Réseau perso | n/a | aucun — toute la campagne est 100% canaux publics |
 
 ---
@@ -146,7 +146,7 @@ Update: Snitch is now live on Product Hunt — link in comments. If the project 
 | Fazier | ❌ abandonné | Tier free exige badge embed sur le site + 3 commentaires « helpful » sur d'autres produits + DR>0 — stoppé par l'utilisateur |
 | Microlaunch | ❌ abandonné | Dialog « Pick your Launch » ne propose que Pro (payant, ~$29-49, -50% OSS) ; `/submit` redirige ; pas de tier gratuit effectif |
 | IndieHackers | ✅ page produit **live** — indiehackers.com/product/snitch | Signup = Google OAuth (popup bloqué → hijack `window.open` → rediriger in-tab, Firebase auth handler) ; tagline ≤60 car. ; motivation ≤220 car. ; logo via input[type=file] + DataTransfer ; tags = `input[name=tagIds]` → setter `checked` + `change` (le `.click()` natif ne prend pas) ; les tags se décochtent si un save échoue — recocher juste avant le save final ; checkbox `published` = visibilité directory |
-| Homebrew cask | ❌ bloqué, documenté | Formula `snitch` existe déjà (karol-broda/snitch — inspecteur de connexions réseau, même domaine) → token refusé ou renommé type `snitch-app` ; **+ Snitch.app est ad-hoc signé, non notarizé** → Gatekeeper « damaged » sous quarantaine, maintien probable rejet ; à réévaluer si signature Developer ID un jour |
+| Homebrew upstream | ❌ bloqué, documenté | Formula `snitch` existe déjà (karol-broda/snitch — inspecteur de connexions réseau, même domaine) → token refusé ou renommé type `snitch-app` ; **+ Snitch.app est ad-hoc signé, non notarizé** → Gatekeeper « damaged » sous quarantaine, maintien probable rejet ; à réévaluer si signature Developer ID un jour. **MAIS** : le tap perso `aixisstudio/homebrew-tap` existe déjà et fonctionne — `brew install --cask aixisstudio/tap/snitch` (postflight `xattr -dr quarantine`) ; la PRIORITÉ était déjà couverte |
 
 ### Notes techniques vague 4
 
