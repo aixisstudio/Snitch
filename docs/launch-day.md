@@ -71,3 +71,24 @@ Update: Snitch is now live on Product Hunt — link in comments. If the project 
 - Pas d'achat d'étoiles ni de groupes d'upvotes — GitHub et PH bannissent
 - Sur PH demain : réponds vite aux commentaires dans le Launch Day dashboard — l'engagement booste le classement
 - Lien GitHub direct partout (pas la vitrine) pour le clic étoile
+
+## Vague 2 — leçons apprises (18 oct)
+
+| Canal | Résultat | Leçon |
+|---|---|---|
+| daily.dev | ✅ compte créé + post soumis (review admin, squad « Open Source » 15,8K) | Posts possibles uniquement via squads ; sélecteur d'audience fragile — cliquer via coords réelles `getBoundingClientRect` + CGEvent ; le bouton « Leave » est DANS l'item de squad (attention) |
+| Stackshare | ✅ page LIVE stackshare.io/snitch | Signup = OAuth GitHub/Google only ; « List a Tool » accepte URL GitHub ; logo carré requis (upload via DataTransfer+base64) ; features séparées par `;` |
+| BetaList | ❌ abandonné | Payant uniquement (99-299$) — pas de tier gratuit |
+| Slant | ❌ mort | SSL 526 — site abandonné, ne plus le cibler |
+| Korben | ✅ re-soumis (form « Présenter un outil ») | Turnstile auto-résout ; formulaire se vide après envoi = confirmation |
+| linux.do | ❌ invitation | Sur invitation seulement — idem V2EX |
+| Juejin | ❌ bloqué | Inscription par téléphone chinois |
+| Winget | ✅ CLA signée | Commentaire `agree` posté sur PR #455520 |
+
+## Canaux chinois — état final
+
+- **V2EX** : invitation requise → bloqué
+- **linux.do** : invitation requise → bloqué
+- **Juejin** : téléphone chinois requis → bloqué
+- **HelloGitHub #4028** : ✅ issue créée (canal officiel de soumission)
+- Posts prêts dans `~/Downloads/chinese-posts.md` si un contact a des comptes
