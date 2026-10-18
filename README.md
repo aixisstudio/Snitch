@@ -16,6 +16,7 @@
 [![GitHub release](https://img.shields.io/github/v/release/aixisstudio/Snitch?include_prereleases&label=release)](https://github.com/aixisstudio/Snitch/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/aixisstudio/Snitch/total?color=brightgreen)](https://github.com/aixisstudio/Snitch/releases/latest)
 [![GitHub stars](https://img.shields.io/github/stars/aixisstudio/Snitch?style=social)](https://github.com/aixisstudio/Snitch/stargazers)
+[![Star History](https://img.shields.io/badge/⭐-Star%20History-orange)](https://star-history.com/#aixisstudio/Snitch&Date)
 
 <!-- EN: Live capture of the demo mode (SNITCH_DEMO=1) — synthetic traffic only.
      FR: Capture du mode démo (SNITCH_DEMO=1) — trafic synthétique uniquement. -->
@@ -333,3 +334,7 @@ AGPL v3 — see / voir [LICENSE](LICENSE).
 
 EN: Free to use, study, and modify. Derivative works must remain open source under AGPL v3.
 FR: Libre d'utilisation, d'étude et de modification. Les œuvres dérivées doivent rester open source sous AGPL v3.
+
+## Star History / Historique des étoiles
+
+[![Star History Chart](https://api.star-history.com/svg?repos=aixisstudio/Snitch&type=Date)](https://star-history.com/#aixisstudio/Snitch&Date)
