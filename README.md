@@ -14,8 +14,8 @@
 [![Platform: Linux](https://img.shields.io/badge/Platform-Linux%20(Docker)-blue.svg)]()
 [![Version](https://img.shields.io/badge/Version-1.0.5-green.svg)]()
 [![GitHub release](https://img.shields.io/github/v/release/aixisstudio/Snitch?include_prereleases&label=release)](https://github.com/aixisstudio/Snitch/releases/latest)
-[![Downloads](https://img.shields.io/github/downloads/aixisstudio/Snitch/total?color=brightgreen)](https://github.com/aixisstudio/Snitch/releases/latest)
-[![GitHub stars](https://img.shields.io/github/stars/aixisstudio/Snitch?style=social)](https://github.com/aixisstudio/Snitch/stargazers)
+[![Downloads](https://img.shields.io/github/downloads/aixisstudio/Snitch/total?color=brightgreen&style=flat)](https://github.com/aixisstudio/Snitch/releases/latest)
+[![GitHub stars](https://img.shields.io/github/stars/aixisstudio/Snitch?style=flat-square&logo=github)](https://github.com/aixisstudio/Snitch/stargazers)
 [![Star History](https://img.shields.io/badge/⭐-Star%20History-orange)](https://star-history.com/#aixisstudio/Snitch&Date)
 
 <!-- EN: Live capture of the demo mode (SNITCH_DEMO=1) — synthetic traffic only.
