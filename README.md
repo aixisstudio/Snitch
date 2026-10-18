@@ -77,7 +77,7 @@ Or grab the latest release: **[github.com/aixisstudio/Snitch/releases](https://g
 |---|---|
 | Packet capture | ctypes → libpcap — Npcap (Windows) / libpcap (Linux/macOS) — own parser (IPv4/IPv6/TCP/UDP/DNS/TLS-SNI) |
 | Backend API | FastAPI — WebSockets — SQLite |
-| Frontend | React 18 — Vite — D3.js v7 — TopoJSON |
+| Frontend | React 19 — Vite — D3.js v7 — TopoJSON |
 | Desktop wrapper | Electron 44 |
 | Geolocation | **Offline only** — DB-IP Lite (CC BY 4.0) bundled gzip'd in `backend/data/geo/`, decompressed on first run; MaxMind GeoLite2 `.mmdb` also supported |
 
@@ -247,7 +247,7 @@ Ou récupérez la dernière release : **[github.com/aixisstudio/Snitch/releases]
 |---|---|
 | Capture de paquets | ctypes → libpcap — Npcap (Windows) / libpcap (Linux/macOS) — parseur maison (IPv4/IPv6/TCP/UDP/DNS/SNI-TLS) |
 | API backend | FastAPI — WebSockets — SQLite |
-| Frontend | React 18 — Vite — D3.js v7 — TopoJSON |
+| Frontend | React 19 — Vite — D3.js v7 — TopoJSON |
 | Conteneur bureau | Electron 44 |
 | Géolocalisation | **Hors ligne uniquement** — DB-IP Lite (CC BY 4.0) embarquée gzipée dans `backend/data/geo/`, décompressée au premier lancement ; MaxMind GeoLite2 `.mmdb` aussi pris en charge |
 
