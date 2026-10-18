@@ -24,6 +24,11 @@
 
 services:
   snitch:
+    # EN: Pulls the prebuilt GHCR image — remove `image:` + keep `build: .` to
+    #     compile from source instead (docker compose up --build).
+    # FR: Tire l'image prébuildée GHCR — retirez `image:` et gardez `build: .`
+    #     pour compiler depuis les sources (docker compose up --build).
+    image: ghcr.io/aixisstudio/snitch:latest
     build: .
     network_mode: host
     cap_add:

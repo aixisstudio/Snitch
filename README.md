@@ -101,6 +101,15 @@ Or grab the latest release: **[github.com/aixisstudio/Snitch/releases](https://g
 The Docker deployment is for Linux users who want to run Snitch without installing anything beyond Docker.
 Packet capture works via `network_mode: host` — the container sees real host traffic.
 
+**Prebuilt image** — no clone or build needed:
+
+```bash
+sudo docker run --network host --cap-add NET_ADMIN --cap-add NET_RAW \
+  -v snitch-data:/app/data ghcr.io/aixisstudio/snitch
+```
+
+Or build from source with the compose file:
+
 > **Note:** Docker Desktop on Mac/Windows runs inside a VM and cannot capture traffic from the host. Use the Electron app on those platforms.
 
 ```bash
