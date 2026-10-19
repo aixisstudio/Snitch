@@ -8,7 +8,7 @@
 
 | Canal | Statut | Lien / note |
 |---|---|---|
-| Show HN #1 | ✅ posté, coulé (score 1) | repost autorisé — nouvel angle « histoire » dans drafts-launch.md |
+| Show HN #1 | ✅ posté, coulé (score 1, dim. 20h52) | repost **mardi 14h30** avec titre data-hook « 347 servers » — package complet dans drafts-launch.md |
 | GitHub Discussions | ✅ activées + #39 épinglée | « What did you catch? » bilingue |
 | Topics | ✅ 20/20 + `hacktoberfest` | `pinokio` retiré |
 | FUNDING.yml | ✅ commit `fbb06b6` | prêt pour GitHub Sponsors |
