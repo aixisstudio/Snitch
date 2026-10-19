@@ -24,6 +24,7 @@
 | Qiita 🇯🇵 | ✅ article publié | qiita.com/aixis/items/f7686017adaa0b8be861 |
 | Chine 🇨🇳 | ⚠️ | HelloGitHub #4028 ✅ ; V2EX/linux.do = invitation ; Juejin = tél. chinois |
 | GHCR | ✅ `ghcr.io/aixisstudio/snitch` publique | CI auto aux tags |
+| Pinokio | ✅ listé dans le store | pinokio.co/apps/github-com-aixisstudio-snitch — launcher v7.0 (install/start/update/reset), bilingue, badges toutes plateformes |
 | winget | ✅ PR #455520 + CLA signée | en validation Microsoft |
 | awesome-privacy | ❌ PR fermée (règle 16 semaines) | resoumission ~20 janv. 2026 |
 | Payant/mort — exclus | — | BetaList ($99+), OpenAlternative ($97+), Slant (SSL mort), Lobsters (invitation), Fazier (badge+3 comments), Microlaunch (Pro payant) |

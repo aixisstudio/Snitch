@@ -64,6 +64,7 @@
 | **macOS（Apple Silicon）** | `brew install --cask aixisstudio/tap/snitch` —— 或 [Snitch-1.0.5-macos-arm64.zip](https://github.com/aixisstudio/Snitch/releases/download/v1.0.5/Snitch-1.0.5-macos-arm64.zip) |
 | **Linux** | `sudo docker compose up --build` —— 见 [Docker (Linux)](#docker-linux) |
 | **Windows** | [snitch-backend-windows-latest.tar.gz](https://github.com/aixisstudio/Snitch/releases/latest)（后端，需要 [Npcap](https://npcap.com/)）—— 或从源码构建，见 [构建安装包](#构建安装包) |
+| **全平台（一键）** | [Pinokio](https://pinokio.co/apps/github-com-aixisstudio-snitch) —— 自动安装依赖、启动后端并打开界面 |
 
 或直接获取最新版本：**[github.com/aixisstudio/Snitch/releases](https://github.com/aixisstudio/Snitch/releases)**
 

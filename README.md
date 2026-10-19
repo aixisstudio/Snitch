@@ -65,6 +65,7 @@ The entire interface is available in **English and French**: use the `EN / FR` t
 | **macOS (Apple Silicon)** | `brew install --cask aixisstudio/tap/snitch` — or [Snitch-1.0.5-macos-arm64.zip](https://github.com/aixisstudio/Snitch/releases/download/v1.0.5/Snitch-1.0.5-macos-arm64.zip) |
 | **Linux** | `sudo docker compose up --build` — see [Docker (Linux)](#docker-linux) |
 | **Windows** | [snitch-backend-windows-latest.tar.gz](https://github.com/aixisstudio/Snitch/releases/latest) (backend, requires [Npcap](https://npcap.com/)) — or build from source, see [Build the installer](#build-the-installer) |
+| **All (1-click)** | [Pinokio](https://pinokio.co/apps/github-com-aixisstudio-snitch) — installs deps, runs the backend, opens the UI / installe tout, lance le backend, ouvre l'UI |
 
 Or grab the latest release: **[github.com/aixisstudio/Snitch/releases](https://github.com/aixisstudio/Snitch/releases)**
 
