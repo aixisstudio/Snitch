@@ -18,7 +18,7 @@
 | Star-history badge | ✅ dans README | |
 | Presse EN | ✅ soumis | OMG Ubuntu, 9to5Linux, It's FOSS (mail), Linuxiac (mail) |
 | Presse FR | ✅ soumis | Korben ×2 (contact@aixis.fr puis berthomiereadam@gmail.com) |
-| Directories | ✅ | SaaSHub (live), StackShare (live #233 Monitoring), AlternativeTo (modération), daily.dev squad (review) |
+| Directories | ✅ | SaaSHub (live), StackShare (live #233 Monitoring), AlternativeTo (modération), daily.dev squad (**approuvé & live** 19/10, 1er upvote), IndieHackers (live) |
 | Dev.to | ✅ 5 articles | canonical unique → fichier source GitHub |
 | Medium | ✅ article fondateur | canonical → dev.to conservé |
 | Qiita 🇯🇵 | ✅ article publié | qiita.com/aixis/items/f7686017adaa0b8be861 |
@@ -33,6 +33,7 @@
 | IndieHackers | ✅ page produit live | indiehackers.com/product/snitch — 11 tags, motivation, France |
 | Homebrew | ⚠️ tap perso OK, upstream bloqué | `brew install --cask aixisstudio/tap/snitch` fonctionne (repo homebrew-tap, cask v1.0.5, postflight enlève la quarantaine) ; upstream homebrew-cask bloqué : conflit token `snitch` + app ad-hoc signée |
 | Réseau perso | n/a | aucun — toute la campagne est 100% canaux publics |
+| **Tournée 19 oct** | 📊 | 432⭐ (+20) · daily.dev **live** · LinuxFR en file de modération · winget PR ouverte · JdH sans réponse · presse FR/EN : rien publié · Trending : absent |
 
 ---
 
