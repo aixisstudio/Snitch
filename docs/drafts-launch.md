@@ -1,32 +1,55 @@
 # Drafts launch-day — tout copiable-collable
 
-## Show HN repost (titre différent — l'histoire, pas la feature)
+## Show HN repost — le vrai package « buzz »
 
-**Titre :** `Show HN: I open-sourced a network monitor and strangers shipped the Windows port`
+**Timing : mardi 14h30-15h00 Paris** (= 8h30-9h New York, mardi ouvré = le meilleur créneau de la semaine). PAS avant : il faut que la front page US soit active.
 
-**URL :** `https://github.com/aixisstudio/Snitch`
+**URL :** `https://github.com/aixisstudio/Snitch` (le repo — chaque visite peut devenir une étoile)
 
-**Commentaire auteur :**
+### Titre — option A (data hook, recommandé, 80/80 car.)
+
+`Show HN: Snitch – my Mac talked to 347 servers in one idle hour, so I built this`
+
+### Titre — option B (story hook, 79 car., si A a déjà été posté)
+
+`Show HN: I open-sourced a network monitor — strangers shipped the Windows port`
+
+### Premier commentaire auteur — à poster DANS LES 60 SECONDES après soumission
 
 ```
-Author here. Snitch shows every connection your computer makes,
-live on a world map — which apps talk to which servers, with
-geolocation, process attribution, anomaly detection and a privacy
-score. Everything stays on your machine: no account, no telemetry,
-token-authenticated API bound to loopback.
+Author here. The seed of this project: I ran it for one idle hour
+and my Mac had talked to 347 distinct servers across ~17
+companies — 158 of them Google IPs. I wanted to *see* that, so I
+built the tool.
 
-Fun story: the Windows port wasn't me. Users filed bug reports
-with root-cause analysis, then a stranger sent 3 PRs fixing it.
-Cross-platform now: macOS (app + brew), Windows (exe + Npcap),
-Linux (Docker image on GHCR).
+Stack details for the curious:
 
-Stack: Python + FastAPI + WebSockets, packet capture via
-ctypes → libpcap/Npcap (no Scapy), custom IPv4/IPv6/TCP/UDP/
-DNS/TLS-SNI parsing, offline MaxMind/DB-IP geolocation,
-React + D3 frontend. AGPL, bilingual EN/FR + Chinese README.
+- Capture: ctypes → libpcap directly, no Scapy. Own parsers for
+  Ethernet/IPv4/IPv6/TCP/UDP/DNS/TLS-SNI. Windows uses Npcap.
+- Process attribution: psutil socket snapshots → (proto,
+  local_port) → (pid, name). Best-effort, documented honestly.
+- Geolocation is 100% offline (.mmdb — DB-IP Lite bundles,
+  MaxMind GeoLite2 drop-in). Zero outbound calls by design.
+- API: FastAPI on 127.0.0.1 only, random per-launch token on
+  every endpoint + the WebSocket. No account, no telemetry, AGPL.
+- Demo mode (SNITCH_DEMO=1) feeds synthetic traffic through the
+  real pipeline — try it without root.
+- Fun part: the Windows port wasn't me. Issue #12 has the story —
+  bug reports with root-cause analysis, then a stranger sent the
+  PRs. I just merged and shipped v1.0.5.
 
-Happy to answer anything — especially the capture pipeline.
+Honest scope note: it visualizes, it does not block — pair it
+with OpenSnitch/Portmaster if you want a firewall. Happy to
+answer anything, especially parser + privacy architecture.
 ```
+
+### Règles & légitimité (HN est strict)
+
+- Repost autorisé car le premier est mort à 1 point (guidelines officielles)
+- **Jamais** demander d'upvotes, ni cross-poster le lien en disant « allez voter » — HN détecte et shadowban
+- Répondre à CHAQUE commentaire dans les minutes qui suivent — la discussion nourrit le ranking
+- Si le post décolle : rester en ligne 2-3h, réponses détaillées et honnêtes (les défauts assumés = crédibilité)
+- Si ça coule encore : c'est la loterie HN, pas un verdict sur le projet — PH reste l'événement principal
 
 ## X / Twitter (jour J, avec la vidéo)
 
