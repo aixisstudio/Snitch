@@ -8,7 +8,11 @@
 
 | Canal | Statut | Lien / note |
 |---|---|---|
-| Show HN #1 | ✅ posté, coulé (score 1, dim. 20h52) | repost **mardi 14h30** avec titre data-hook « 347 servers » — package complet dans drafts-launch.md |
+| Show HN #1 | ✅ posté, coulé (score 1, dim. 20h52) | — |
+| Show HN #2 (repost) | ✅ **posté 20/10 14h09** | titre data-hook « 347 servers » + commentaire auteur à +60s — item?id=50165146 |
+| Product Hunt | ⚠️ **flop — 0 point à 14h** | lancement auto 09h01 OK, mais 0 upvote/0 commentaire/0 follower — PH amplifie une audience existante, n'en crée pas |
+| X/Twitter | ❌ abandonné | 9 followers = portée nulle ; 2 tweets corrompus partis (1 supprimé) — éditeur X réinjecte les brouillons |
+| LinkedIn | ❌ abandonné | même raison — pas d'audience |
 | GitHub Discussions | ✅ activées + #39 épinglée | « What did you catch? » bilingue |
 | Topics | ✅ 20/20 + `hacktoberfest` | `pinokio` retiré |
 | FUNDING.yml | ✅ commit `fbb06b6` | prêt pour GitHub Sponsors |
