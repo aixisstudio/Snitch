@@ -82,6 +82,57 @@ jobs:
         run: pip install -r backend/requirements.txt pyinstaller
       - name: PyInstaller build (onedir)
         run: cd backend && pyinstaller backend.spec --distpath ../dist/backend
+      # EN: Stage the compiled UI inside the bundle so the standalone backend
+      #     actually serves it — api/main.py mounts <bundle>/frontend_dist.
+      #     Without this the backend tarball opens to a bare API.
+      # FR: Mettre l'UI compilée dans le bundle pour que le backend autonome
+      #     la serve — api/main.py monte <bundle>/frontend_dist. Sans ça le
+      #     tarball backend n'ouvre qu'une API nue.
+      - name: Stage frontend_dist into bundle
+        shell: bash
+        run: |
+          mkdir -p dist/backend/snitch-backend/frontend_dist
+          cp -r frontend/dist/. dist/backend/snitch-backend/frontend_dist/
+      # EN: One-click Windows installer — Inno Setup on the runner. Npcap is
+      #     NOT bundled (free license forbids it); the .iss script detects it
+      #     and points the user at the official download page.
+      # FR: Installeur Windows en un clic — Inno Setup sur le runner. Npcap
+      #     n'est PAS embarqué (la licence gratuite l'interdit) ; le script
+      #     .iss le détecte et renvoie vers la page officielle.
+      # EN: Flagship Windows installer — Electron + NSIS, already fully wired
+      #     in electron/main.js (Npcap check, UAC spawn, tray, token via IPC).
+      #     Unsigned build: CSC_IDENTITY_AUTO_DISCOVERY=false skips code
+      #     signing when no certificate secret is configured.
+      # FR: Installeur Windows principal — Electron + NSIS, déjà entièrement
+      #     câblé dans electron/main.js (détection Npcap, spawn UAC, tray,
+      #     jeton via IPC). Build non signé : CSC_IDENTITY_AUTO_DISCOVERY=false
+      #     saute la signature quand aucun certificat n'est configuré.
+      - name: Build Electron installer (Windows NSIS)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: |
+          cd electron
+          npm ci
+          npm run build
+      # EN: Lightweight backend-only installer — Inno Setup, opens the UI in
+      #     the browser via --launcher. Fallback path if Electron breaks.
+      # FR: Installeur léger backend seul — Inno Setup, ouvre l'UI dans le
+      #     navigateur via --launcher. Chemin de secours si Electron casse.
+      - name: Build Windows installer (Inno Setup)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          choco install innosetup --no-progress -y
+          $v = "${{ github.ref_name }}" -replace '^v',''
+          & "C:\Program Files (x86)\Inno Setup 6\iscc.exe" "/DMyAppVersion=$v" "installer\snitch.iss"
+      - name: Upload Windows installer artifacts
+        if: matrix.os == 'windows-latest'
+        uses: actions/upload-artifact@v7
+        with:
+          name: snitch-setup-windows
+          path: dist/installer/*.exe
       - name: SHA256 checksums
         shell: bash
         run: |

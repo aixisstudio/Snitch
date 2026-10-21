@@ -18,6 +18,7 @@ Also live / également en place : Docker image on GHCR, Homebrew tap (`brew inst
 - [ ] **Signed & notarized macOS build** — needs an Apple Developer account ($99/yr). Until then the [tap](https://github.com/aixisstudio/homebrew-tap) strips quarantine for you / build macOS signée et notarisée — nécessite un compte Apple Developer. En attendant, le tap retire la quarantaine automatiquement
 - [ ] **Homebrew upstream** (`brew install --cask snitch`) — blocked: the `snitch` formula name is already taken by an unrelated project; revisit once we have Developer ID signing / bloqué : le nom `snitch` est déjà pris par un autre projet ; à revoir une fois la signature en place
 - [ ] **winget publishing** — [PR #455520](https://github.com/microsoft/winget-pkgs/pull/455520) open, awaiting Microsoft review / en attente de validation Microsoft
+- [ ] **Windows 1-click installers** — Electron NSIS (`Snitch Setup.exe`, native app + tray) and Inno Lite (`Snitch-Lite-Setup.exe`, backend + browser UI) now build in CI on tags; first shipping release v1.0.6 / installeurs Windows en un clic — NSIS Electron + Inno Lite, construits en CI aux tags ; première release v1.0.6
 - [ ] **Linux packages** — .deb / .rpm / AppImage alongside Docker / paquets Linux en plus de Docker
 - [ ] **Export formats** — per-host/session CSV & PCAP slices / exports CSV et PCAP par hôte ou session
 - [ ] **Deeper tracker coverage** — community-editable lists live in `backend/classifier/lists/` / couverture trackers élargie — listes éditables par la communauté

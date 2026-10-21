@@ -71,6 +71,32 @@ if __name__ == '__main__':
         elif a == '--bind' and i + 1 < len(args):
             argv_bind = args[i + 1]
 
+    # EN: --launcher = installed-app entry point (Inno Setup shortcut):
+    #     pick a free loopback port, compute the API token, open the browser
+    #     once the server is up, then serve. This build has no console
+    #     (console=False) so the browser IS the whole interface — the user
+    #     double-clicks the shortcut, gets one UAC prompt, and the UI opens.
+    # FR: --launcher = point d'entrée de l'app installée (raccourci Inno) :
+    #     port loopback libre, jeton API, ouverture du navigateur une fois le
+    #     serveur prêt, puis service. Ce build n'a pas de console
+    #     (console=False) donc le navigateur EST toute l'interface —
+    #     l'utilisateur double-clique le raccourci, a un prompt UAC, et l'UI
+    #     s'ouvre.
+    if '--launcher' in args:
+        import socket
+        import threading
+        import webbrowser
+
+        with socket.socket() as s:
+            s.bind(('127.0.0.1', 0))
+            port = s.getsockname()[1]
+
+        from api.security import get_token
+        url = f'http://127.0.0.1:{port}/?token={get_token()}'
+        threading.Timer(1.0, lambda: webbrowser.open(url)).start()
+        uvicorn.run(app, host='127.0.0.1', port=port, log_level='warning')
+        raise SystemExit(0)
+
     # EN: Loopback-only by default everywhere — Electron AND Docker/dev.
     #     Set SNITCH_BIND=0.0.0.0 to expose (token auth still applies).
     # FR: Loopback uniquement par défaut partout — Electron ET Docker/dev.

@@ -64,7 +64,7 @@ The entire interface is available in **English and French**: use the `EN / FR` t
 |---|---|
 | **macOS (Apple Silicon)** | `brew install --cask aixisstudio/tap/snitch` — or [Snitch-1.0.5-macos-arm64.zip](https://github.com/aixisstudio/Snitch/releases/download/v1.0.5/Snitch-1.0.5-macos-arm64.zip) |
 | **Linux** | `sudo docker compose up --build` — see [Docker (Linux)](#docker-linux) |
-| **Windows** | [snitch-backend-windows-latest.tar.gz](https://github.com/aixisstudio/Snitch/releases/latest) (backend, requires [Npcap](https://npcap.com/)) — or build from source, see [Build the installer](#build-the-installer) |
+| **Windows** | **Snitch Setup** `.exe` — one-click NSIS installer (native app, UAC prompt at launch, Npcap check built in — from v1.0.6). Lite alternative: `Snitch-Lite-Setup` (backend + browser UI, Inno Setup). Both build in CI on tags — see [Build the installer](#build-the-installer). Requires [Npcap](https://npcap.com/) |
 | **All (1-click)** | [Pinokio](https://pinokio.co/apps/github-com-aixisstudio-snitch) — installs deps, runs the backend, opens the UI / installe tout, lance le backend, ouvre l'UI |
 
 Or grab the latest release: **[github.com/aixisstudio/Snitch/releases](https://github.com/aixisstudio/Snitch/releases)**
@@ -193,7 +193,13 @@ cd ../electron
 npm ci
 npm run build       # NSIS installer -> dist/installer/Snitch Setup <version>.exe
 # npm run build:dir # unpacked app only -> dist/installer/win-unpacked/
+
+# 4 — Optional: lightweight Inno Setup installer (backend + browser UI)
+iscc /DMyAppVersion=<version> ../installer/snitch.iss
+# -> dist/installer/Snitch-Lite-Setup-<version>-windows-x64.exe
 ```
+
+Both Windows installers are produced by CI on every tag (`.github/workflows/ci.yml` → `package` job, `windows-latest`).
 
 ### Project structure
 
@@ -246,7 +252,7 @@ Toute l'interface est disponible en **français et en anglais** : utilisez le s�
 |---|---|
 | **macOS (Apple Silicon)** | `brew install --cask aixisstudio/tap/snitch` — ou [Snitch-1.0.5-macos-arm64.zip](https://github.com/aixisstudio/Snitch/releases/download/v1.0.5/Snitch-1.0.5-macos-arm64.zip) |
 | **Linux** | `sudo docker compose up --build` — voir [Docker (Linux)](#docker-linux-1) |
-| **Windows** | [snitch-backend-windows-latest.tar.gz](https://github.com/aixisstudio/Snitch/releases/latest) (backend, nécessite [Npcap](https://npcap.com/)) — ou build depuis les sources, voir [Développement](#développement) |
+| **Windows** | **Snitch Setup** `.exe` — installeur NSIS en un clic (app native, prompt UAC au lancement, détection Npcap intégrée — à partir de la v1.0.6). Alternative lite : `Snitch-Lite-Setup` (backend + UI navigateur, Inno Setup). Les deux sont construits en CI aux tags — voir [Construire l'installeur](#build-the-installer). Nécessite [Npcap](https://npcap.com/) |
 
 Ou récupérez la dernière release : **[github.com/aixisstudio/Snitch/releases](https://github.com/aixisstudio/Snitch/releases)**
 
