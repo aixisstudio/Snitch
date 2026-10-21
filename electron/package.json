@@ -73,9 +73,10 @@
       "synopsis": "See every connection your computer makes - 100% local",
       "description": "Snitch is a local-first network traffic visualizer: live map of outbound connections, per-process attribution, offline GeoIP. No account, no telemetry.",
       "maintainer": "aiXis Studio",
-      "desktopName": "Snitch",
       "syncDesktopName": true
     }
   },
-  "homepage": "https://github.com/aixisstudio/Snitch"
+  "homepage": "https://github.com/aixisstudio/Snitch",
+  "desktopName": "Snitch",
+  "author": "aiXis Studio"
 }
