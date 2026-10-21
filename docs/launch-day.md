@@ -163,3 +163,14 @@ Update: Snitch is now live on Product Hunt — link in comments. If the project 
 - **Zenn** : la page reloade parfois l'éditeur ; le contenu vit dans l'autosave local — restaurer via le dialog avant de réécrire.
 - **Fazier/Microlaunch** : pattern émergent — les « launch platforms » gratuites ont migré vers des modèles payants ou gated (badge/engagement forcé). L'ère du « submit free » se réduit : restent LibHunt, DevHunt (listing), SaaSHub, StackShare.
 - **Homebrew** : ne pas retenter sans (1) Developer ID + notarisation, (2) un token non conflictuel (`snitch-netmonitor` ?). Le formula karol-broda/snitch rend le conflit rédhibitoire même avec un token alternatif — confusion garantie en review.
+
+## 📦 v1.0.6 — installeurs 1-clic tous OS (21 oct.)
+
+Objectif : un seul fichier à télécharger et lancer par OS. Livré via la release [v1.0.6](https://github.com/aixisstudio/Snitch/releases/tag/v1.0.6) :
+
+- **Windows** : `Snitch Setup 1.0.6.exe` (Electron NSIS : fenêtre native, tray, vérif Npcap, UAC au lancement du backend) + `Snitch-Lite-Setup` (Inno Setup : backend + UI navigateur via `--launcher`)
+- **macOS arm64** : `.dmg` + `.zip` construits en CI
+- **Linux** : `.AppImage` + `.deb` — Docker n'est plus obligatoire pour l'app de bureau
+- Backend tarballs embarquent désormais `frontend_dist` (l'UI n'était jamais servie avant)
+- Job `release` ajouté à la CI : publie automatiquement tous les artefacts sur la release du tag
+- Npcap jamais embarqué (licence gratuite interdit la redistribution) — détection + lien officiel dans les 2 installeurs
