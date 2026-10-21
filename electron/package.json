@@ -7,12 +7,10 @@
   "scripts": {
     "start": "electron .",
     "icon": "node generate-icon.js",
-    "prebuild": "npm run icon",
-    "build": "electron-builder --win --x64",
-    "prebuild:dir": "npm run icon",
+    "build": "npm run icon && electron-builder --win --x64",
     "build:dir": "electron-builder --win --x64 --dir",
-    "build:mac": "electron-builder --mac --arm64",
-    "build:linux": "electron-builder --linux --x64"
+    "build:mac": "npm run icon && electron-builder --mac --arm64",
+    "build:linux": "npm run icon && electron-builder --linux --x64"
   },
   "devDependencies": {
     "electron": "^44.7.0",
@@ -74,7 +72,10 @@
       "icon": "icon.png",
       "synopsis": "See every connection your computer makes - 100% local",
       "description": "Snitch is a local-first network traffic visualizer: live map of outbound connections, per-process attribution, offline GeoIP. No account, no telemetry.",
-      "maintainer": "aiXis Studio"
+      "maintainer": "aiXis Studio",
+      "desktopName": "Snitch",
+      "syncDesktopName": true
     }
-  }
+  },
+  "homepage": "https://github.com/aixisstudio/Snitch"
 }
