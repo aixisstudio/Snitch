@@ -4,6 +4,24 @@ All notable changes to Snitch. / Toutes les modifications notables de Snitch.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/) — EN/FR.
 
+## [1.0.6] — 2026-10-21
+
+### Added / Ajouté
+
+- **One download per OS / Un téléchargement par OS** — every tag now ships ready-to-run apps built by CI: / chaque tag publie des apps prêtes à lancer, construites par la CI :
+  - **Windows** — `Snitch Setup <version>.exe` (Electron + NSIS: native window, tray, built-in Npcap check, UAC prompt at backend spawn) and `Snitch-Lite-Setup-<version>-windows-x64.exe` (Inno Setup: backend only, UI opens in the browser). / installeur NSIS Electron (fenêtre native, tray, détection Npcap intégrée, prompt UAC) et variante Inno Lite (backend seul, UI dans le navigateur).
+  - **macOS (Apple Silicon)** — `Snitch-<version>-macos-arm64.zip` + `.dmg` built in CI (previously manual). / zip + dmg construits en CI (auparavant manuels).
+  - **Linux** — `Snitch-<version>.AppImage` + `.deb` — no more Docker requirement for the desktop app. / AppImage + deb — Docker n'est plus obligatoire pour l'app de bureau.
+- **`--launcher` backend mode / mode backend `--launcher`** — picks a free loopback port, computes the API token and opens the browser; used by the Lite installer shortcut. / port loopback libre + jeton API + ouverture du navigateur ; utilisé par le raccourci de l'installeur Lite.
+
+### Fixed / Corrigé
+
+- **Standalone backend bundles now ship the UI** — `frontend_dist` is staged inside the PyInstaller bundle on all OSes; the bare tarball previously served only the API. / Les bundles backend autonomes embarquent désormais l'UI — `frontend_dist` est inclus dans le bundle PyInstaller ; le tarball ne servait auparavant que l'API.
+
+### Changed / Modifié
+
+- CI `package` job builds Electron installers on all three OSes and a `release` job publishes every artifact to the GitHub release automatically. / Le job CI `package` construit les installeurs Electron sur les trois OS et un job `release` publie tous les artefacts sur la release GitHub automatiquement.
+
 ## [1.0.5] — 2026-10-17
 
 ### Added / Ajouté

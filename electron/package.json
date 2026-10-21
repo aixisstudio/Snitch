@@ -1,6 +1,6 @@
 {
   "name": "snitch",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "Snitch — real-time network traffic visualizer / visualiseur de trafic réseau en temps réel",
   "main": "main.js",
   "license": "AGPL-3.0-or-later",
@@ -10,7 +10,9 @@
     "prebuild": "npm run icon",
     "build": "electron-builder --win --x64",
     "prebuild:dir": "npm run icon",
-    "build:dir": "electron-builder --win --x64 --dir"
+    "build:dir": "electron-builder --win --x64 --dir",
+    "build:mac": "electron-builder --mac --arm64",
+    "build:linux": "electron-builder --linux --x64 AppImage deb"
   },
   "devDependencies": {
     "electron": "^44.7.0",
@@ -54,6 +56,25 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "Snitch"
+    },
+    "mac": {
+      "target": [
+        "zip",
+        "dmg"
+      ],
+      "category": "public.app-category.utilities",
+      "icon": "icon.png"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Utility",
+      "icon": "icon.png",
+      "synopsis": "See every connection your computer makes - 100% local",
+      "description": "Snitch is a local-first network traffic visualizer: live map of outbound connections, per-process attribution, offline GeoIP. No account, no telemetry.",
+      "maintainer": "aiXis Studio"
     }
   }
 }

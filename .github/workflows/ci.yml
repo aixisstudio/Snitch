@@ -99,14 +99,14 @@ jobs:
       # FR: Installeur Windows en un clic — Inno Setup sur le runner. Npcap
       #     n'est PAS embarqué (la licence gratuite l'interdit) ; le script
       #     .iss le détecte et renvoie vers la page officielle.
-      # EN: Flagship Windows installer — Electron + NSIS, already fully wired
-      #     in electron/main.js (Npcap check, UAC spawn, tray, token via IPC).
-      #     Unsigned build: CSC_IDENTITY_AUTO_DISCOVERY=false skips code
-      #     signing when no certificate secret is configured.
-      # FR: Installeur Windows principal — Electron + NSIS, déjà entièrement
-      #     câblé dans electron/main.js (détection Npcap, spawn UAC, tray,
-      #     jeton via IPC). Build non signé : CSC_IDENTITY_AUTO_DISCOVERY=false
-      #     saute la signature quand aucun certificat n'est configuré.
+      # EN: One download per OS — the Electron app is the flagship artifact
+      #     everywhere: Windows NSIS installer, macOS zip+dmg, Linux
+      #     AppImage+deb. Unsigned builds: CSC_IDENTITY_AUTO_DISCOVERY=false
+      #     skips signing when no certificate secret is configured.
+      # FR: Un téléchargement par OS — l'app Electron est l'artefact principal
+      #     partout : installeur NSIS Windows, zip+dmg macOS, AppImage+deb
+      #     Linux. Builds non signés : CSC_IDENTITY_AUTO_DISCOVERY=false saute
+      #     la signature quand aucun certificat n'est configuré.
       - name: Build Electron installer (Windows NSIS)
         if: matrix.os == 'windows-latest'
         shell: pwsh
@@ -116,6 +116,29 @@ jobs:
           cd electron
           npm ci
           npm run build
+      - name: Build Electron app (macOS zip + dmg)
+        if: matrix.os == 'macos-latest'
+        shell: bash
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: |
+          cd electron
+          npm ci
+          npm run build:mac
+      - name: Build Electron packages (Linux AppImage + deb)
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: |
+          cd electron
+          npm ci
+          npm run build:linux
+      - name: Upload app installers
+        uses: actions/upload-artifact@v7
+        with:
+          name: snitch-app-${{ matrix.os }}
+          path: dist/installer/*
       # EN: Lightweight backend-only installer — Inno Setup, opens the UI in
       #     the browser via --launcher. Fallback path if Electron breaks.
       # FR: Installeur léger backend seul — Inno Setup, ouvre l'UI dans le
@@ -197,3 +220,32 @@ jobs:
           tags: |
             ghcr.io/${{ github.repository_owner }}/snitch:latest
             ghcr.io/${{ github.repository_owner }}/snitch:${{ github.ref_name }}
+
+  # EN: Tag release — gathers every build artifact (backend tarballs,
+  #     checksums, Electron NSIS/zip/dmg/AppImage/deb, Inno Lite) and
+  #     publishes them on the GitHub release for the tag. One file per OS,
+  #     zero manual assembly.
+  # FR: Release de tag — rassemble tous les artefacts (tarballs backend,
+  #     checksums, Electron NSIS/zip/dmg/AppImage/deb, Inno Lite) et les
+  #     publie sur la release GitHub du tag. Un fichier par OS, zéro
+  #     assemblage manuel.
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [package]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          path: artifacts
+      - name: Publish GitHub release with all assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          shopt -s globstar nullglob
+          files=(artifacts/**/*)
+          echo "publishing ${#files[@]} files"
+          gh release create "${{ github.ref_name }}" "${files[@]}" \
+            --title "Snitch ${{ github.ref_name }}" --generate-notes \
+            || gh release upload "${{ github.ref_name }}" "${files[@]}" --clobber
