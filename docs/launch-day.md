@@ -9,8 +9,10 @@
 | Canal | Statut | Lien / note |
 |---|---|---|
 | Show HN #1 | ✅ posté, coulé (score 1, dim. 20h52) | — |
-| Show HN #2 (repost) | ✅ **posté 20/10 14h09** | titre data-hook « 347 servers » + commentaire auteur à +60s — item?id=50165146 |
-| Product Hunt | ⚠️ **flop — 0 point à 14h** | lancement auto 09h01 OK, mais 0 upvote/0 commentaire/0 follower — PH amplifie une audience existante, n'en crée pas |
+| Show HN #2 (repost) | ✅ **posté 20/10 14h09 → 12 pts, 3 com.** | titre data-hook « 347 servers » + commentaire auteur à +60s — item?id=50165146 ; filtré de /shownew (dupe détecté) mais a quand même ramassé des votes ; réponse postée à la question Mac/Win/Linux |
+| Product Hunt | ❌ **flop — 1 point final** | lancement auto 09h01 OK, mais quasiment aucun vote — PH amplifie une audience existante, n'en crée pas |
+| Reddit r/selfhosted | ⏸️ suspendu | règle « New Project Friday » détectée dans le composer — post standalone risque le retrait ; à recaser vendredi |
+| HelloGitHub | ❌ issue 404 | #4028 supprimée/fermée côté mainteneur |
 | X/Twitter | ❌ abandonné | 9 followers = portée nulle ; 2 tweets corrompus partis (1 supprimé) — éditeur X réinjecte les brouillons |
 | LinkedIn | ❌ abandonné | même raison — pas d'audience |
 | GitHub Discussions | ✅ activées + #39 épinglée | « What did you catch? » bilingue |
