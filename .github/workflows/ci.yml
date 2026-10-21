@@ -250,6 +250,27 @@ jobs:
         with:
           path: artifacts
           pattern: snitch-*
+      # EN: Rename installer assets to versionless names before upload so
+      #     links like releases/latest/download/Snitch-Setup-windows.exe
+      #     stay valid forever — the website's download button depends on it.
+      # FR: Renommer les installeurs sans version avant l'upload pour que des
+      #     liens comme releases/latest/download/Snitch-Setup-windows.exe
+      #     restent valables à vie — le bouton du site en dépend.
+      - name: Rename installer assets to stable names
+        run: |
+          shopt -s globstar nullglob
+          for f in artifacts/**/*.exe artifacts/**/*.AppImage artifacts/**/*.deb artifacts/**/*.dmg artifacts/**/*.zip; do
+            b="$(basename "$f")"
+            case "$b" in
+              "Snitch Setup "*)   mv "$f" "$f.renamed" && mv "$f.renamed" "$(dirname "$f")/Snitch-Setup-windows.exe" ;;
+              Snitch-Lite-Setup*) mv "$f" "$(dirname "$f")/Snitch-Lite-Setup-windows.exe" ;;
+              *-arm64.dmg)        mv "$f" "$(dirname "$f")/Snitch-macos-arm64.dmg" ;;
+              *-arm64-mac.zip)    mv "$f" "$(dirname "$f")/Snitch-macos-arm64.zip" ;;
+              *.AppImage)         mv "$f" "$(dirname "$f")/Snitch-linux-x64.AppImage" ;;
+              *_amd64.deb)        mv "$f" "$(dirname "$f")/snitch-linux-amd64.deb" ;;
+            esac
+          done
+          find artifacts -type f -name "*" | sort
       - name: Publish GitHub release with all assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
