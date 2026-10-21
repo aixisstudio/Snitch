@@ -159,12 +159,23 @@ jobs:
           choco install innosetup --no-progress -y
           $v = "${{ github.ref_name }}" -replace '^v',''
           & "C:\Program Files (x86)\Inno Setup 6\iscc.exe" "/DMyAppVersion=$v" "installer\snitch.iss"
+      # EN: Upload only the final installable files — unpacked dirs and
+      #     blockmaps bloat artifacts to ~900 MB and break the release
+      #     download. / FR: N'envoyer que les fichiers installables finaux —
+      #     les dossiers unpacked et les blockmaps gonflent les artefacts à
+      #     ~900 Mo et cassent le téléchargement de la release.
       - name: Upload app installers
         uses: actions/upload-artifact@v7
         if: always()
         with:
           name: snitch-app-${{ matrix.os }}
-          path: dist/installer/*
+          path: |
+            dist/installer/*.exe
+            dist/installer/*.AppImage
+            dist/installer/*.deb
+            dist/installer/*.dmg
+            dist/installer/*.zip
+            !dist/installer/*-unpacked
       # EN: Code signing/notarization placeholders — disabled until you set the
       #     repository VARIABLE `ENABLE_CODESIGNING=true` and the secrets below.
       #     Windows: AZURE_TENANT_ID / AZURE_CLIENT_ID / AZURE_CLIENT_SECRET +
@@ -238,6 +249,7 @@ jobs:
       - uses: actions/download-artifact@v7
         with:
           path: artifacts
+          pattern: snitch-*
       - name: Publish GitHub release with all assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
