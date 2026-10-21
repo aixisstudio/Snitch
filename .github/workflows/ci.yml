@@ -93,12 +93,20 @@ jobs:
         run: |
           mkdir -p dist/backend/snitch-backend/frontend_dist
           cp -r frontend/dist/. dist/backend/snitch-backend/frontend_dist/
-      # EN: One-click Windows installer — Inno Setup on the runner. Npcap is
-      #     NOT bundled (free license forbids it); the .iss script detects it
-      #     and points the user at the official download page.
-      # FR: Installeur Windows en un clic — Inno Setup sur le runner. Npcap
-      #     n'est PAS embarqué (la licence gratuite l'interdit) ; le script
-      #     .iss le détecte et renvoie vers la page officielle.
+      # EN: Backend tarball FIRST — it is the core artifact; an optional
+      #     installer failure below must never cost us this upload.
+      # FR: Tarball backend D'ABORD — c'est l'artefact cœur ; un échec
+      #     d'installeur plus bas ne doit jamais empêcher cet upload.
+      - name: SHA256 checksums
+        shell: bash
+        run: |
+          cd dist/backend
+          tar czf snitch-backend-${{ matrix.os }}.tar.gz snitch-backend
+          sha256sum snitch-backend-${{ matrix.os }}.tar.gz > snitch-backend-${{ matrix.os }}.sha256
+      - uses: actions/upload-artifact@v7
+        with:
+          name: snitch-backend-${{ matrix.os }}
+          path: dist/backend/*.tar.gz*
       # EN: One download per OS — the Electron app is the flagship artifact
       #     everywhere: Windows NSIS installer, macOS zip+dmg, Linux
       #     AppImage+deb. Unsigned builds: CSC_IDENTITY_AUTO_DISCOVERY=false
@@ -134,15 +142,16 @@ jobs:
           cd electron
           npm ci
           npm run build:linux
-      - name: Upload app installers
-        uses: actions/upload-artifact@v7
-        with:
-          name: snitch-app-${{ matrix.os }}
-          path: dist/installer/*
       # EN: Lightweight backend-only installer — Inno Setup, opens the UI in
-      #     the browser via --launcher. Fallback path if Electron breaks.
+      #     the browser via --launcher. Npcap is NOT bundled (free license
+      #     forbids redistribution); the .iss script detects it and points the
+      #     user at the official download page. Fallback path if Electron
+      #     breaks.
       # FR: Installeur léger backend seul — Inno Setup, ouvre l'UI dans le
-      #     navigateur via --launcher. Chemin de secours si Electron casse.
+      #     navigateur via --launcher. Npcap n'est PAS embarqué (la licence
+      #     gratuite interdit la redistribution) ; le script .iss le détecte
+      #     et renvoie vers la page officielle. Chemin de secours si Electron
+      #     casse.
       - name: Build Windows installer (Inno Setup)
         if: matrix.os == 'windows-latest'
         shell: pwsh
@@ -150,22 +159,12 @@ jobs:
           choco install innosetup --no-progress -y
           $v = "${{ github.ref_name }}" -replace '^v',''
           & "C:\Program Files (x86)\Inno Setup 6\iscc.exe" "/DMyAppVersion=$v" "installer\snitch.iss"
-      - name: Upload Windows installer artifacts
-        if: matrix.os == 'windows-latest'
+      - name: Upload app installers
         uses: actions/upload-artifact@v7
+        if: always()
         with:
-          name: snitch-setup-windows
-          path: dist/installer/*.exe
-      - name: SHA256 checksums
-        shell: bash
-        run: |
-          cd dist/backend
-          tar czf snitch-backend-${{ matrix.os }}.tar.gz snitch-backend
-          sha256sum snitch-backend-${{ matrix.os }}.tar.gz > snitch-backend-${{ matrix.os }}.sha256
-      - uses: actions/upload-artifact@v7
-        with:
-          name: snitch-backend-${{ matrix.os }}
-          path: dist/backend/*.tar.gz*
+          name: snitch-app-${{ matrix.os }}
+          path: dist/installer/*
       # EN: Code signing/notarization placeholders — disabled until you set the
       #     repository VARIABLE `ENABLE_CODESIGNING=true` and the secrets below.
       #     Windows: AZURE_TENANT_ID / AZURE_CLIENT_ID / AZURE_CLIENT_SECRET +

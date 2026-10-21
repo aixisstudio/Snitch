@@ -12,7 +12,7 @@
     "prebuild:dir": "npm run icon",
     "build:dir": "electron-builder --win --x64 --dir",
     "build:mac": "electron-builder --mac --arm64",
-    "build:linux": "electron-builder --linux --x64 AppImage deb"
+    "build:linux": "electron-builder --linux --x64"
   },
   "devDependencies": {
     "electron": "^44.7.0",
