@@ -21,9 +21,9 @@ export function SettingsButton({ onClick }) {
   return (
     <button onClick={onClick} aria-label="Settings / Réglages" style={{
       display: 'flex', alignItems: 'center', gap: 6,
-      background: '#0f0f0f', border: '1px solid #2a2a2a',
+      background: 'var(--surface)', border: '1px solid var(--border)',
       borderRadius: 20, padding: '5px 14px',
-      cursor: 'pointer', color: '#64748b',
+      cursor: 'pointer', color: 'var(--text-muted)',
       fontSize: 11, fontWeight: 600,
     }}>
       <SettingsIcon size={11} />
@@ -102,28 +102,28 @@ export function SettingsPanel({ onClose, lang, setLang }) {
     URL.revokeObjectURL(a.href)
   }
 
-  const row = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid #000000' }
-  const label = { fontSize: 12, color: '#e2e8f0', fontWeight: 600 }
-  const hint = { fontSize: 10, color: '#64748b', marginTop: 2 }
+  const row = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid var(--bg)' }
+  const label = { fontSize: 12, color: 'var(--text)', fontWeight: 600 }
+  const hint = { fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }
 
   return (
     <div role="dialog" aria-label="Settings / Réglages" style={{
       position: 'absolute', top: 56, right: 16, zIndex: 200,
       width: 380, maxHeight: 'calc(100vh - 80px)',
-      background: '#0f0f0f', border: '1px solid #2a2a2a',
+      background: 'var(--surface)', border: '1px solid var(--border)',
       borderRadius: 12, overflow: 'hidden auto',
       boxShadow: '0 8px 40px rgba(0,0,0,0.6)',
       display: 'flex', flexDirection: 'column',
     }}>
       <div style={{
-        padding: '14px 18px', borderBottom: '1px solid #2a2a2a',
+        padding: '14px 18px', borderBottom: '1px solid var(--border)',
         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        position: 'sticky', top: 0, background: '#0f0f0f', zIndex: 1,
+        position: 'sticky', top: 0, background: 'var(--surface)', zIndex: 1,
       }}>
-        <span style={{ fontWeight: 700, fontSize: 13, color: '#f1f5f9' }}>{t('settings_title')}</span>
+        <span style={{ fontWeight: 700, fontSize: 13, color: 'var(--text)' }}>{t('settings_title')}</span>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           {saved && <span style={{ fontSize: 10, color: '#4ade80' }}>{t('settings_saved')}</span>}
-          <button onClick={onClose} aria-label={t('close')} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer' }}>
+          <button onClick={onClose} aria-label={t('close')} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}>
             <X size={16} />
           </button>
         </div>
@@ -136,9 +136,9 @@ export function SettingsPanel({ onClose, lang, setLang }) {
           <div style={{ display: 'flex', gap: 4 }}>
             {['en', 'fr'].map(l => (
               <button key={l} onClick={() => { setLang(l); save('language', l) }} style={{
-                background: lang === l ? '#3b82f6' : '#000000',
-                border: '1px solid #2a2a2a', borderRadius: 6,
-                color: lang === l ? '#fff' : '#64748b',
+                background: lang === l ? '#3b82f6' : 'var(--bg)',
+                border: '1px solid var(--border)', borderRadius: 6,
+                color: lang === l ? '#fff' : 'var(--text-muted)',
                 padding: '4px 12px', fontSize: 11, cursor: 'pointer',
                 textTransform: 'uppercase', fontWeight: 600,
               }}>{l}</button>
@@ -155,7 +155,7 @@ export function SettingsPanel({ onClose, lang, setLang }) {
           <select
             value={retention}
             onChange={e => { const v = +e.target.value; setRetention(v); save('retention_hours', v) }}
-            style={{ background: '#000000', border: '1px solid #2a2a2a', borderRadius: 6, color: '#e2e8f0', padding: '4px 8px', fontSize: 11 }}
+            style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', padding: '4px 8px', fontSize: 11 }}
           >
             {[6, 12, 24, 48, 72, 168].map(h => <option key={h} value={h}>{h}h</option>)}
           </select>
@@ -172,12 +172,12 @@ export function SettingsPanel({ onClose, lang, setLang }) {
               role="switch" aria-checked={autoLaunch}
               style={{
                 width: 36, height: 20, borderRadius: 10, border: 'none',
-                background: autoLaunch ? '#3b82f6' : '#000000',
-                outline: '1px solid #2a2a2a', cursor: 'pointer',
+                background: autoLaunch ? '#3b82f6' : 'var(--bg)',
+                outline: '1px solid var(--border)', cursor: 'pointer',
                 position: 'relative', flexShrink: 0,
               }}>
               <div style={{
-                width: 14, height: 14, borderRadius: '50%', background: '#e2e8f0',
+                width: 14, height: 14, borderRadius: '50%', background: 'var(--text)',
                 position: 'absolute', top: 3, left: autoLaunch ? 19 : 3,
                 transition: 'left 0.15s',
               }} />
@@ -195,13 +195,13 @@ export function SettingsPanel({ onClose, lang, setLang }) {
           </div>
           <button onClick={downloadGeo} style={{
             marginTop: 8, display: 'flex', alignItems: 'center', gap: 6,
-            background: '#000000', border: '1px solid #3b82f6', borderRadius: 6,
-            color: '#93c5fd', padding: '6px 12px', fontSize: 11, cursor: 'pointer',
+            background: 'var(--bg)', border: '1px solid #3b82f6', borderRadius: 6,
+            color: 'var(--blue-text)', padding: '6px 12px', fontSize: 11, cursor: 'pointer',
           }}>
             <Download size={11} /> {t('geo_download_btn')}
           </button>
           <div style={{ ...hint, marginTop: 4 }}>{t('geo_consent')}</div>
-          {geoMsg && <div style={{ fontSize: 10, color: '#93c5fd', marginTop: 4 }}>{geoMsg}</div>}
+          {geoMsg && <div style={{ fontSize: 10, color: 'var(--blue-text)', marginTop: 4 }}>{geoMsg}</div>}
         </div>
 
         {/* Diagnostics / Diagnostic */}
@@ -213,23 +213,23 @@ export function SettingsPanel({ onClose, lang, setLang }) {
           <div style={{ display: 'flex', gap: 6 }}>
             {window.snitch?.openLogs && (
               <button onClick={openLogs} aria-label={t('diag_open_logs')} style={{
-                background: '#000000', border: '1px solid #2a2a2a', borderRadius: 6,
-                color: '#94a3b8', padding: '5px 10px', fontSize: 11, cursor: 'pointer',
+                background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 6,
+                color: 'var(--text-dim)', padding: '5px 10px', fontSize: 11, cursor: 'pointer',
                 display: 'flex', alignItems: 'center', gap: 4,
               }}>
                 <FolderOpen size={11} /> {t('diag_open_logs')}
               </button>
             )}
             <button onClick={exportDiagnostics} style={{
-              background: '#000000', border: '1px solid #2a2a2a', borderRadius: 6,
-              color: '#94a3b8', padding: '5px 10px', fontSize: 11, cursor: 'pointer',
+              background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 6,
+              color: 'var(--text-dim)', padding: '5px 10px', fontSize: 11, cursor: 'pointer',
             }}>
               {t('diag_export')}
             </button>
           </div>
         </div>
 
-        <div style={{ fontSize: 10, color: '#475569', marginTop: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
+        <div style={{ fontSize: 10, color: 'var(--text-faint)', marginTop: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
           <ShieldCheck size={11} /> {t('settings_note')}
         </div>
       </div>

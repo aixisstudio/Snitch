@@ -46,9 +46,9 @@ export default function BandwidthChart({ data }) {
       const area = d3.area().x(d => x(d.ts)).y0(H).y1(d => y(d.bps)).curve(d3.curveCatmullRom)
       const line = d3.line().x(d => x(d.ts)).y(d => y(d.bps)).curve(d3.curveCatmullRom)
 
-      svg.append('path').datum(data).attr('d', area).attr('fill', 'url(#bw-grad)')
+      svg.append('path').datum(data).attr('d', area).style('fill', 'url(#bw-grad)')
       svg.append('path').datum(data).attr('d', line)
-        .attr('fill', 'none').attr('stroke', '#3b82f6').attr('stroke-width', 1.5)
+        .style('fill', 'none').style('stroke', '#3b82f6').style('stroke-width', 1.5)
     }
 
     // EN: Current throughput label, right-aligned.
@@ -57,7 +57,7 @@ export default function BandwidthChart({ data }) {
     svg.append('text')
       .attr('x', W - 2).attr('y', 11)
       .attr('text-anchor', 'end')
-      .attr('fill', current > 0 ? '#3b82f6' : '#2a2a2a')
+      .style('fill', current > 0 ? '#3b82f6' : 'var(--border)')
       .attr('font-size', 9).attr('font-weight', 700)
       .text(fmtBps(current))
   }, [data])

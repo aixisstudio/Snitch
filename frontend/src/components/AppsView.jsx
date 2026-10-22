@@ -58,7 +58,7 @@ export default function AppsView({ nodes }) {
   }, [expanded])
 
   if (apps.length === 0) {
-    return <div style={{ padding: 40, textAlign: 'center', color: '#64748b', fontSize: 12 }}>{t('apps_empty')}</div>
+    return <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)', fontSize: 12 }}>{t('apps_empty')}</div>
   }
 
   const maxBytes = apps[0].bytes || 1
@@ -70,7 +70,7 @@ export default function AppsView({ nodes }) {
     <div style={{ height: '100%', overflowY: 'auto', padding: '56px 24px 16px' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
         <thead>
-          <tr style={{ color: '#64748b', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+          <tr style={{ color: 'var(--text-muted)', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>
             <th style={{ textAlign: 'left', padding: '6px 8px' }}>{t('apps_process')}</th>
             <th style={{ textAlign: 'right', padding: '6px 8px' }}>{t('apps_destinations')}</th>
             <th style={{ textAlign: 'right', padding: '6px 8px' }}>{t('apps_packets')}</th>
@@ -82,9 +82,9 @@ export default function AppsView({ nodes }) {
             <Fragment key={app.name}>
               <tr
                 onClick={() => setExpanded(expanded === app.name ? null : app.name)}
-                style={{ cursor: 'pointer', borderTop: '1px solid #0f0f0f' }}
+                style={{ cursor: 'pointer', borderTop: '1px solid var(--surface)' }}
               >
-                <td style={{ padding: '8px', color: '#e2e8f0', fontFamily: 'monospace' }}>
+                <td style={{ padding: '8px', color: 'var(--text)', fontFamily: 'monospace' }}>
                   {(() => {
                     const Icon = processIcon(app.name)
                     return (
@@ -95,30 +95,30 @@ export default function AppsView({ nodes }) {
                     )
                   })()}
                 </td>
-                <td style={{ padding: '8px', textAlign: 'right', color: '#94a3b8' }}>{app.destinations.length}</td>
-                <td style={{ padding: '8px', textAlign: 'right', color: '#94a3b8' }}>{app.packets}</td>
+                <td style={{ padding: '8px', textAlign: 'right', color: 'var(--text-dim)' }}>{app.destinations.length}</td>
+                <td style={{ padding: '8px', textAlign: 'right', color: 'var(--text-dim)' }}>{app.packets}</td>
                 <td style={{ padding: '8px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <div style={{ flex: 1, height: 6, background: '#000000', borderRadius: 3, overflow: 'hidden' }}>
+                    <div style={{ flex: 1, height: 6, background: 'var(--bg)', borderRadius: 3, overflow: 'hidden' }}>
                       <div style={{ width: `${(app.bytes / maxBytes) * 100}%`, height: '100%', background: '#3b82f6' }} />
                     </div>
-                    <span style={{ color: '#94a3b8', minWidth: 60, textAlign: 'right' }}>{fmtBytes(app.bytes)}</span>
+                    <span style={{ color: 'var(--text-dim)', minWidth: 60, textAlign: 'right' }}>{fmtBytes(app.bytes)}</span>
                   </div>
                 </td>
               </tr>
               {expanded === app.name && (
                 <tr>
-                  <td colSpan={4} style={{ padding: '8px 8px 16px 24px', background: '#000000' }}>
-                    <div style={{ fontSize: 10, color: '#64748b', marginBottom: 6 }}>{t('apps_top_dest')}</div>
+                  <td colSpan={4} style={{ padding: '8px 8px 16px 24px', background: 'var(--bg)' }}>
+                    <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 6 }}>{t('apps_top_dest')}</div>
                     {app.destinations.slice(0, 5).map(d => (
-                      <div key={d.ip} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#94a3b8', padding: '2px 0' }}>
+                      <div key={d.ip} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text-dim)', padding: '2px 0' }}>
                         <span style={{ fontFamily: 'monospace' }}>{d.label || d.ip}</span>
                         <span>{fmtBytes(d.bytes)}</span>
                       </div>
                     ))}
                     {history.length > 0 && (
                       <>
-                        <div style={{ fontSize: 10, color: '#64748b', margin: '10px 0 6px' }}>{t('apps_history_60m')}</div>
+                        <div style={{ fontSize: 10, color: 'var(--text-muted)', margin: '10px 0 6px' }}>{t('apps_history_60m')}</div>
                         <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: 40 }}>
                           {history.slice(-30).map((h, i) => (
                             <div key={i} title={`${h.minute} — ${fmtBytes(h.bytes)}`}

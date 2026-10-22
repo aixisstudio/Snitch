@@ -4,6 +4,12 @@ All notable changes to Snitch. / Toutes les modifications notables de Snitch.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/) — EN/FR.
 
+## [1.0.8] — 2026-10-22
+
+### Changed / Modifié
+
+- **True native light theme / Vrai thème clair natif** — replaces the v1.0.7 invert filter with a full design-token system: every surface, text, border and accent colour in the app paints through CSS custom properties with a hand-picked light palette. Map, force graph, timeline and the WebGL aurora all follow the theme, and the toggle still persists your choice. / Remplace le filtre d'inversion de la v1.0.7 par un système de tokens : chaque surface, texte, bordure et accent passe par des variables CSS avec une palette claire choisie à la main. Carte, graphe, timeline et aurore WebGL suivent le thème, et le choix reste persisté.
+
 ## [1.0.7] — 2026-10-22
 
 ### Added / Ajouté

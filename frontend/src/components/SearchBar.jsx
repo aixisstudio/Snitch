@@ -16,12 +16,12 @@ import { useT } from '../i18n'
 // FR: Puces de catégorie — `label` est un nom de service anglais fixe, sinon
 //     la puce utilise une clé i18n.
 const CATEGORY_IDS = [
-  { id: 'all',      color: '#64748b' },
+  { id: 'all',      color: 'var(--text-muted)' },
   { id: 'safe',     label: 'HTTPS',    color: '#22c55e' },
   { id: 'tracking', label: 'Tracking', color: '#f59e0b' },
   { id: 'cdn',      label: 'CDN',      color: '#6366f1' },
   { id: 'dns',      label: 'DNS',      color: '#38bdf8' },
-  { id: 'unknown',  color: '#94a3b8' },
+  { id: 'unknown',  color: 'var(--text-dim)' },
   { id: 'alerted',  color: '#ef4444' },
 ]
 
@@ -42,7 +42,7 @@ export default function SearchBar({ filter, onChange }) {
       <div style={{ position: 'relative', marginBottom: 7 }}>
         <Search size={11} style={{
           position: 'absolute', left: 8, top: '50%',
-          transform: 'translateY(-50%)', color: '#64748b', pointerEvents: 'none',
+          transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none',
         }} />
         <input
           value={text}
@@ -50,15 +50,15 @@ export default function SearchBar({ filter, onChange }) {
           placeholder={t('search_placeholder')}
           style={{
             width: '100%', boxSizing: 'border-box',
-            background: '#000000', border: '1px solid #2a2a2a',
+            background: 'var(--bg)', border: '1px solid var(--border)',
             borderRadius: 6, padding: '5px 26px 5px 26px',
-            color: '#e2e8f0', fontSize: 11, outline: 'none',
+            color: 'var(--text)', fontSize: 11, outline: 'none',
           }}
         />
         {text && (
           <button onClick={() => onChange({ ...filter, text: '' })} style={{
             position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)',
-            background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', padding: 0,
+            background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 0,
           }}>
             <X size={11} />
           </button>
@@ -70,10 +70,10 @@ export default function SearchBar({ filter, onChange }) {
         {categories.map(c => (
           <button key={c.id} onClick={() => onChange({ ...filter, category: c.id })} style={{
             background: category === c.id ? c.color + '22' : 'transparent',
-            border: `1px solid ${category === c.id ? c.color : '#2a2a2a'}`,
+            border: `1px solid ${category === c.id ? c.color : 'var(--border)'}`,
             borderRadius: 10, padding: '2px 8px',
             fontSize: 9, fontWeight: 600,
-            color: category === c.id ? c.color : '#64748b',
+            color: category === c.id ? c.color : 'var(--text-muted)',
             cursor: 'pointer', transition: 'all 0.15s',
           }}>
             {c.label}

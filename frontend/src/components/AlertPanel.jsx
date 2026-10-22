@@ -24,9 +24,9 @@ import { useT } from '../i18n'
 
 // EN: Visual style per severity. / FR: Style visuel par sévérité.
 const SEVERITY_STYLES = {
-  info:     { color: '#38bdf8', Icon: Info,          bg: '#0c2340' },
-  warning:  { color: '#f59e0b', Icon: AlertTriangle, bg: '#2d1a00' },
-  critical: { color: '#ef4444', Icon: AlertCircle,   bg: '#2d0000' },
+  info:     { color: '#38bdf8', Icon: Info,          bg: 'var(--info-bg)' },
+  warning:  { color: '#f59e0b', Icon: AlertTriangle, bg: 'var(--warn-bg)' },
+  critical: { color: '#ef4444', Icon: AlertCircle,   bg: 'var(--danger-bg)' },
 }
 
 // EN: Per-alert-type icon. / FR: Icône par type d'alerte.
@@ -45,11 +45,11 @@ const TYPE_ICONS = {
 export function AlertBell({ unread, onClick }) {
   return (
     <button onClick={onClick} style={{
-      position: 'relative', background: '#0f0f0f',
-      border: '1px solid #2a2a2a', borderRadius: 20,
+      position: 'relative', background: 'var(--surface)',
+      border: '1px solid var(--border)', borderRadius: 20,
       padding: '5px 14px', cursor: 'pointer',
       display: 'flex', alignItems: 'center', gap: 6,
-      color: unread > 0 ? '#f59e0b' : '#64748b',
+      color: unread > 0 ? '#f59e0b' : 'var(--text-muted)',
     }}>
       <Bell size={14} />
       {unread > 0 && (
@@ -95,25 +95,25 @@ export function AlertPanel({ alerts, onClose, onIgnore }) {
     <div style={{
       position: 'absolute', top: 56, right: 16, zIndex: 200,
       width: 380, maxHeight: 'calc(100vh - 80px)',
-      background: '#0f0f0f', border: '1px solid #2a2a2a',
+      background: 'var(--surface)', border: '1px solid var(--border)',
       borderRadius: 12, overflow: 'hidden',
       boxShadow: '0 8px 40px rgba(0,0,0,0.6)',
       display: 'flex', flexDirection: 'column',
     }}>
       {/* EN: Header with severity counters / FR: En-tête avec compteurs de sévérité */}
       <div style={{
-        padding: '14px 18px', borderBottom: '1px solid #2a2a2a',
+        padding: '14px 18px', borderBottom: '1px solid var(--border)',
         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
       }}>
         <div>
-          <span style={{ fontWeight: 700, fontSize: 13, color: '#f1f5f9' }}>{t('alerts_title')}</span>
-          <span style={{ fontSize: 11, color: '#64748b', marginLeft: 8 }}>{rows.length} {t('alerts_total')}</span>
+          <span style={{ fontWeight: 700, fontSize: 13, color: 'var(--text)' }}>{t('alerts_title')}</span>
+          <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 8 }}>{rows.length} {t('alerts_total')}</span>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           {criticalCount > 0 && <Badge count={criticalCount} color="#ef4444" />}
           {warningCount  > 0 && <Badge count={warningCount}  color="#f59e0b" />}
           {infoCount     > 0 && <Badge count={infoCount}     color="#38bdf8" />}
-          <button onClick={onClose} aria-label="Close alerts / Fermer les alertes" style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer' }}>
+          <button onClick={onClose} aria-label="Close alerts / Fermer les alertes" style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}>
             <X size={16} />
           </button>
         </div>
@@ -121,7 +121,7 @@ export function AlertPanel({ alerts, onClose, onIgnore }) {
 
       <div style={{ overflowY: 'auto', flex: 1 }}>
         {rows.length === 0 && (
-          <div style={{ padding: 32, textAlign: 'center', color: '#64748b', fontSize: 12 }}>
+          <div style={{ padding: 32, textAlign: 'center', color: 'var(--text-muted)', fontSize: 12 }}>
             {t('alerts_empty')}
           </div>
         )}
@@ -159,7 +159,7 @@ function AlertRow({ alert, onIgnore }) {
 
   return (
     <div style={{
-      padding: '10px 18px', borderBottom: '1px solid #0f0f0f',
+      padding: '10px 18px', borderBottom: '1px solid var(--surface)',
       borderLeft: `3px solid ${sev.color}`, background: sev.bg,
     }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
@@ -172,24 +172,24 @@ function AlertRow({ alert, onIgnore }) {
                 {typeLabel}
               </span>
             </div>
-            <div style={{ fontSize: 11, color: '#e2e8f0', lineHeight: 1.4 }}>{alertMessage(t, alert)}</div>
+            <div style={{ fontSize: 11, color: 'var(--text)', lineHeight: 1.4 }}>{alertMessage(t, alert)}</div>
             {alert.details && Object.keys(alert.details).length > 0 && (
-              <div style={{ marginTop: 3, fontSize: 9, color: '#64748b', fontFamily: 'monospace' }}>
+              <div style={{ marginTop: 3, fontSize: 9, color: 'var(--text-muted)', fontFamily: 'monospace' }}>
                 {Object.entries(alert.details).filter(([, v]) => v).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`).join(' · ')}
               </div>
             )}
             {!alert._grouped && onIgnore && (
               <button onClick={() => onIgnore(alert)} style={{
-                marginTop: 5, background: 'none', border: '1px solid #2a2a2a',
+                marginTop: 5, background: 'none', border: '1px solid var(--border)',
                 borderRadius: 4, padding: '2px 8px', fontSize: 9,
-                color: '#64748b', cursor: 'pointer',
+                color: 'var(--text-muted)', cursor: 'pointer',
               }}>
                 {t('ignore_alert')}
               </button>
             )}
           </div>
         </div>
-        <span style={{ fontSize: 9, color: '#475569', flexShrink: 0, marginTop: 2 }}>
+        <span style={{ fontSize: 9, color: 'var(--text-faint)', flexShrink: 0, marginTop: 2 }}>
           {timeAgo(alert.timestamp, t)}
         </span>
       </div>
@@ -294,7 +294,7 @@ function Toast({ alert, index, dying }) {
 
   return (
     <div style={{
-      background: '#0f0f0f', border: `1px solid ${sev.color}44`,
+      background: 'var(--surface)', border: `1px solid ${sev.color}44`,
       borderLeft: `3px solid ${sev.color}`,
       borderRadius: 6, padding: '5px 10px',
       display: 'flex', alignItems: 'center', gap: 8,
@@ -306,7 +306,7 @@ function Toast({ alert, index, dying }) {
       <TypeIcon size={12} color={sev.color} style={{ flexShrink: 0 }} />
       <div style={{ minWidth: 0 }}>
         <div style={{ fontSize: 9, color: sev.color, fontWeight: 700, textTransform: 'uppercase' }}>{typeLabel}</div>
-        <div style={{ fontSize: 10, color: '#94a3b8', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{alertMessage(t, alert)}</div>
+        <div style={{ fontSize: 10, color: 'var(--text-dim)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{alertMessage(t, alert)}</div>
       </div>
     </div>
   )

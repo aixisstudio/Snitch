@@ -169,25 +169,25 @@ export default function MapView({ nodes, onNodeClick }) {
     const g = gRef.current
     if (!g) return
 
-    g.select('.graticule').attr('stroke-width', 0.3 / k)
-    g.select('.borders').attr('stroke-width', 0.3 / k)
-    g.selectAll('.countries path').attr('stroke-width', 0.5 / k)
+    g.select('.graticule').style('stroke-width', 0.3 / k)
+    g.select('.borders').style('stroke-width', 0.3 / k)
+    g.selectAll('.countries path').style('stroke-width', 0.5 / k)
 
     g.selectAll('path.arc-flow').each(function (d) {
       const base = 0.8 + Math.log1p((d?.bytes || 0) / 512)
-      d3.select(this).attr('stroke-width', Math.min(base, 3.5) / k)
+      d3.select(this).style('stroke-width', Math.min(base, 3.5) / k)
     })
 
     g.selectAll('g.dest').each(function (d) {
       const r  = Math.min(3 + Math.log1p((d?.packets || 0) * 0.4), 9)
       const vr = r / k
-      d3.select(this).select('.dot').attr('r', vr).attr('stroke-width', 1 / k)
+      d3.select(this).select('.dot').attr('r', vr).style('stroke-width', 1 / k)
       d3.select(this).select('.dot-label')
         .attr('font-size', Math.max(9 / k, 5))
         .attr('y', vr + 10 / k)
     })
 
-    g.select('.user-dot').attr('r', 7 / k).attr('stroke-width', 1.5 / k)
+    g.select('.user-dot').attr('r', 7 / k).style('stroke-width', 1.5 / k)
     g.select('.user-label').attr('font-size', 11 / k).attr('x', function () {
       return +d3.select(this).attr('data-ux') + 10 / k
     })
@@ -239,16 +239,16 @@ export default function MapView({ nodes, onNodeClick }) {
     g.append('rect')
       .attr('width', W * 4).attr('height', H * 4)
       .attr('x', -W).attr('y', -H)
-      .attr('fill', '#000000')
-      .attr('fill-opacity', 0.55)
+      .style('fill', 'var(--bg)')
+      .style('fill-opacity', 0.55)
 
     g.append('path')
       .attr('class', 'graticule')
       .datum(d3.geoGraticule()())
       .attr('d', geoPath)
-      .attr('fill', 'none')
-      .attr('stroke', '#1c1c1c')
-      .attr('stroke-width', 0.3)
+      .style('fill', 'none')
+      .style('stroke', 'var(--surface-2)')
+      .style('stroke-width', 0.3)
 
     const countries = topojson.feature(topo, topo.objects.countries)
     g.append('g').attr('class', 'countries')
@@ -256,17 +256,17 @@ export default function MapView({ nodes, onNodeClick }) {
       .data(countries.features)
       .join('path')
       .attr('d', geoPath)
-      .attr('fill', '#0f0f0f')
-      .attr('stroke', '#2d4a6e')
-      .attr('stroke-width', 0.5)
+      .style('fill', 'var(--surface)')
+      .style('stroke', 'var(--map-border)')
+      .style('stroke-width', 0.5)
 
     g.append('path')
       .attr('class', 'borders')
       .datum(topojson.mesh(topo, topo.objects.countries, (a, b) => a !== b))
       .attr('d', geoPath)
-      .attr('fill', 'none')
-      .attr('stroke', '#2a2a2a')
-      .attr('stroke-width', 0.3)
+      .style('fill', 'none')
+      .style('stroke', 'var(--border)')
+      .style('stroke-width', 0.3)
 
     // EN: Layer order matters: arcs below dots.
     // FR: L'ordre des couches compte : arcs sous les points.
@@ -284,8 +284,8 @@ export default function MapView({ nodes, onNodeClick }) {
         const base = 10 + i * 8
         userG.append('circle')
           .attr('cx', ux).attr('cy', uy).attr('r', base)
-          .attr('fill', 'none').attr('stroke', '#3b82f6')
-          .attr('stroke-opacity', 0.3 - i * 0.1)
+          .style('fill', 'none').style('stroke', '#3b82f6')
+          .style('stroke-opacity', 0.3 - i * 0.1)
           .append('animate').attr('attributeName', 'r')
           .attr('values', `${base};${base + 18};${base}`)
           .attr('dur', `${2.5 + i * 0.8}s`).attr('repeatCount', 'indefinite')
@@ -294,14 +294,14 @@ export default function MapView({ nodes, onNodeClick }) {
       userG.append('circle')
         .attr('class', 'user-dot')
         .attr('cx', ux).attr('cy', uy).attr('r', 7)
-        .attr('fill', '#3b82f6').attr('fill-opacity', 0.9)
-        .attr('stroke', '#93c5fd').attr('stroke-width', 1.5)
+        .style('fill', '#3b82f6').style('fill-opacity', 0.9)
+        .style('stroke', 'var(--blue-text)').style('stroke-width', 1.5)
 
       userG.append('text')
         .attr('class', 'user-label')
         .attr('data-ux', ux)
         .attr('x', ux + 10).attr('y', uy + 4)
-        .attr('fill', '#93c5fd').attr('font-size', 11).attr('font-weight', '700')
+        .style('fill', 'var(--blue-text)').attr('font-size', 11).attr('font-weight', '700')
         .text(youLabel)
     }
 
@@ -332,7 +332,7 @@ export default function MapView({ nodes, onNodeClick }) {
 
     const arcsEnter = arcs.enter().append('path')
       .attr('class', 'arc-flow')
-      .attr('fill', 'none')
+      .style('fill', 'none')
       .attr('pointer-events', 'none')
       .style('animation-duration', d => animDur(d.id))
 
@@ -341,9 +341,9 @@ export default function MapView({ nodes, onNodeClick }) {
         const [jx, jy] = jitter(d.id)
         return geoPath({ type: 'LineString', coordinates: [pos, [d.lon + jx, d.lat + jy]] })
       })
-      .attr('stroke', d => d.color || '#94a3b8')
-      .attr('stroke-opacity', 0.4)
-      .attr('stroke-width', d => Math.min(0.8 + Math.log1p((d.bytes || 0) / 512), 3.5) / k)
+      .style('stroke', d => d.color || 'var(--text-dim)')
+      .style('stroke-opacity', 0.4)
+      .style('stroke-width', d => Math.min(0.8 + Math.log1p((d.bytes || 0) / 512), 3.5) / k)
       .each(function () {
         // EN: pathLength normalizes the dash cycle so CSS animation works
         //     on any arc length.
@@ -362,9 +362,9 @@ export default function MapView({ nodes, onNodeClick }) {
       .data(geoNodes, d => d.id)
 
     const enter = dotGroups.enter().append('g').attr('class', 'dest')
-    enter.append('circle').attr('class', 'pulse').attr('fill', 'none').attr('stroke-opacity', 0)
-    enter.append('circle').attr('class', 'dot').attr('stroke', '#0a1628')
-    enter.append('text').attr('class', 'dot-label').attr('fill', '#cbd5e1').attr('text-anchor', 'middle').attr('pointer-events', 'none')
+    enter.append('circle').attr('class', 'pulse').style('fill', 'none').style('stroke-opacity', 0)
+    enter.append('circle').attr('class', 'dot').style('stroke', 'var(--dot-stroke)')
+    enter.append('text').attr('class', 'dot-label').style('fill', 'var(--text-2)').attr('text-anchor', 'middle').attr('pointer-events', 'none')
 
     const all = enter.merge(dotGroups)
 
@@ -379,15 +379,15 @@ export default function MapView({ nodes, onNodeClick }) {
       d3.select(this).attr('transform', `translate(${x},${y})`)
 
       const pulse = d3.select(this).select('.pulse')
-      pulse.attr('r', (r + 3) / k).attr('stroke', d.color || '#94a3b8')
+      pulse.attr('r', (r + 3) / k).style('stroke', d.color || 'var(--text-dim)')
       pulse.selectAll('animate').remove()
       pulse.append('animate').attr('attributeName', 'stroke-opacity')
         .attr('values', '0.5;0;0.5').attr('dur', '3s').attr('repeatCount', 'indefinite')
 
       d3.select(this).select('.dot')
         .attr('r', vr)
-        .attr('fill', d.color || '#94a3b8')
-        .attr('stroke-width', 1 / k)
+        .style('fill', d.color || 'var(--text-dim)')
+        .style('stroke-width', 1 / k)
         .attr('cursor', 'pointer')
 
       d3.select(this).select('.dot-label')
@@ -422,8 +422,8 @@ export default function MapView({ nodes, onNodeClick }) {
           FR: Badge compteur d'hôtes géolocalisés — sous la barre d'outils flottante. */}
       <div style={{
         position: 'absolute', top: 64, left: 16,
-        background: '#0f0f0f', border: '1px solid #2a2a2a',
-        borderRadius: 8, padding: '8px 14px', fontSize: 10, color: '#64748b',
+        background: 'var(--surface)', border: '1px solid var(--border)',
+        borderRadius: 8, padding: '8px 14px', fontSize: 10, color: 'var(--text-muted)',
       }}>
         <span style={{ color: '#22c55e', fontWeight: 700 }}>{t('map_located', geoCount)}</span>
         {noGeoCount > 0 && <span> · <span style={{ color: '#f59e0b' }}>{noGeoCount}</span> {t('map_no_geo')}</span>}
@@ -433,24 +433,24 @@ export default function MapView({ nodes, onNodeClick }) {
       {tooltip && (
         <div style={{
           position: 'fixed', left: tooltip.x + 14, top: tooltip.y - 10, zIndex: 100,
-          background: '#0f0f0f', border: '1px solid #2a2a2a',
+          background: 'var(--surface)', border: '1px solid var(--border)',
           borderRadius: 8, padding: '8px 12px', pointerEvents: 'none',
           boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
         }}>
-          <div style={{ fontWeight: 700, fontSize: 12, color: '#f1f5f9', marginBottom: 3 }}>
+          <div style={{ fontWeight: 700, fontSize: 12, color: 'var(--text)', marginBottom: 3 }}>
             {tooltip.node.label || (tooltip.node.label_key ? t(tooltip.node.label_key) : null) || tooltip.node.ip}
           </div>
           {tooltip.node.country && (
-            <div style={{ fontSize: 10, color: '#94a3b8' }}>
+            <div style={{ fontSize: 10, color: 'var(--text-dim)' }}>
               {[tooltip.node.city, tooltip.node.country].filter(Boolean).join(', ')}
             </div>
           )}
           {tooltip.node.org && (
-            <div style={{ fontSize: 10, color: '#64748b' }}>{tooltip.node.org}</div>
+            <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{tooltip.node.org}</div>
           )}
           <div style={{ marginTop: 5, fontSize: 10, display: 'flex', gap: 10 }}>
             <span style={{ color: tooltip.node.color }}>{tooltip.node.category}</span>
-            <span style={{ color: '#475569' }}>{tooltip.node.packets} pkt</span>
+            <span style={{ color: 'var(--text-faint)' }}>{tooltip.node.packets} pkt</span>
           </div>
         </div>
       )}

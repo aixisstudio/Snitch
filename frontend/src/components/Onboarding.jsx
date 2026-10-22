@@ -33,38 +33,38 @@ export default function Onboarding({ onDone }) {
       display: 'flex', alignItems: 'center', justifyContent: 'center',
     }}>
       <div style={{
-        width: 440, background: '#0f0f0f', border: '1px solid #2a2a2a',
+        width: 440, background: 'var(--surface)', border: '1px solid var(--border)',
         borderRadius: 14, padding: '28px 28px 20px',
         boxShadow: '0 20px 60px rgba(0,0,0,0.7)',
       }}>
-        <div style={{ fontSize: 18, fontWeight: 700, color: '#f1f5f9', marginBottom: 4 }}>
+        <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)', marginBottom: 4 }}>
           {t('onboard_title')}
         </div>
-        <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 20 }}>
+        <div style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 20 }}>
           {t('onboard_sub')}
         </div>
 
         <div style={item}>
           <ShieldCheck size={18} color="#22c55e" style={{ flexShrink: 0, marginTop: 1 }} />
           <div>
-            <div style={{ fontSize: 12, fontWeight: 600, color: '#e2e8f0' }}>{t('onboard_priv_title')}</div>
-            <div style={{ fontSize: 11, color: '#94a3b8', lineHeight: 1.5 }}>{t('onboard_priv_body')}</div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>{t('onboard_priv_title')}</div>
+            <div style={{ fontSize: 11, color: 'var(--text-dim)', lineHeight: 1.5 }}>{t('onboard_priv_body')}</div>
           </div>
         </div>
 
         <div style={item}>
           <Eye size={18} color="#38bdf8" style={{ flexShrink: 0, marginTop: 1 }} />
           <div>
-            <div style={{ fontSize: 12, fontWeight: 600, color: '#e2e8f0' }}>{t('onboard_capture_title')}</div>
-            <div style={{ fontSize: 11, color: '#94a3b8', lineHeight: 1.5 }}>{t('onboard_capture_body')}</div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>{t('onboard_capture_title')}</div>
+            <div style={{ fontSize: 11, color: 'var(--text-dim)', lineHeight: 1.5 }}>{t('onboard_capture_body')}</div>
           </div>
         </div>
 
         <div style={item}>
           <Download size={18} color="#f59e0b" style={{ flexShrink: 0, marginTop: 1 }} />
           <div>
-            <div style={{ fontSize: 12, fontWeight: 600, color: '#e2e8f0' }}>{t('onboard_out_title')}</div>
-            <div style={{ fontSize: 11, color: '#94a3b8', lineHeight: 1.5 }}>{t('onboard_out_body')}</div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>{t('onboard_out_title')}</div>
+            <div style={{ fontSize: 11, color: 'var(--text-dim)', lineHeight: 1.5 }}>{t('onboard_out_body')}</div>
           </div>
         </div>
 

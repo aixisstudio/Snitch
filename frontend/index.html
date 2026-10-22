@@ -18,7 +18,7 @@
       /* EN: Global reset + dark base theme.
          FR: Reset global + thème sombre de base. */
       *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-      body { background: #000000; color: #e2e8f0; font-family: 'Inter', system-ui, sans-serif; overflow: hidden; }
+      body { color: var(--text); font-family: 'Inter', system-ui, sans-serif; overflow: hidden; }
 
       /* EN: Pill scrollbars to match the bento cards — fully rounded thumb
          floating on a transparent track, inset by a transparent border so
@@ -26,36 +26,54 @@
          FR: Barres de défilement « pilule » assorties aux cartes bento —
          curseur entièrement arrondi flottant sur piste transparente, rentré
          par une bordure transparente pour un rendu capsule douce. */
-      * { scrollbar-width: thin; scrollbar-color: #333333 transparent; }
+      * { scrollbar-width: thin; scrollbar-color: var(--scrollbar) transparent; }
       ::-webkit-scrollbar { width: 10px; height: 10px; }
       ::-webkit-scrollbar-track { background: transparent; }
       ::-webkit-scrollbar-thumb {
-        background: #333333;
+        background: var(--scrollbar);
         border-radius: 8px;
         border: 2px solid transparent;
         background-clip: padding-box;
       }
-      ::-webkit-scrollbar-thumb:hover { background: #4a4a4a; border: 2px solid transparent; background-clip: padding-box; }
+      ::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-h); border: 2px solid transparent; background-clip: padding-box; }
       ::-webkit-scrollbar-corner { background: transparent; }
 
-      /* EN: Light theme — dark UIs get a faithful light variant by inverting
-         #root then rotating hue back, so accent colors keep their families
-         while surfaces flip to light. Canvases (map, graph, aurora) are
-         inverted along with the chrome: the data-viz palette was designed
-         for a dark base and still reads correctly inverted.
-         FR: Thème clair — l'UI sombre obtient une variante claire fidèle en
-         inversant #root puis en ré-ajustant la teinte, donc les accents
-         gardent leur famille pendant que les surfaces passent en clair. Les
-         canvas (carte, graphe, aurore) sont inversés avec le chrome : la
-         palette data-viz conçue sur base sombre reste lisible inversée. */
-      html[data-theme="light"] body { background: #e8eaed; }
-      html[data-theme="light"] #root {
-        filter: invert(0.93) hue-rotate(180deg);
+      /* EN: Design tokens — every component paints through these vars so the
+         whole app flips theme by changing data-theme alone. Dark values are
+         the authored palette; light values are hand-picked equivalents.
+         FR: Tokens de design — chaque composant peint via ces vars, donc
+         l'app entière bascule de thème en changeant data-theme seul. Les
+         valeurs sombres sont la palette d'origine ; les claires sont des
+         équivalents choisis à la main. */
+      html[data-theme="dark"], :root {
+        --bg: #000000;          --surface: #0f0f0f;     --surface-2: #1c1c1c;
+        --border: #2a2a2a;      --scrollbar: #333333;   --scrollbar-h: #4a4a4a;
+        --text: #e2e8f0;        --text-2: #cbd5e1;      --text-dim: #94a3b8;
+        --text-muted: #64748b;  --text-faint: #475569;
+        --blue-text: #93c5fd;   --red-text: #fca5a5;    --green-text: #86efac;
+        --warn-text: #fbbf24;
+        --danger-bg: #2d1b1b;   --danger-active: #3b1f2b;
+        --success-active: #153824;
+        --warn-bg: #2d1a00;     --info-bg: #0c2340;
+        --map-border: #2d4a6e;  --dot-stroke: #0a1628;
+        --aurora-a: #fb923c;    --aurora-b: #f472b6;    --aurora-c: #e879f9;
       }
-      /* EN: Native widgets + scrollbars follow the declared scheme.
-         FR: Widgets natifs + barres de défilement suivent le schéma déclaré. */
-      html[data-theme="light"] { color-scheme: light; }
-      html[data-theme="dark"]  { color-scheme: dark; }
+      html[data-theme="light"] {
+        --bg: #eef1f5;          --surface: #ffffff;     --surface-2: #eef1f4;
+        --border: #d9dee5;      --scrollbar: #b9c4cf;   --scrollbar-h: #8fa0ae;
+        --text: #1e293b;        --text-2: #334155;      --text-dim: #51617a;
+        --text-muted: #64748b;  --text-faint: #94a3b8;
+        --blue-text: #1d4ed8;   --red-text: #dc2626;    --green-text: #15803d;
+        --warn-text: #b45309;
+        --danger-bg: #fef2f2;   --danger-active: #fecdd3;
+        --success-active: #dcfce7;
+        --warn-bg: #fef3c7;     --info-bg: #dbeafe;
+        --map-border: #93b8d8;  --dot-stroke: #dce9f5;
+        --aurora-a: #fdba74;    --aurora-b: #f9a8d4;    --aurora-c: #f0abfc;
+        color-scheme: light;
+      }
+      html[data-theme="dark"] { color-scheme: dark; }
+      body { background: var(--bg); }
     </style>
     <script>
       /* EN: Resolve theme before first paint — saved choice wins, else the

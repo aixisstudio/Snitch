@@ -122,7 +122,7 @@ export default function ForceGraph({ nodes, edges, lanDevices, alertedNodes = ne
       .attr('refX', 22).attr('refY', 0)
       .attr('markerWidth', 6).attr('markerHeight', 6)
       .attr('orient', 'auto')
-      .append('path').attr('fill', '#475569').attr('d', 'M0,-5L10,0L0,5')
+      .append('path').style('fill', 'var(--text-faint)').attr('d', 'M0,-5L10,0L0,5')
 
     const g = svg.append('g')
     gRef.current    = g
@@ -283,16 +283,16 @@ export default function ForceGraph({ nodes, edges, lanDevices, alertedNodes = ne
       perimG.current.selectAll('*').remove()
       perimG.current.append('circle')
         .attr('cx', cx).attr('cy', cy).attr('r', pr)
-        .attr('fill', '#f97316').attr('fill-opacity', 0.03)
-        .attr('stroke', '#f97316').attr('stroke-opacity', 0.4)
-        .attr('stroke-width', 1.2).attr('stroke-dasharray', '5,7')
+        .style('fill', '#f97316').style('fill-opacity', 0.03)
+        .style('stroke', '#f97316').style('stroke-opacity', 0.4)
+        .style('stroke-width', 1.2).attr('stroke-dasharray', '5,7')
         .attr('pointer-events', 'none')
       perimG.current.append('text')
         .attr('x', cx).attr('y', cy - pr - 10)
         .attr('text-anchor', 'middle')
         .attr('font-size', 10).attr('font-weight', 700)
         .attr('letter-spacing', 3)
-        .attr('fill', '#f97316').attr('fill-opacity', 0.75)
+        .style('fill', '#f97316').style('fill-opacity', 0.75)
         .attr('pointer-events', 'none')
         .text(tRef.current('perim_lan'))
     }
@@ -310,9 +310,9 @@ export default function ForceGraph({ nodes, edges, lanDevices, alertedNodes = ne
     const link = linkG.current.selectAll('line')
       .data(allEdges, d => d.id)
       .join('line')
-      .attr('stroke', d => d.color || '#475569')
-      .attr('stroke-opacity', d => d.dashed ? 0.35 : 0.55)
-      .attr('stroke-width', edgeWidth)
+      .style('stroke', d => d.color || 'var(--text-faint)')
+      .style('stroke-opacity', d => d.dashed ? 0.35 : 0.55)
+      .style('stroke-width', edgeWidth)
       .attr('stroke-dasharray', d => d.dashed ? '5,4' : null)
       .attr('marker-end', d => d.dashed ? null : 'url(#arrow)')
 
@@ -321,7 +321,7 @@ export default function ForceGraph({ nodes, edges, lanDevices, alertedNodes = ne
     const linkLabel = labelG.current.selectAll('text')
       .data(allEdges.filter(e => !e.dashed), d => d.id)
       .join('text')
-      .attr('fill', '#475569')
+      .style('fill', 'var(--text-faint)')
       .attr('font-size', 9)
       .attr('text-anchor', 'middle')
       .text(d => d.label)
@@ -352,15 +352,15 @@ export default function ForceGraph({ nodes, edges, lanDevices, alertedNodes = ne
           en.filter(d => d.id === 'local' || d.category === 'lan_device')
             .append('circle')
             .attr('r', d => radius(d) + 6)
-            .attr('fill', d => d.color)
-            .attr('fill-opacity', 0.15)
+            .style('fill', d => d.color)
+            .style('fill-opacity', 0.15)
 
           en.append('circle')
             .attr('r', radius)
-            .attr('fill', d => d.color || '#475569')
-            .attr('fill-opacity', d => d.online === false ? 0.35 : 0.85)
-            .attr('stroke', d => d.online === false ? '#475569' : '#0f0f0f')
-            .attr('stroke-width', d => d.category === 'lan_device' ? 2.5 : 1.5)
+            .style('fill', d => d.color || 'var(--text-faint)')
+            .style('fill-opacity', d => d.online === false ? 0.35 : 0.85)
+            .style('stroke', d => d.online === false ? 'var(--text-faint)' : 'var(--surface)')
+            .style('stroke-width', d => d.category === 'lan_device' ? 2.5 : 1.5)
             .attr('stroke-dasharray', d => d.online === false ? '4,3' : null)
 
           // EN: White Lucide icon inside the circle, via data-URI SVG.
@@ -378,7 +378,7 @@ export default function ForceGraph({ nodes, edges, lanDevices, alertedNodes = ne
           en.append('text')
             .attr('y', d => radius(d) + 11)
             .attr('text-anchor', 'middle')
-            .attr('fill', d => d.category === 'lan_device' ? '#e2e8f0' : '#94a3b8')
+            .style('fill', d => d.category === 'lan_device' ? 'var(--text)' : 'var(--text-dim)')
             .attr('font-size', d => d.category === 'lan_device' ? 10 : 9)
             .attr('font-weight', d => d.category === 'lan_device' ? '600' : '400')
             .text(d => nodeLabel(d, displayNameRef.current))
@@ -463,7 +463,7 @@ export default function ForceGraph({ nodes, edges, lanDevices, alertedNodes = ne
       [...Object.values(nodes), ...Object.values(lanDevices)].map(n => [n.id, n])
     )
 
-    link.attr('stroke-width', d => edgeWidth(edgeById.get(d.id) || d))
+    link.style('stroke-width', d => edgeWidth(edgeById.get(d.id) || d))
     node.select('title').text(d => nodeTitle(nodeById.get(d.id) || d, displayNameRef.current))
     node.select('text').text(d => nodeLabel(nodeById.get(d.id) || d, displayNameRef.current))
 
@@ -545,7 +545,7 @@ export default function ForceGraph({ nodes, edges, lanDevices, alertedNodes = ne
 
     nodeSel.current.attr('opacity', d => matches(d) ? 1 : 0.1)
 
-    linkSel.current.attr('stroke-opacity', d => {
+    linkSel.current.style('stroke-opacity', d => {
       const src = typeof d.source === 'object' ? d.source : { id: d.source, category: '' }
       const tgt = typeof d.target === 'object' ? d.target : { id: d.target, category: '' }
       return (matches(src) || matches(tgt)) ? (d.dashed ? 0.35 : 0.55) : 0.04
@@ -598,10 +598,10 @@ function paintAlertRings(nodeSel, alertedNodes) {
 
     // EN: Label tint follows the verdict.
     // FR: La teinte de l'étiquette suit le verdict.
-    g.select('text').attr('fill',
-      sev === 'critical' ? '#f87171'
-      : sev === 'warning' ? '#fbbf24'
-      : (d.category === 'lan_device' ? '#e2e8f0' : '#94a3b8'))
+    g.select('text').style('fill',
+      sev === 'critical' ? 'var(--red-text)'
+      : sev === 'warning' ? 'var(--warn-text)'
+      : (d.category === 'lan_device' ? 'var(--text)' : 'var(--text-dim)'))
 
     if (!want) return
 
@@ -610,17 +610,17 @@ function paintAlertRings(nodeSel, alertedNodes) {
       .attr('class', 'status-ring')
       .attr('data-kind', want)
       .attr('r', baseR + 9)
-      .attr('fill', 'none')
+      .style('fill', 'none')
     if (want === 'safe') {
-      c.attr('stroke', '#22c55e').attr('stroke-opacity', 0.5)
-        .attr('stroke-width', 1.2)
+      c.style('stroke', '#22c55e').style('stroke-opacity', 0.5)
+        .style('stroke-width', 1.2)
       return
     }
     if (sev === 'critical') {
       // EN: Thick steady ring …
       // FR: Anneau fixe épais …
-      c.attr('stroke', '#ef4444').attr('stroke-opacity', 0.9)
-        .attr('stroke-width', 2.5)
+      c.style('stroke', '#ef4444').style('stroke-opacity', 0.9)
+        .style('stroke-width', 2.5)
       // EN: … + radar ping expanding outward and fading — reads as an
       //     alarm, not a status.
       // FR: … + ping radar qui s'étend et s'estompe — se lit comme une
@@ -628,9 +628,9 @@ function paintAlertRings(nodeSel, alertedNodes) {
       const ping = g.insert('circle', ':first-child')
         .attr('class', 'status-ping')
         .attr('r', baseR + 6)
-        .attr('fill', 'none')
-        .attr('stroke', '#ef4444')
-        .attr('stroke-width', 2)
+        .style('fill', 'none')
+        .style('stroke', '#ef4444')
+        .style('stroke-width', 2)
       ping.append('animate')
         .attr('attributeName', 'r')
         .attr('values', `${baseR + 6};${baseR + 28}`)
@@ -644,18 +644,18 @@ function paintAlertRings(nodeSel, alertedNodes) {
       g.append('circle')
         .attr('class', 'alert-badge')
         .attr('cx', baseR - 1).attr('cy', -(baseR - 1))
-        .attr('r', 5.5).attr('fill', '#ef4444')
+        .attr('r', 5.5).style('fill', '#ef4444')
       g.append('text')
         .attr('class', 'alert-badge-txt')
         .attr('x', baseR - 1).attr('y', -(baseR - 1) + 3)
         .attr('text-anchor', 'middle')
-        .attr('fill', '#fff').attr('font-size', 8)
+        .style('fill', '#fff').attr('font-size', 8)
         .attr('font-weight', 'bold').text('!')
       return
     }
-    c.attr('stroke', RING_COLORS[sev] || '#f59e0b')
-      .attr('stroke-opacity', 0.7)
-      .attr('stroke-width', 1.5)
+    c.style('stroke', RING_COLORS[sev] || '#f59e0b')
+      .style('stroke-opacity', 0.7)
+      .style('stroke-width', 1.5)
       .append('animate')
       .attr('attributeName', 'stroke-opacity')
       .attr('values', '0.7;0.1;0.7')

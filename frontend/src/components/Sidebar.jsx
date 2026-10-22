@@ -28,7 +28,7 @@ const DEVICE_ICONS = {
 // FR: Couleur de point par catégorie de trafic — reflète le classifieur backend.
 const CATEGORY_COLORS = {
   safe: '#22c55e', tracking: '#f59e0b', cdn: '#6366f1',
-  dns: '#38bdf8', admin: '#fb923c', unknown: '#94a3b8', local: '#3b82f6',
+  dns: '#38bdf8', admin: '#fb923c', unknown: 'var(--text-dim)', local: '#3b82f6',
 }
 
 /**
@@ -117,9 +117,9 @@ export default function Sidebar({ nodes, lanDevices, packets, selected, onClose,
           {/* EN: Snitch mark — the white radar-eye sigil.
               FR: Emblème Snitch — le sigle radar-œil blanc. */}
           <img src="./logo.png" alt="Snitch" style={{ width: 22, height: 22, borderRadius: 5 }} />
-          <span style={{ fontSize: 17, fontWeight: 800, color: '#f1f5f9', letterSpacing: 1 }}>{t('app_name')}</span>
+          <span style={{ fontSize: 17, fontWeight: 800, color: 'var(--text)', letterSpacing: 1 }}>{t('app_name')}</span>
         </div>
-        <span style={{ fontSize: 10, color: '#475569', letterSpacing: 1 }}>{t('tagline')}</span>
+        <span style={{ fontSize: 10, color: 'var(--text-faint)', letterSpacing: 1 }}>{t('tagline')}</span>
       </div>
 
       {privacyScore && (
@@ -149,10 +149,10 @@ export default function Sidebar({ nodes, lanDevices, packets, selected, onClose,
       {selected && (
         <div style={{ ...CARD, padding: '12px 16px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-            <span style={{ fontSize: 12, fontWeight: 600, color: '#f1f5f9' }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>
               {nodeName(selected, t)}
             </span>
-            <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: 16 }}>x</button>
+            <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 16 }}>x</button>
           </div>
           <NodeDetail node={selected} onWhitelist={onWhitelist} />
         </div>
@@ -168,7 +168,7 @@ export default function Sidebar({ nodes, lanDevices, packets, selected, onClose,
 
         <SectionTitle label={t('section_ext', filteredNodes.length, hiddenCount)} />
         {filteredNodes.length === 0 && (
-          <div style={{ padding: '10px 20px', fontSize: 10, color: '#475569', fontStyle: 'italic' }}>
+          <div style={{ padding: '10px 20px', fontSize: 10, color: 'var(--text-faint)', fontStyle: 'italic' }}>
             {t('ext_empty')}
           </div>
         )}
@@ -189,7 +189,7 @@ export default function Sidebar({ nodes, lanDevices, packets, selected, onClose,
               traitement libre que le bloc marque, sans carte. */}
       <div style={{ padding: '0 8px 4px', textAlign: 'center', flexShrink: 0 }}>
         <a href="https://aixis.fr/" target="_blank" rel="noopener noreferrer" style={{
-          fontSize: 9, color: '#475569', textDecoration: 'none', letterSpacing: 0.5,
+          fontSize: 9, color: 'var(--text-faint)', textDecoration: 'none', letterSpacing: 0.5,
         }}>
           {t('footer_credit')} · aixis.fr
         </a>
@@ -201,14 +201,14 @@ export default function Sidebar({ nodes, lanDevices, packets, selected, onClose,
 /** EN: Bento card chrome — near-black fill, hairline border, 12px radius.
  *  FR: Habillage carte bento — fond quasi noir, bordure fine, rayon 12 px. */
 const CARD = {
-  background: '#0f0f0f', border: '1px solid #1c1c1c',
+  background: 'var(--surface)', border: '1px solid var(--surface-2)',
   borderRadius: 12,
 }
 
 /** EN: Sticky list section header. / FR: En-tête de section de liste collant. */
 function SectionTitle({ label }) {
   return (
-    <div style={{ padding: '6px 16px 4px', fontSize: 10, color: '#64748b', textTransform: 'uppercase', letterSpacing: 1, background: '#0f0f0f', position: 'sticky', top: 0, borderRadius: '12px 12px 0 0' }}>
+    <div style={{ padding: '6px 16px 4px', fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1, background: 'var(--surface)', position: 'sticky', top: 0, borderRadius: '12px 12px 0 0' }}>
       {label}
     </div>
   )
@@ -217,8 +217,8 @@ function SectionTitle({ label }) {
 function Stat({ label, value, color }) {
   return (
     <div style={{ textAlign: 'center' }}>
-      <div style={{ fontSize: 16, fontWeight: 700, color: color || '#f1f5f9' }}>{value}</div>
-      <div style={{ fontSize: 10, color: '#64748b' }}>{label}</div>
+      <div style={{ fontSize: 16, fontWeight: 700, color: color || 'var(--text)' }}>{value}</div>
+      <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{label}</div>
     </div>
   )
 }
@@ -226,11 +226,11 @@ function Stat({ label, value, color }) {
 /** EN: Small explanatory note in the detail card — muted box, coloured
  *      left border. / FR: Petite note explicative dans la fiche détail —
  *      cadre discret, bordure gauche colorée. */
-function Hint({ children, accent = '#2a2a2a' }) {
+function Hint({ children, accent = 'var(--border)' }) {
   return (
     <div style={{
       marginTop: 8, padding: '6px 8px', fontSize: 9, lineHeight: 1.5,
-      color: '#64748b', background: '#000000', borderRadius: 6,
+      color: 'var(--text-muted)', background: 'var(--bg)', borderRadius: 6,
       borderLeft: `2px solid ${accent}`,
     }}>
       {children}
@@ -245,18 +245,18 @@ function DeviceRow({ device }) {
   return (
     <div style={{
       padding: '7px 16px', display: 'flex', alignItems: 'center', gap: 8,
-      borderBottom: '1px solid #1a1a1a',
+      borderBottom: '1px solid var(--surface-2)',
       opacity: device.online === false ? 0.45 : 1,
     }}>
       <Icon size={16} color={device.color} />
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 11, fontWeight: 600, color: '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {device.hostname || device.vendor || device.ip}
           {!device.hostname && !device.vendor && (
-            <span style={{ fontSize: 9, color: '#475569', fontWeight: 400 }}> · {t('unidentified')}</span>
+            <span style={{ fontSize: 9, color: 'var(--text-faint)', fontWeight: 400 }}> · {t('unidentified')}</span>
           )}
         </div>
-        <div style={{ fontSize: 9, color: '#64748b', fontFamily: 'monospace' }}>
+        <div style={{ fontSize: 9, color: 'var(--text-muted)', fontFamily: 'monospace' }}>
           {/* EN: Type first — "Routeur · 192.168.1.254" tells a neophyte more
                   than a bare MAC address does.
               FR: Le type d'abord — « Routeur · 192.168.1.254 » dit plus à un
@@ -275,15 +275,15 @@ function DeviceRow({ device }) {
 function NodeRow({ node }) {
   const { t } = useT()
   return (
-    <div style={{ padding: '6px 16px', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid #1a1a1a' }}>
-      <div style={{ width: 7, height: 7, borderRadius: '50%', background: CATEGORY_COLORS[node.category] || '#94a3b8', flexShrink: 0 }} />
+    <div style={{ padding: '6px 16px', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid var(--surface-2)' }}>
+      <div style={{ width: 7, height: 7, borderRadius: '50%', background: CATEGORY_COLORS[node.category] || 'var(--text-dim)', flexShrink: 0 }} />
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 11, color: '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <div style={{ fontSize: 11, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {nodeName(node, t)}
         </div>
-        <div style={{ fontSize: 9, color: '#64748b' }}>{node.country || '-'} · {node.packets || 0} pkt</div>
+        <div style={{ fontSize: 9, color: 'var(--text-muted)' }}>{node.country || '-'} · {node.packets || 0} pkt</div>
       </div>
-      <div style={{ fontSize: 10, color: '#94a3b8', flexShrink: 0 }}>{fmt(node.bytes || 0)}</div>
+      <div style={{ fontSize: 10, color: 'var(--text-dim)', flexShrink: 0 }}>{fmt(node.bytes || 0)}</div>
     </div>
   )
 }
@@ -326,8 +326,8 @@ function NodeDetail({ node, onWhitelist }) {
     <div>
       {fields.filter(([, v]) => v != null && v !== '').map(([k, v]) => (
         <div key={k} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
-          <span style={{ fontSize: 10, color: '#64748b' }}>{k}</span>
-          <span style={{ fontSize: 10, color: '#e2e8f0', maxWidth: 170, textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v}</span>
+          <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>{k}</span>
+          <span style={{ fontSize: 10, color: 'var(--text)', maxWidth: 170, textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v}</span>
         </div>
       ))}
 
@@ -350,15 +350,15 @@ function NodeDetail({ node, onWhitelist }) {
 
       {processes.length > 0 && (
         <>
-          <div style={{ fontSize: 9, color: '#475569', textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 8, marginBottom: 4 }}>
+          <div style={{ fontSize: 9, color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 8, marginBottom: 4 }}>
             {t('processes')}
           </div>
           {processes.map(([name, stats]) => (
             <div key={name} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3, alignItems: 'center' }}>
-              <span style={{ fontSize: 10, color: '#94a3b8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 150 }}>
+              <span style={{ fontSize: 10, color: 'var(--text-dim)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 150 }}>
                 {name}
               </span>
-              <span style={{ fontSize: 9, color: '#475569', flexShrink: 0 }}>{fmt(stats.bytes)}</span>
+              <span style={{ fontSize: 9, color: 'var(--text-faint)', flexShrink: 0 }}>{fmt(stats.bytes)}</span>
             </div>
           ))}
         </>
@@ -371,7 +371,7 @@ function NodeDetail({ node, onWhitelist }) {
           marginTop: 10, width: '100%', display: 'flex', alignItems: 'center',
           justifyContent: 'center', gap: 6,
           background: 'none', border: '1px solid #22c55e', borderRadius: 6,
-          padding: '5px 0', color: '#86efac', fontSize: 10, cursor: 'pointer',
+          padding: '5px 0', color: 'var(--green-text)', fontSize: 10, cursor: 'pointer',
         }}>
           <ShieldOff size={11} />
           {t('whitelist_action')}
@@ -394,10 +394,10 @@ function PacketRow({ packet }) {
           {packet.process}
         </span>
       )}
-      <span style={{ fontSize: 9, color: '#94a3b8', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+      <span style={{ fontSize: 9, color: 'var(--text-dim)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
         {packet.dst} · {packet.protocol}
       </span>
-      <span style={{ fontSize: 9, color: '#475569', flexShrink: 0 }}>{packet.size}B</span>
+      <span style={{ fontSize: 9, color: 'var(--text-faint)', flexShrink: 0 }}>{packet.size}B</span>
     </div>
   )
 }

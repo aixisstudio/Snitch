@@ -150,7 +150,7 @@ export default function App() {
     <AuroraCurtain
       bands={5}
       noise={0.35}
-      colors={['#fb923c', '#f472b6', '#e879f9']}
+      colors={['var(--aurora-a)', 'var(--aurora-b)', 'var(--aurora-c)']}
       style={{ height: '100vh', width: '100vw' }}
     >
     <div style={{ display: 'flex', height: '100%', width: '100%', overflow: 'hidden' }}>
@@ -231,7 +231,7 @@ export default function App() {
             }}>
               <div style={{
                 width: '100%', boxSizing: 'border-box',
-                background: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: 12,
+                background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12,
               }}>
                 <SearchBar filter={filter} onChange={setFilter} />
               </div>
@@ -316,9 +316,9 @@ function ExportButton({ nodes, edges, lanDevices, alerts }) {
       button={
         <button style={{
           display: 'flex', alignItems: 'center', gap: 6,
-          background: '#0f0f0f', border: '1px solid #2a2a2a',
+          background: 'var(--surface)', border: '1px solid var(--border)',
           borderRadius: 20, padding: '5px 14px',
-          cursor: 'pointer', color: '#64748b',
+          cursor: 'pointer', color: 'var(--text-muted)',
           fontSize: 11, fontWeight: 600, transition: 'all 0.15s',
         }}>
           <Download size={11} />
@@ -329,11 +329,11 @@ function ExportButton({ nodes, edges, lanDevices, alerts }) {
       {(close) => items.map(({ label, action }) => (
         <button key={label} onClick={() => { action(); close() }} style={{
           display: 'block', width: '100%', textAlign: 'left',
-          background: 'none', border: 'none', borderBottom: '1px solid #000000',
-          padding: '9px 14px', color: '#e2e8f0',
+          background: 'none', border: 'none', borderBottom: '1px solid var(--bg)',
+          padding: '9px 14px', color: 'var(--text)',
           fontSize: 11, cursor: 'pointer',
         }}
-        onMouseEnter={e => e.target.style.background = '#2a2a2a'}
+        onMouseEnter={e => e.target.style.background = 'var(--border)'}
         onMouseLeave={e => e.target.style.background = 'none'}>
           {label}
         </button>
@@ -357,20 +357,20 @@ function MediaBadge({ media }) {
   return (
     <div style={{
       display: 'flex', alignItems: 'center', gap: 6,
-      background: '#2d1b1b', border: '1px solid #ef4444',
+      background: 'var(--danger-bg)', border: '1px solid #ef4444',
       borderRadius: 20, padding: '5px 12px',
     }}>
       {micActive && (
         <div title={media.mic.join(', ')} style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'default' }}>
-          <Mic size={11} color="#f87171" />
-          <span style={{ fontSize: 10, color: '#fca5a5' }}>{media.mic[0]}</span>
+          <Mic size={11} color="var(--red-text)" />
+          <span style={{ fontSize: 10, color: 'var(--red-text)' }}>{media.mic[0]}</span>
         </div>
       )}
       {micActive && camActive && <span style={{ color: '#4b1f1f', fontSize: 10 }}>|</span>}
       {camActive && (
         <div title={media.camera.join(', ')} style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'default' }}>
-          <Camera size={11} color="#f87171" />
-          <span style={{ fontSize: 10, color: '#fca5a5' }}>{media.camera[0]}</span>
+          <Camera size={11} color="var(--red-text)" />
+          <span style={{ fontSize: 10, color: 'var(--red-text)' }}>{media.camera[0]}</span>
         </div>
       )}
     </div>
@@ -409,10 +409,10 @@ function ProcessFilter({ excluded, onChange, nodes }) {
       button={
         <button style={{
           display: 'flex', alignItems: 'center', gap: 6,
-          background: active ? '#3b1f2b' : '#0f0f0f',
-          border: `1px solid ${active ? '#f87171' : '#2a2a2a'}`,
+          background: active ? 'var(--danger-active)' : 'var(--surface)',
+          border: `1px solid ${active ? 'var(--red-text)' : 'var(--border)'}`,
           borderRadius: 20, padding: '5px 14px',
-          cursor: 'pointer', color: active ? '#fca5a5' : '#64748b',
+          cursor: 'pointer', color: active ? 'var(--red-text)' : 'var(--text-muted)',
           fontSize: 11, fontWeight: 600, transition: 'all 0.15s',
         }}>
           {t('process_filter')}
@@ -425,12 +425,12 @@ function ProcessFilter({ excluded, onChange, nodes }) {
         </button>
       }
     >
-      <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 8 }}>
+      <div style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 8 }}>
         {t('process_filter_hint')}
       </div>
 
       {allProcesses.length === 0 && (
-        <div style={{ fontSize: 11, color: '#475569' }}>{t('process_none')}</div>
+        <div style={{ fontSize: 11, color: 'var(--text-faint)' }}>{t('process_none')}</div>
       )}
 
       {allProcesses.map(proc => {
@@ -439,18 +439,18 @@ function ProcessFilter({ excluded, onChange, nodes }) {
           <div key={proc} onClick={() => toggle(proc)} style={{
             display: 'flex', alignItems: 'center', gap: 8,
             padding: '5px 6px', borderRadius: 6, cursor: 'pointer',
-            background: isExcluded ? '#2d1b1b' : 'transparent',
+            background: isExcluded ? 'var(--danger-bg)' : 'transparent',
             marginBottom: 2,
           }}>
             <div style={{
               width: 12, height: 12, borderRadius: 3, flexShrink: 0,
-              border: `1px solid ${isExcluded ? '#ef4444' : '#475569'}`,
+              border: `1px solid ${isExcluded ? '#ef4444' : 'var(--text-faint)'}`,
               background: isExcluded ? '#ef4444' : 'transparent',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}>
               {isExcluded && <span style={{ color: '#fff', fontSize: 9, lineHeight: 1 }}>✕</span>}
             </div>
-            <span style={{ fontSize: 11, color: isExcluded ? '#fca5a5' : '#e2e8f0' }}>
+            <span style={{ fontSize: 11, color: isExcluded ? 'var(--red-text)' : 'var(--text)' }}>
               {proc}
             </span>
           </div>
@@ -460,8 +460,8 @@ function ProcessFilter({ excluded, onChange, nodes }) {
       {active && (
         <button onClick={() => onChange([])} style={{
           marginTop: 8, width: '100%', background: 'none',
-          border: '1px solid #2a2a2a', borderRadius: 6,
-          padding: '4px 0', color: '#64748b', fontSize: 10,
+          border: '1px solid var(--border)', borderRadius: 6,
+          padding: '4px 0', color: 'var(--text-muted)', fontSize: 10,
           cursor: 'pointer',
         }}>
           {t('process_clear')}
@@ -500,10 +500,10 @@ function PortFilter({ ports, onUpdate }) {
       button={
         <button style={{
           display: 'flex', alignItems: 'center', gap: 6,
-          background: active ? '#1c1c1c' : '#0f0f0f',
-          border: `1px solid ${active ? '#3b82f6' : '#2a2a2a'}`,
+          background: active ? 'var(--surface-2)' : 'var(--surface)',
+          border: `1px solid ${active ? '#3b82f6' : 'var(--border)'}`,
           borderRadius: 20, padding: '5px 14px',
-          cursor: 'pointer', color: active ? '#93c5fd' : '#64748b',
+          cursor: 'pointer', color: active ? 'var(--blue-text)' : 'var(--text-muted)',
           fontSize: 11, fontWeight: 600, transition: 'all 0.15s',
         }}>
           <Filter size={11} />
@@ -517,7 +517,7 @@ function PortFilter({ ports, onUpdate }) {
         </button>
       }
     >
-      <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 8 }}>
+      <div style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 8 }}>
         {active ? `${ports.length} port${ports.length > 1 ? 's' : ''}` : t('port_all')}
       </div>
 
@@ -525,14 +525,14 @@ function PortFilter({ ports, onUpdate }) {
         {ports.map(p => (
           <span key={p} style={{
             display: 'flex', alignItems: 'center', gap: 4,
-            background: '#000000', border: '1px solid #3b82f6',
+            background: 'var(--bg)', border: '1px solid #3b82f6',
             borderRadius: 12, padding: '2px 8px',
-            fontSize: 11, color: '#93c5fd',
+            fontSize: 11, color: 'var(--blue-text)',
           }}>
             {p}
             <button onClick={() => removePort(p)} style={{
               background: 'none', border: 'none', cursor: 'pointer',
-              color: '#64748b', padding: 0, lineHeight: 1, fontSize: 13,
+              color: 'var(--text-muted)', padding: 0, lineHeight: 1, fontSize: 13,
             }}>×</button>
           </span>
         ))}
@@ -545,10 +545,10 @@ function PortFilter({ ports, onUpdate }) {
           onChange={e => { setInput(e.target.value); setError(false) }}
           placeholder={t('port_placeholder')}
           style={{
-            flex: 1, background: '#000000',
-            border: `1px solid ${error ? '#ef4444' : '#2a2a2a'}`,
+            flex: 1, background: 'var(--bg)',
+            border: `1px solid ${error ? '#ef4444' : 'var(--border)'}`,
             borderRadius: 6, padding: '5px 8px',
-            color: '#e2e8f0', fontSize: 11, outline: 'none',
+            color: 'var(--text)', fontSize: 11, outline: 'none',
           }}
         />
         <button type="submit" style={{
@@ -562,8 +562,8 @@ function PortFilter({ ports, onUpdate }) {
       {active && (
         <button onClick={() => onUpdate([])} style={{
           marginTop: 10, width: '100%', background: 'none',
-          border: '1px solid #2a2a2a', borderRadius: 6,
-          padding: '4px 0', color: '#64748b', fontSize: 10,
+          border: '1px solid var(--border)', borderRadius: 6,
+          padding: '4px 0', color: 'var(--text-muted)', fontSize: 10,
           cursor: 'pointer',
         }}>
           {t('port_all')}
@@ -610,10 +610,10 @@ function IPWhitelist({ ips, onUpdate }) {
       button={
         <button style={{
           display: 'flex', alignItems: 'center', gap: 6,
-          background: active ? '#153824' : '#0f0f0f',
-          border: `1px solid ${active ? '#22c55e' : '#2a2a2a'}`,
+          background: active ? 'var(--success-active)' : 'var(--surface)',
+          border: `1px solid ${active ? '#22c55e' : 'var(--border)'}`,
           borderRadius: 20, padding: '5px 14px',
-          cursor: 'pointer', color: active ? '#86efac' : '#64748b',
+          cursor: 'pointer', color: active ? 'var(--green-text)' : 'var(--text-muted)',
           fontSize: 11, fontWeight: 600, transition: 'all 0.15s',
         }}>
           <ShieldOff size={11} />
@@ -627,7 +627,7 @@ function IPWhitelist({ ips, onUpdate }) {
         </button>
       }
     >
-      <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 8 }}>
+      <div style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 8 }}>
         {t('ip_whitelist_hint')}
       </div>
 
@@ -635,14 +635,14 @@ function IPWhitelist({ ips, onUpdate }) {
         {ips.map(ip => (
           <span key={ip} style={{
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            background: '#000000', border: '1px solid #22c55e',
+            background: 'var(--bg)', border: '1px solid #22c55e',
             borderRadius: 6, padding: '3px 8px',
-            fontSize: 11, color: '#86efac', fontFamily: 'monospace',
+            fontSize: 11, color: 'var(--green-text)', fontFamily: 'monospace',
           }}>
             {ip}
             <button onClick={() => removeIp(ip)} style={{
               background: 'none', border: 'none', cursor: 'pointer',
-              color: '#64748b', padding: 0, lineHeight: 1, fontSize: 13,
+              color: 'var(--text-muted)', padding: 0, lineHeight: 1, fontSize: 13,
             }}>×</button>
           </span>
         ))}
@@ -655,10 +655,10 @@ function IPWhitelist({ ips, onUpdate }) {
           onChange={e => { setInput(e.target.value); setError(false) }}
           placeholder={t('ip_placeholder')}
           style={{
-            flex: 1, background: '#000000',
-            border: `1px solid ${error ? '#ef4444' : '#2a2a2a'}`,
+            flex: 1, background: 'var(--bg)',
+            border: `1px solid ${error ? '#ef4444' : 'var(--border)'}`,
             borderRadius: 6, padding: '5px 8px',
-            color: '#e2e8f0', fontSize: 11, outline: 'none',
+            color: 'var(--text)', fontSize: 11, outline: 'none',
           }}
         />
         <button type="submit" style={{
@@ -672,8 +672,8 @@ function IPWhitelist({ ips, onUpdate }) {
       {active && (
         <button onClick={() => onUpdate([])} style={{
           marginTop: 10, width: '100%', background: 'none',
-          border: '1px solid #2a2a2a', borderRadius: 6,
-          padding: '4px 0', color: '#64748b', fontSize: 10,
+          border: '1px solid var(--border)', borderRadius: 6,
+          padding: '4px 0', color: 'var(--text-muted)', fontSize: 10,
           cursor: 'pointer',
         }}>
           {t('ip_clear')}
@@ -703,11 +703,11 @@ function CaptureToggle({ capturing, onToggle }) {
   return (
     <button onClick={handleClick} disabled={loading} style={{
       display: 'flex', alignItems: 'center', gap: 6,
-      background: capturing ? '#0f0f0f' : '#166534',
-      border: `1px solid ${capturing ? '#2a2a2a' : '#16a34a'}`,
+      background: capturing ? 'var(--surface)' : '#166534',
+      border: `1px solid ${capturing ? 'var(--border)' : '#16a34a'}`,
       borderRadius: 20, padding: '5px 14px',
       cursor: loading ? 'wait' : 'pointer',
-      color: capturing ? '#f87171' : '#4ade80',
+      color: capturing ? 'var(--red-text)' : '#4ade80',
       fontSize: 11, fontWeight: 600,
       transition: 'all 0.15s',
       opacity: loading ? 0.7 : 1,
@@ -733,12 +733,15 @@ function ThemeToggle() {
     document.documentElement.dataset.theme = next
     try { localStorage.setItem('snitch_theme', next) } catch (e) { /* ignore */ }
     setTheme(next)
+    // EN: Let WebGL/canvas consumers re-resolve their palettes.
+    // FR: Laisser les consommateurs WebGL/canvas re-résoudre leurs palettes.
+    window.dispatchEvent(new Event('snitch-theme'))
   }
   const Icon = theme === 'dark' ? Sun : Moon
   return (
     <button onClick={toggle} title={t('theme_toggle')} style={{
-      background: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: 20,
-      cursor: 'pointer', color: '#64748b',
+      background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 20,
+      cursor: 'pointer', color: 'var(--text-muted)',
       padding: '5px 10px', display: 'flex', alignItems: 'center',
       transition: 'background 0.15s',
     }}>
@@ -753,14 +756,14 @@ function LangToggle() {
   const { lang, setLang } = useT()
   return (
     <div style={{
-      display: 'flex', background: '#0f0f0f',
-      border: '1px solid #2a2a2a', borderRadius: 20, overflow: 'hidden',
+      display: 'flex', background: 'var(--surface)',
+      border: '1px solid var(--border)', borderRadius: 20, overflow: 'hidden',
     }}>
       {['en', 'fr'].map(l => (
         <button key={l} onClick={() => setLang(l)} style={{
           background: lang === l ? '#3b82f6' : 'transparent',
           border: 'none', cursor: 'pointer',
-          color: lang === l ? '#fff' : '#64748b',
+          color: lang === l ? '#fff' : 'var(--text-muted)',
           padding: '5px 12px', fontSize: 11, fontWeight: 600,
           textTransform: 'uppercase',
           transition: 'background 0.15s',
@@ -782,14 +785,14 @@ function ViewToggle({ view, onChange }) {
   ]
   return (
     <div style={{
-      display: 'flex', background: '#0f0f0f',
-      border: '1px solid #2a2a2a', borderRadius: 20, overflow: 'hidden',
+      display: 'flex', background: 'var(--surface)',
+      border: '1px solid var(--border)', borderRadius: 20, overflow: 'hidden',
     }}>
       {items.map(({ id, Icon, label }) => (
         <button key={id} onClick={() => onChange(id)} style={{
           background: view === id ? '#3b82f6' : 'transparent',
           border: 'none', cursor: 'pointer',
-          color: view === id ? '#fff' : '#64748b',
+          color: view === id ? '#fff' : 'var(--text-muted)',
           padding: '5px 14px', fontSize: 11, fontWeight: 600,
           display: 'flex', alignItems: 'center', gap: 5,
           transition: 'background 0.15s',
@@ -814,12 +817,12 @@ function StatusBadge({ status }) {
   }
   return (
     <div style={{
-      background: '#0f0f0f', border: '1px solid #2a2a2a',
+      background: 'var(--surface)', border: '1px solid var(--border)',
       borderRadius: 20, padding: '5px 14px',
       display: 'flex', alignItems: 'center', gap: 8,
     }}>
-      <div style={{ width: 7, height: 7, borderRadius: '50%', background: colors[status] || '#94a3b8' }} />
-      <span style={{ fontSize: 11, color: '#e2e8f0' }}>{labels[status] || status}</span>
+      <div style={{ width: 7, height: 7, borderRadius: '50%', background: colors[status] || 'var(--text-dim)' }} />
+      <span style={{ fontSize: 11, color: 'var(--text)' }}>{labels[status] || status}</span>
     </div>
   )
 }
@@ -838,32 +841,32 @@ function Legend() {
     { Icon: Zap,           color: '#6366f1', label: t('legend_cdn')      },
     { Icon: Globe,         color: '#38bdf8', label: t('legend_dns')      },
     { Icon: AlertTriangle, color: '#ef4444', label: t('legend_alert') },
-    { Icon: HelpCircle,    color: '#94a3b8', label: t('legend_unknown') },
+    { Icon: HelpCircle,    color: 'var(--text-dim)', label: t('legend_unknown') },
   ]
   return (
     <div style={{
       width: '100%', boxSizing: 'border-box',
-      background: '#0f0f0f', border: '1px solid #2a2a2a',
+      background: 'var(--surface)', border: '1px solid var(--border)',
       borderRadius: 12, padding: '10px 14px',
     }}>
       {items.map(({ Icon, color, label }) => (
         <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
           <Icon size={12} color={color} />
-          <span style={{ fontSize: 10, color: '#94a3b8' }}>{label}</span>
+          <span style={{ fontSize: 10, color: 'var(--text-dim)' }}>{label}</span>
         </div>
       ))}
       {/* EN: Edge semantics — the dashed/solid distinction is what tells a
               newcomer "seen" from "actually exchanging data".
           FR: Sémantique des arêtes — la distinction pointillés/plein dit au
               néophyte « vu » versus « échange réel de données ». */}
-      <div style={{ borderTop: '1px solid #2a2a2a', marginTop: 6, paddingTop: 6 }}>
+      <div style={{ borderTop: '1px solid var(--border)', marginTop: 6, paddingTop: 6 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-          <span style={{ width: 14, borderTop: '2px solid #64748b', flexShrink: 0 }} />
-          <span style={{ fontSize: 9, color: '#64748b' }}>{t('legend_edge_solid')}</span>
+          <span style={{ width: 14, borderTop: '2px solid var(--text-muted)', flexShrink: 0 }} />
+          <span style={{ fontSize: 9, color: 'var(--text-muted)' }}>{t('legend_edge_solid')}</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ width: 14, borderTop: '2px dashed #64748b', flexShrink: 0 }} />
-          <span style={{ fontSize: 9, color: '#64748b' }}>{t('legend_edge_dashed')}</span>
+          <span style={{ width: 14, borderTop: '2px dashed var(--text-muted)', flexShrink: 0 }} />
+          <span style={{ fontSize: 9, color: 'var(--text-muted)' }}>{t('legend_edge_dashed')}</span>
         </div>
       </div>
       {/* EN: Ring semantics — the colored halo around a node is the safety
@@ -873,7 +876,7 @@ function Legend() {
               le verdict de sûreté d'un coup d'œil : vert = connu et calme,
               orange/rouge pulsant = à regarder. Correspond à
               paintAlertRings dans ForceGraph. */}
-      <div style={{ borderTop: '1px solid #2a2a2a', marginTop: 6, paddingTop: 6 }}>
+      <div style={{ borderTop: '1px solid var(--border)', marginTop: 6, paddingTop: 6 }}>
         {[
           { color: '#22c55e', label: t('legend_ring_safe') },
           { color: '#f59e0b', label: t('legend_ring_warn') },
@@ -883,7 +886,7 @@ function Legend() {
           // FR: Une pastille grise en pointillés pour l'ABSENCE d'anneau —
           //     les appareils non identifiés ou sans particularité ne
           //     portent aucun verdict.
-          { color: '#475569', label: t('legend_ring_none'), dashed: true },
+          { color: 'var(--text-faint)', label: t('legend_ring_none'), dashed: true },
           // EN: Dashed orange swatch = the LAN perimeter circle.
           // FR: Pastille orange en pointillés = le cercle du périmètre LAN.
           { color: '#f97316', label: t('legend_perimeter'), dashed: true },
@@ -893,7 +896,7 @@ function Legend() {
               width: 10, height: 10, borderRadius: '50%', flexShrink: 0,
               border: `1.5px ${dashed ? 'dashed' : 'solid'} ${color}`,
             }} />
-            <span style={{ fontSize: 9, color: '#64748b' }}>{label}</span>
+            <span style={{ fontSize: 9, color: 'var(--text-muted)' }}>{label}</span>
           </div>
         ))}
       </div>

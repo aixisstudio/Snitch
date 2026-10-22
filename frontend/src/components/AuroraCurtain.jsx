@@ -18,6 +18,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
+import { useTheme } from "../theme.js";
 
 // EN: Cap the backing store at 1.5× — retina-full-screen × 5 ribbons is a
 //     real GPU load (it visibly froze video calls); the re-seeded grain
@@ -471,12 +472,16 @@ export default function AuroraCurtain({
 
   const colorKey = colors.join("|");
   const grain = resolveGrain(noise);
+  // EN: var(--token) inputs resolve differently per theme — re-probe on flip.
+  // FR: Les entrées var(--token) se résolvent différemment par thème —
+  //     re-sonder à chaque bascule.
+  const theme = useTheme();
 
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
     setResolvedColors(resolveCssColors(colorKey.split("|"), host));
-  }, [colorKey]);
+  }, [colorKey, theme]);
 
   useEffect(() => {
     const canvas = canvasRef.current;

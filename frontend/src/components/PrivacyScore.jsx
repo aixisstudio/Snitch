@@ -42,7 +42,7 @@ export default function PrivacyScore({ score, grade, color, labelKey, factors })
 
   return (
     <div style={{ padding: '14px 16px' }}>
-      <div style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
+      <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
         {t('privacy_title')}
       </div>
 
@@ -51,7 +51,7 @@ export default function PrivacyScore({ score, grade, color, labelKey, factors })
             FR: Donut — longueur d'arc proportionnelle au score. */}
         <div style={{ flexShrink: 0 }}>
           <svg width={84} height={84}>
-            <circle cx={42} cy={42} r={R} fill="none" stroke="#1c1c1c" strokeWidth={STROKE} />
+            <circle cx={42} cy={42} r={R} fill="none" stroke="var(--surface-2)" strokeWidth={STROKE} />
             <circle
               cx={42} cy={42} r={R}
               fill="none" stroke={color} strokeWidth={STROKE}
@@ -70,7 +70,7 @@ export default function PrivacyScore({ score, grade, color, labelKey, factors })
 
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 13, fontWeight: 700, color, marginBottom: 2 }}>{t(labelKey)}</div>
-          <div style={{ fontSize: 10, color: '#64748b', marginBottom: 8 }}>
+          <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 8 }}>
             {t('privacy_risk_factors', badCount)}
           </div>
 
@@ -80,9 +80,9 @@ export default function PrivacyScore({ score, grade, color, labelKey, factors })
             const Icon = SCORE_ICONS[f.icon]
             return (
               <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                {Icon && <Icon size={12} color={f.bad ? '#94a3b8' : '#22c55e'} />}
+                {Icon && <Icon size={12} color={f.bad ? 'var(--text-dim)' : '#22c55e'} />}
                 <span style={{
-                  fontSize: 10, color: f.bad ? '#cbd5e1' : '#64748b',
+                  fontSize: 10, color: f.bad ? 'var(--text-2)' : 'var(--text-muted)',
                   flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                 }}>
                   {t(f.key, ...f.args)}
@@ -95,7 +95,7 @@ export default function PrivacyScore({ score, grade, color, labelKey, factors })
           })}
 
           {factors.length > 3 && (
-            <div style={{ fontSize: 9, color: '#475569', marginTop: 2 }}>
+            <div style={{ fontSize: 9, color: 'var(--text-faint)', marginTop: 2 }}>
               {t('privacy_more_factors', factors.length - 3)}
             </div>
           )}
@@ -114,7 +114,7 @@ export default function PrivacyScore({ score, grade, color, labelKey, factors })
             position: 'absolute', left: `${score}%`, top: '50%',
             transform: 'translate(-50%, -50%)',
             width: 10, height: 10, borderRadius: '50%',
-            background: color, border: '2px solid #000000',
+            background: color, border: '2px solid var(--bg)',
             boxShadow: `0 0 6px ${color}`,
             transition: 'left 0.6s ease',
           }} />

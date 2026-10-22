@@ -92,7 +92,7 @@ export default function Timeline() {
     // EN: Horizontal grid lines. / FR: Lignes de grille horizontales.
     g.append('g').attr('class', 'grid')
       .call(d3.axisLeft(y).ticks(3).tickSize(-innerW).tickFormat(''))
-      .selectAll('line').attr('stroke', '#1c1c1c').attr('stroke-dasharray', '3,3')
+      .selectAll('line').style('stroke', 'var(--surface-2)').attr('stroke-dasharray', '3,3')
     g.select('.grid .domain').remove()
 
     // EN: Bars — amber when the minute produced alerts, blue otherwise.
@@ -105,8 +105,8 @@ export default function Timeline() {
       .attr('y', d => y(d.packets))
       .attr('width', x.bandwidth())
       .attr('height', d => innerH - y(d.packets))
-      .attr('fill', d => d.alerts > 0 ? '#f59e0b' : '#3b82f6')
-      .attr('fill-opacity', d => d.alerts > 0 ? 0.85 : 0.65)
+      .style('fill', d => d.alerts > 0 ? '#f59e0b' : '#3b82f6')
+      .style('fill-opacity', d => d.alerts > 0 ? 0.85 : 0.65)
       .attr('rx', 2)
       .on('mouseover', (e, d) => setTooltip({ x: e.clientX, y: e.clientY, d }))
       .on('mousemove', (e) => setTooltip(tt => tt ? { ...tt, x: e.clientX, y: e.clientY } : null))
@@ -121,7 +121,7 @@ export default function Timeline() {
       .attr('cx', d => x(d.minute) + x.bandwidth() / 2)
       .attr('cy', d => y(d.packets) - 5)
       .attr('r', 3)
-      .attr('fill', '#ef4444')
+      .style('fill', '#ef4444')
       .attr('pointer-events', 'none')
 
     // EN: Thin out x labels — ~8 ticks max.
@@ -135,13 +135,13 @@ export default function Timeline() {
       .attr('transform', `translate(0,${innerH})`)
       .call(xAxis)
       .selectAll('text')
-      .attr('fill', '#475569').attr('font-size', 9)
-    g.selectAll('.domain, .tick line').attr('stroke', '#2a2a2a')
+      .style('fill', 'var(--text-faint)').attr('font-size', 9)
+    g.selectAll('.domain, .tick line').style('stroke', 'var(--border)')
 
     g.append('g')
       .call(d3.axisLeft(y).ticks(3).tickFormat(d => d > 999 ? `${(d / 1000).toFixed(0)}k` : d))
-      .selectAll('text').attr('fill', '#475569').attr('font-size', 9)
-    g.select('.domain').attr('stroke', '#2a2a2a')
+      .selectAll('text').style('fill', 'var(--text-faint)').attr('font-size', 9)
+    g.select('.domain').style('stroke', 'var(--border)')
   }
 
   const totalPkts   = data.reduce((a, d) => a + d.packets, 0)
@@ -155,8 +155,8 @@ export default function Timeline() {
            rayon 12 px assorti aux cartes de la sidebar. */
     <div style={{
       height: expanded ? EXPANDED_H : COLLAPSED_H,
-      background: '#0f0f0f',
-      border: '1px solid #1c1c1c',
+      background: 'var(--surface)',
+      border: '1px solid var(--surface-2)',
       borderRadius: 12,
       margin: '0 8px 8px',
       transition: 'height 0.2s ease',
@@ -171,10 +171,10 @@ export default function Timeline() {
         style={{
           height: COLLAPSED_H, display: 'flex', alignItems: 'center',
           padding: '0 16px', gap: 20, cursor: 'pointer',
-          borderBottom: expanded ? '1px solid #1c1c1c' : 'none',
+          borderBottom: expanded ? '1px solid var(--surface-2)' : 'none',
         }}
       >
-        <span style={{ fontSize: 10, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: 1 }}>
+        <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 1 }}>
           Timeline
         </span>
 
@@ -191,9 +191,9 @@ export default function Timeline() {
               key={m}
               onClick={e => { e.stopPropagation(); setRange(m) }}
               style={{
-                background: range === m ? '#1c1c1c' : 'transparent',
-                border: '1px solid #1c1c1c', borderRadius: 4,
-                color: range === m ? '#93c5fd' : '#475569',
+                background: range === m ? 'var(--surface-2)' : 'transparent',
+                border: '1px solid var(--surface-2)', borderRadius: 4,
+                color: range === m ? 'var(--blue-text)' : 'var(--text-faint)',
                 fontSize: 9, padding: '2px 7px', cursor: 'pointer',
               }}
             >
@@ -220,13 +220,13 @@ export default function Timeline() {
       {tooltip && (
         <div style={{
           position: 'fixed', left: tooltip.x + 12, top: tooltip.y - 60,
-          background: '#0f0f0f', border: '1px solid #2a2a2a',
+          background: 'var(--surface)', border: '1px solid var(--border)',
           borderRadius: 6, padding: '6px 10px', fontSize: 10,
-          color: '#e2e8f0', pointerEvents: 'none', zIndex: 500,
+          color: 'var(--text)', pointerEvents: 'none', zIndex: 500,
         }}>
           <div style={{ fontWeight: 700, marginBottom: 3 }}>{fmtMinute(tooltip.d.minute)}</div>
           <div>{t('timeline_packets', tooltip.d.packets)}</div>
-          <div style={{ color: '#64748b' }}>{fmt(tooltip.d.bytes)}</div>
+          <div style={{ color: 'var(--text-muted)' }}>{fmt(tooltip.d.bytes)}</div>
           {tooltip.d.alerts > 0 && (
             <div style={{ color: '#f59e0b', marginTop: 2 }}>! {t('timeline_alerts', tooltip.d.alerts)}</div>
           )}
