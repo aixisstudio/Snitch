@@ -26,6 +26,18 @@ Without the `network-observe` connection the UI still runs but capture
 stays empty. Store publication would auto-connect that interface once
 human-reviewed; until then the manual connect is required.
 
+## rpm + Homebrew formula + release pipeline
+
+The `release.yml` workflow (on every `v*` tag or `workflow_dispatch`)
+runs four publish jobs:
+
+| Job | Output |
+|---|---|
+| `nfpm` | `snitch-linux-amd64.rpm` — native build via nfpm v2.48 (`packaging/nfpm.yaml` + `packaging/postinstall.sh`) |
+| `homebrew` | pushes `Formula/snitch.rb` to `aixisstudio/homebrew-tap` — installs the headless `snitchd` daemon (`brew install aixisstudio/tap/snitch`). Requires `HOMEBREW_TAP_TOKEN`. |
+| `winget` | submits `Snitch-Setup-*.exe` via winget-releaser when the asset exists; skips cleanly otherwise. Requires `WINGET_TOKEN`. |
+| `chocolatey` | `choco pack`/`push` of `installer/Snitch.nuspec` when `CHOCO_API_KEY` is set. |
+
 ## Flatpak — deliberately not shipped
 
 Flatpak's sandbox cannot grant `AF_PACKET` access: there is no portal or
@@ -72,3 +84,15 @@ l'hôte que la sandbox refuse. Publier un Flatpak produirait une jolie UI
 incapable de voir le moindre paquet — mieux vaut ne pas publier une app
 cassée que de simuler. À revoir si flathub ajoute une permission de
 capture.
+
+### rpm + formule Homebrew + pipeline de release
+
+Le workflow `release.yml` (à chaque tag `v*` ou `workflow_dispatch`)
+exécute quatre jobs de publication :
+
+| Job | Sortie |
+|---|---|
+| `nfpm` | `snitch-linux-amd64.rpm` — build natif via nfpm v2.48 (`packaging/nfpm.yaml` + `packaging/postinstall.sh`) |
+| `homebrew` | pousse `Formula/snitch.rb` vers `aixisstudio/homebrew-tap` — installe le daemon headless `snitchd` (`brew install aixisstudio/tap/snitch`). Exige `HOMEBREW_TAP_TOKEN`. |
+| `winget` | soumet `Snitch-Setup-*.exe` via winget-releaser quand l'asset existe ; sinon saute proprement. Exige `WINGET_TOKEN`. |
+| `chocolatey` | `choco pack`/`push` de `installer/Snitch.nuspec` si `CHOCO_API_KEY` est posé. |

@@ -34,3 +34,7 @@ sudo snap connect snitch:network-observe   # даёт чтение AF_PACKET
 даёт. Flatpak выпустил бы красивый UI, неспособный увидеть ни одного
 пакета — лучше не публиковать сломанное приложение, чем имитировать.
 Если flathub когда-нибудь добавит разрешение на захват — пересмотрим.
+
+## rpm + формула Homebrew + релиз-пайплайн
+
+Workflow `release.yml` (на каждый тег `v*` или `workflow_dispatch`) выполняет четыре джоба: **nfpm** собирает `snitch-linux-amd64.rpm` (nfpm v2.48, `packaging/nfpm.yaml`); **homebrew** пушит `Formula/snitch.rb` в tap `aixisstudio/homebrew-tap` и ставит headless-демон `snitchd` (`brew install aixisstudio/tap/snitch`, нужен `HOMEBREW_TAP_TOKEN`); **winget** отправляет `Snitch-Setup-*.exe` через winget-releaser, когда asset существует (`WINGET_TOKEN`); **chocolatey** пакует/публикует `installer/Snitch.nuspec`, если задан `CHOCO_API_KEY`.

@@ -31,3 +31,7 @@ Flatpak 沙箱无法授予 `AF_PACKET`：没有任何 portal 或 `finish-args`
 宿主机 `/proc` 可见性。发布 Flatpak 只会得到一个永远看不到数据包的
 漂亮 UI——与其造假，不如不发布。若 flathub 日后提供抓包权限，会重新
 评估。
+
+## rpm + Homebrew 配方 + 发布流水线
+
+`release.yml` 工作流（每个 `v*` tag 或 `workflow_dispatch`）运行四个发布任务：**nfpm** 构建 `snitch-linux-amd64.rpm`（nfpm v2.48，`packaging/nfpm.yaml`）；**homebrew** 将 `Formula/snitch.rb` 推送到 `aixisstudio/homebrew-tap` 并安装无头 `snitchd` 守护进程（`brew install aixisstudio/tap/snitch`，需要 `HOMEBREW_TAP_TOKEN`）；**winget** 在存在 `Snitch-Setup-*.exe` 资产时通过 winget-releaser 提交（`WINGET_TOKEN`）；**chocolatey** 在配置 `CHOCO_API_KEY` 后打包/发布 `installer/Snitch.nuspec`。

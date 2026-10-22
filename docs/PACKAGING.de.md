@@ -35,3 +35,7 @@ die Sandbox verweigert. Ein Flatpak würde eine hübsche UI liefern, die
 nie ein Paket sieht — wir veröffentlichen lieber keine kaputte App, als
 sie vorzutäuschen. Falls flathub je eine Capture-fähige Berechtigung
 einführt, wird neu bewertet.
+
+## rpm + Homebrew-Formel + Release-Pipeline
+
+Der `release.yml`-Workflow (pro `v*`-Tag oder `workflow_dispatch`) führt vier Publish-Jobs aus: **nfpm** baut `snitch-linux-amd64.rpm` (nfpm v2.48, `packaging/nfpm.yaml`); **homebrew** pusht `Formula/snitch.rb` zum Tap `aixisstudio/homebrew-tap` und installiert den headless `snitchd`-Daemon (`brew install aixisstudio/tap/snitch`, benötigt `HOMEBREW_TAP_TOKEN`); **winget** reicht `Snitch-Setup-*.exe` via winget-releaser ein sobald das Asset existiert (`WINGET_TOKEN`); **chocolatey** packt/pusht `installer/Snitch.nuspec` wenn `CHOCO_API_KEY` gesetzt ist.

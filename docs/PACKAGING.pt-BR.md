@@ -34,3 +34,7 @@ processo via `psutil` precisa de visibilidade do `/proc` do host que a
 sandbox nega. Publicar um Flatpak geraria uma UI bonita incapaz de ver um
 pacote — preferimos não publicar um app quebrado a fingir. Se o flathub
 um dia criar uma permissão de captura, reavaliaremos.
+
+## rpm + fórmula Homebrew + pipeline de release
+
+O workflow `release.yml` (em cada tag `v*` ou `workflow_dispatch`) executa quatro jobs: **nfpm** constrói `snitch-linux-amd64.rpm` (nfpm v2.48, `packaging/nfpm.yaml`); **homebrew** envia `Formula/snitch.rb` ao tap `aixisstudio/homebrew-tap` e instala o daemon headless `snitchd` (`brew install aixisstudio/tap/snitch`, exige `HOMEBREW_TAP_TOKEN`); **winget** submete `Snitch-Setup-*.exe` via winget-releaser quando o asset existe (`WINGET_TOKEN`); **chocolatey** empacota/publica `installer/Snitch.nuspec` se `CHOCO_API_KEY` estiver configurada.

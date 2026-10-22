@@ -33,3 +33,7 @@ Flatpak のサンドボックスは `AF_PACKET` アクセスを許可できな�
 `/proc` の可視性が必要。Flatpak を出せばパケットを一切見られない綺麗な
 UI になるだけ — 壊れたアプリを出すより公開しない方を選ぶ。flathub が
 キャプチャ可能なパーミッションを追加すれば再検討する。
+
+## rpm + Homebrew フォーミュラ + リリースパイプライン
+
+`release.yml` ワークフロー（`v*` タグまたは `workflow_dispatch` ごと）は 4 つの公開ジョブを実行します：**nfpm** は `snitch-linux-amd64.rpm` をビルド（nfpm v2.48、`packaging/nfpm.yaml`）；**homebrew** は `Formula/snitch.rb` を tap `aixisstudio/homebrew-tap` にプッシュしヘッドレス `snitchd` デーモンをインストール（`brew install aixisstudio/tap/snitch`、`HOMEBREW_TAP_TOKEN` が必要）；**winget** はアセットがあれば `Snitch-Setup-*.exe` を winget-releaser で提出（`WINGET_TOKEN`）；**chocolatey** は `CHOCO_API_KEY` があれば `installer/Snitch.nuspec` をパック/公開。
