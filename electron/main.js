@@ -559,9 +559,14 @@ function launchBackendElevated() {
   } catch { /* EN: token still reaches the backend via env / FR: le jeton arrive quand même via l'env */ }
 
   if (isWindows) {
-    // EN: -FilePath/-ArgumentList carefully quoted (paths may contain spaces).
-    // FR: -FilePath/-ArgumentList soigneusement entre guillemets (chemins avec espaces).
-    const ps = `Start-Process -FilePath "${backendExe}" -ArgumentList '--port ${backendPort}' -Verb RunAs -WindowStyle Hidden`
+    // EN: PowerShell SINGLE-quoted strings — a " in the exe path would
+    //     break out of a double-quoted -FilePath and inject commands;
+    //     single quotes only need ' → '' escaping.
+    // FR: Chaînes PowerShell en APOSTROPHES — un " dans le chemin de
+    //     l'exe sortirait d'un -FilePath entre guillemets et injecterait
+    //     des commandes ; les apostrophes n'exigent que ' → ''.
+    const psq = s => `'${String(s).replace(/'/g, "''")}'`
+    const ps = `Start-Process -FilePath ${psq(backendExe)} -ArgumentList '--port ${backendPort}' -Verb RunAs -WindowStyle Hidden`
     backendProc = spawn('powershell.exe', [
       '-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-Command', ps,
     ], { windowsHide: true, stdio: 'ignore' })
@@ -576,8 +581,19 @@ function launchBackendElevated() {
     //     SNITCH_TOKEN n'est qu'un repli quand cette écriture a échoué
     //     (dossier de données possédé par root).
     const esc = s => s.replace(/(["\\$`])/g, '\\$1')
-    const tokenPrefix = tokenFileWritten ? '' : `SNITCH_TOKEN="${API_TOKEN}" `
-    const shellCmd = `SNITCH_DATA_DIR="${dataDir}" ${tokenPrefix}"${backendExe}" --port ${backendPort}`
+    // EN: TWO escaping layers — the command crosses AppleScript THEN
+    //     /bin/sh. esc() only quotes for AppleScript: a " or $ in dataDir
+    //     or backendExe would survive it and hit the shell raw → inject
+    //     first at the shell layer with single quotes (' → '\''), which
+    //     sh cannot break out of.
+    // FR: DEUX couches d'échappement — la commande traverse AppleScript
+    //     PUIS /bin/sh. esc() ne quote que pour AppleScript : un " ou $
+    //     dans dataDir/backendExe le traverserait et arriverait brut au
+    //     shell → échapper d'abord à la couche shell en apostrophes
+    //     (' → '\''), incassables pour sh.
+    const shq = s => `'${String(s).replace(/'/g, `'\\''`)}'`
+    const tokenPrefix = tokenFileWritten ? '' : `SNITCH_TOKEN=${shq(API_TOKEN)} `
+    const shellCmd = `SNITCH_DATA_DIR=${shq(dataDir)} ${tokenPrefix}${shq(backendExe)} --port ${backendPort}`
     backendProc = spawn('osascript', [
       '-e', `do shell script "${esc(shellCmd)}" with administrator privileges`,
     ], { stdio: 'ignore' })

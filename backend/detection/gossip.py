@@ -133,7 +133,12 @@ class PeerSync:
                          f"Bearer {self._token_getter()}"})
             try:
                 with urllib.request.urlopen(req, timeout=_TIMEOUT) as r:
-                    data = json.loads(r.read().decode("utf-8", "replace"))
+                    # EN: bounded read — a misbehaving/malicious peer
+                    #     must not hand us an unbounded body.
+                    # FR: lecture bornée — un pair défaillant/hostile ne
+                    #     doit pas nous servir un corps illimité.
+                    data = json.loads(
+                        r.read(1 << 20).decode("utf-8", "replace"))
                 data["peer"] = peer
                 data["reachable"] = True
                 agents.append(data)

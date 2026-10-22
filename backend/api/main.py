@@ -2200,6 +2200,12 @@ async def post_settings(body: SettingsBody) -> dict:
     """EN: Persist arbitrary settings keys (language, thresholds…).
     FR: Persister des clés de réglage arbitraires (langue, seuils…)."""
     loop = asyncio.get_running_loop()
+    # EN: Bound the batch — every key costs a DB write, so an unbounded
+    #     settings dict would be a disk-write flood vector.
+    # FR: Borner le lot — chaque clé coûte une écriture DB, donc un dict
+    #     non borné serait un vecteur d'inondation disque.
+    if len(body.settings) > 256:
+        raise HTTPException(400, "too many settings keys (max 256)")
     for key, value in body.settings.items():
         await loop.run_in_executor(None, db.set_setting, key, value)
         # EN: Live-apply settings the detector reads dynamically — no restart
@@ -3172,7 +3178,11 @@ async def kill_process(body: PidBody) -> dict:
     try:
         name = await loop.run_in_executor(None, _do)
     except Exception as exc:
-        raise HTTPException(400, f"kill failed: {exc}")
+        # EN: fixed label — exception text stays in logs (CodeQL:
+        #     stack-trace exposure). / FR: libellé fixe — le texte
+        #     d'exception reste dans les logs.
+        logger.warning("kill pid %s failed: %s", body.pid, exc)
+        raise HTTPException(400, "kill failed") from exc
     return {"ok": True, "pid": body.pid, "name": name}
 
 
@@ -3196,7 +3206,8 @@ async def suspend_process(body: PidBody) -> dict:
     try:
         res = await loop.run_in_executor(None, _do)
     except Exception as exc:
-        raise HTTPException(400, f"suspend failed: {exc}")
+        logger.warning("suspend pid %s failed: %s", body.pid, exc)
+        raise HTTPException(400, "suspend failed") from exc
     return {"ok": True, "pid": body.pid, **res}
 
 
@@ -3665,15 +3676,26 @@ async def ask_verdict(body: AskVerdictBody) -> dict:
         mémorise la décision pour la session. `permanent` écrit en plus
         une politique durable (whitelist ou règle pare-feu)."""
     loop = asyncio.get_running_loop()
+    # EN: Normalize at the boundary — the value lands in the whitelist,
+    #     a firewall rule AND the decide() key match; the parser-
+    #     produced form is what NFQUEUE flow keys look like anyway.
+    # FR: Normaliser à la frontière — la valeur atterrit dans la
+    #     whitelist, une règle pare-feu ET la clé de decide() ; la forme
+    #     produite par le parseur est de toute façon celle des clés de
+    #     flux NFQUEUE.
+    try:
+        remote_ip = str(ipaddress.ip_address(body.remote_ip))
+    except ValueError:
+        raise HTTPException(400, "invalid remote_ip") from None
     decided = await loop.run_in_executor(
-        None, ask_mode.decide, body.remote_ip, body.remote_port,
+        None, ask_mode.decide, remote_ip, body.remote_port,
         body.proto, body.allow)
     persisted = None
     if body.permanent:
         if body.allow:
             # EN: "Allow always" → durable whitelist entry for the IP.
             # FR: « Autoriser toujours » → entrée whitelist durable.
-            _whitelisted_ips.add(body.remote_ip)
+            _whitelisted_ips.add(remote_ip)
             db.set_setting("whitelisted_ips",
                            sorted(_whitelisted_ips))
             persisted = "whitelisted"
@@ -3682,7 +3704,7 @@ async def ask_verdict(body: AskVerdictBody) -> dict:
             # FR: « Bloquer définitivement » → vraie règle pare-feu.
             try:
                 await loop.run_in_executor(
-                    None, fw.add_rule, "ip", body.remote_ip, "block", 0)
+                    None, fw.add_rule, "ip", remote_ip, "block", 0)
                 rules, _lock = fw.serialized()
                 db.set_setting("firewall_rules", rules)
                 await broadcast({"type": "firewall", "rules": rules})

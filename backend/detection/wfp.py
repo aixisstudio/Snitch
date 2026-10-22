@@ -170,7 +170,14 @@ class WfpBackend:
     def __init__(self):
         self._dll = None
         self._engine = ctypes.c_void_p()
-        self._keepalive: list = []     # EN: pinned ctypes objects / FR: objets ctypes épinglés
+        # EN: pinned ctypes objects — bounded: app blobs accumulate per
+        #     add_block, so cap the list (dropping a pin only risks GC of
+        #     blobs WFP already copied during FwpmFilterAdd0).
+        # FR: objets ctypes épinglés — bornés : les blobs s'accumulent à
+        #     chaque add_block, donc caper la liste (retirer un pin ne
+        #     risque que le GC de blobs que WFP a déjà copiés).
+        self._keepalive: list = []
+        self._keepalive_max = 2048
 
     # ── lifecycle / cycle de vie ─────────────────────────────────────────────
 
@@ -369,6 +376,8 @@ class WfpBackend:
         rc = self._dll.FwpmGetAppIdFromFileName0(path, ctypes.byref(blob))
         if rc != 0 or not blob:
             return None
+        if len(self._keepalive) >= self._keepalive_max:
+            del self._keepalive[:self._keepalive_max // 4]
         self._keepalive.append(blob)   # EN: keep alive; freed w/ engine / FR: gardé vivant
         return blob
 

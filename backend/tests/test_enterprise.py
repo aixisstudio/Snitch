@@ -247,8 +247,8 @@ def test_fleet_audit_merge(monkeypatch):
     class FakeResp:
         def __init__(self, payload):
             self._b = json.dumps(payload).encode()
-        def read(self):
-            return self._b
+        def read(self, size=-1):
+            return self._b if size < 0 else self._b[:size]
         def __enter__(self):
             return self
         def __exit__(self, *a):

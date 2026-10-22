@@ -58,19 +58,42 @@ $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' `
     -LogonType ServiceAccount -RunLevel Highest
 $env = "SNITCH_DATA_DIR=$DataDir;SNITCH_CONFIG=" +
        (Join-Path $DataDir 'snitch.toml')
-if ($Token) { $env += ";SNITCH_TOKEN=$Token" }
+# EN: The token goes to %ProgramData%\Snitch\api_token.txt ACL'd to
+#     SYSTEM+Administrators — NOT into run.cmd: Program Files is
+#     world-readable, so a plaintext SNITCH_TOKEN=… line would hand the
+#     master API key to any local user. The backend auto-reads the file.
+# FR: Le jeton va dans %ProgramData%\Snitch\api_token.txt restreint à
+#     SYSTEM+Administrateurs — PAS dans run.cmd : Program Files est
+#     lisible par tous, donc une ligne SNITCH_TOKEN=… donnerait la clé
+#     API maître à tout utilisateur local. Le backend lit le fichier
+#     automatiquement.
+if ($Token) {
+    $tokPath = Join-Path $DataDir 'api_token.txt'
+    Set-Content -Encoding ASCII -NoNewline -Path $tokPath -Value $Token
+    $acl = Get-Acl $tokPath
+    $acl.SetAccessRuleProtection($true, $false)       # EN: cut inheritance / FR: couper l'héritage
+    foreach ($rule in @($acl.Access)) { $acl.RemoveAccessRule($rule) | Out-Null }
+    foreach ($id in 'SYSTEM', 'Administrators') {
+        $acl.AddAccessRule((New-Object `
+            System.Security.AccessControl.FileSystemAccessRule(
+                $id, 'FullControl', 'Allow')))
+    }
+    Set-Acl -Path $tokPath -AclObject $acl
+}
 Register-ScheduledTask -TaskName 'Snitch' -Action $action `
     -Trigger $trigger -Principal $principal -Force `
     -Description 'Snitch network observability backend (headless)'
 Set-ScheduledTask -TaskName 'Snitch' -Settings `
     (New-ScheduledTaskSettingsSet -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1))
-# EN: env vars for the task — via a launcher cmd file (task env is limited).
+# EN: env vars for the task — via a launcher cmd file (task env is
+#     limited). `set "VAR=value"` quoting keeps & and spaces in paths
+#     from being interpreted.
 # FR: vars d'env de la tâche — via un cmd lanceur (env de tâche limité).
+#     `set "VAR=valeur"` empêche & et espaces d'être interprétés.
 @"
 @echo off
-set $env.Split(';')[0]
-set $env.Split(';')[1]
-$(if ($Token) { 'set ' + $env.Split(';')[2] })
+set "SNITCH_DATA_DIR=$DataDir"
+set "SNITCH_CONFIG=$(Join-Path $DataDir 'snitch.toml')"
 "$uvicorn" -m uvicorn api.main:app --host 127.0.0.1 --port $Port
 "@ | Set-Content -Encoding ASCII -Path (Join-Path $InstallDir 'run.cmd')
 $action = New-ScheduledTaskAction -Execute (Join-Path $InstallDir 'run.cmd') `

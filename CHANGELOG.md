@@ -99,6 +99,31 @@ The format follows [Keep a Changelog](https://keepachangelog.com/) — EN/FR.
   FR: le moniteur média sonde toutes les 10 s par défaut (3 s avant —
   chaque tick Linux parcourt les fichiers ouverts de tous les
   processus) ; `SNITCH_MEDIA_INTERVAL` (3–300 s) ajuste.
+- EN: **GPO installer no longer writes the master token in cleartext**
+  — `-Token` now lands in `%ProgramData%\Snitch\api_token.txt` ACL'd to
+  SYSTEM+Administrators instead of a world-readable `SNITCH_TOKEN=…`
+  line inside `%ProgramFiles%\Snitch\run.cmd`. The launcher also quotes
+  `set "VAR=value"` so `&`/spaces in paths cannot inject.
+  FR: **L'installeur GPO n'écrit plus le jeton maître en clair** —
+  `-Token` atterrit dans `api_token.txt` restreint à
+  SYSTEM+Administrateurs au lieu d'une ligne lisible par tous dans
+  `run.cmd`. Le lanceur quote aussi `set "VAR=valeur"`.
+- EN: **Electron elevated launches hardened** — the macOS osascript
+  command now shell-quotes paths BEFORE AppleScript-quoting (a `"`/`$`
+  in the data dir or binary path could no longer survive into
+  `/bin/sh`), and the Windows UAC command uses PowerShell single-quoted
+  strings (`'` → `''`).
+  FR: **Lancements élevés Electron durcis** — quoting shell puis
+  AppleScript sous macOS, et chaînes PowerShell en apostrophes sous
+  Windows.
+- EN: `/security/ask/verdict` normalizes `remote_ip` through
+  `ipaddress` at the boundary (it feeds the whitelist, a firewall rule
+  and the flow-key match); `/settings` rejects >256 keys per batch;
+  kill/suspend report fixed labels instead of exception text; WFP
+  keep-alive pins and the gossip fleet-audit body read are bounded.
+  FR: `/security/ask/verdict` normalise `remote_ip` via `ipaddress` ;
+  `/settings` refuse >256 clés ; kill/suspend renvoient des libellés
+  fixes ; les pins WFP et la lecture fleet-audit sont bornés.
 
 - EN: **All project surfaces synced to v1.6.3** — README (Rust agent,
   enrollment, `ti_feeds`, `.rpm`, `snitchd` formula), ROADMAP (v1.5.x/
