@@ -276,8 +276,12 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          shopt -s globstar nullglob
-          files=(artifacts/**/*)
+          # EN: Files only — globbing picks up directories too, and
+          #     builder-debug.yml is electron-builder's internal log, not a
+          #     release asset. / FR: Fichiers seulement — le glob inclut les
+          #     dossiers, et builder-debug.yml est un log interne
+          #     d'electron-builder, pas un asset de release.
+          mapfile -t files < <(find artifacts -type f ! -name 'builder-debug.yml')
           echo "publishing ${#files[@]} files"
           gh release create "${{ github.ref_name }}" "${files[@]}" \
             -R "${{ github.repository }}" \
