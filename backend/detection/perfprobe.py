@@ -31,11 +31,21 @@ FR: Compteurs matériels — la tranche user-mode sans dépendance de la
 from __future__ import annotations
 
 import ctypes
-import fcntl
 import os
 import platform
 import struct
 import time
+
+# EN: fcntl exists on Unix only — import lazily so this module stays
+#     importable on Windows (available() already gates to Linux; sample()
+#     never reaches fcntl elsewhere).
+# FR: fcntl n'existe que sous Unix — import paresseux pour que le module
+#     reste importable sous Windows (available() restreint à Linux de
+#     toute façon).
+if platform.system().lower() == "linux":
+    import fcntl
+else:
+    fcntl = None
 
 _SYS_PERF_EVENT_OPEN = 298                    # EN: x86_64/aarch64 number / FR: numéro x86_64/aarch64
 _IOC_ENABLE = 0x2400                          # EN: PERF_EVENT_IOC_ENABLE / FR: idem
