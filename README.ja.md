@@ -73,7 +73,8 @@ UI 全体は **English、Français、Español、Deutsch、Русский、日�
 | プラットフォーム | パッケージ |
 |---|---|
 | **macOS (Apple Silicon)** | `brew install --cask aixisstudio/tap/snitch` — または [最新リリース](https://github.com/aixisstudio/Snitch/releases/latest) の **Snitch.app** zip/dmg |
-| **Linux** | [最新リリース](https://github.com/aixisstudio/Snitch/releases/latest) の **Snitch AppImage / .deb / .snap** — または `sudo docker compose up --build`（[Docker (Linux)](#docker-linux) 参照） |
+| **Linux** | [最新リリース](https://github.com/aixisstudio/Snitch/releases/latest) の **Snitch AppImage / .deb / .rpm / .snap** — または `sudo docker compose up --build`（[Docker (Linux)](#docker-linux) 参照） |
+| **ヘッドレス（全OS）** | `brew install aixisstudio/tap/snitch` → `snitchd` デーモン（サーバー/VM、GUI なし） |
 | **Windows** | **Snitch Setup** `.exe` — ワンクリック NSIS インストーラ（ネイティブアプリ、起動時 UAC、Npcap チェック内蔵）。[最新リリース](https://github.com/aixisstudio/Snitch/releases/latest) から。Lite 代替: `Snitch-Lite-Setup`（バックエンド＋ブラウザ UI）。[Npcap](https://npcap.com/) が必要 |
 | **すべて (1 クリック)** | [Pinokio](https://pinokio.co/apps/github-com-aixisstudio-snitch) — 依存関係をインストール、バックエンド起動、UI を開く |
 
@@ -159,6 +160,18 @@ snitch/
 ```
 
 ---
+
+### エンタープライズ & フリート
+
+Snitch は SOC 向けにヘッドレスでも動作します — すべてファイル駆動で無料:
+
+- **Security-as-Code** — `snitch.toml`（または `$SNITCH_CONFIG`）が起動時に全設定を上書き。Ansible（`deploy/ansible/`）、Puppet、Salt、GPO でフリートをプロビジョニング。
+- **Rust エージェント** — ゼロ依存デーモン（`agent/`）がソケットを `POST /ingest/events` にストリームし、Linux では `/proc`→PID 帰属。`POST /ingest/enroll` が一回限りの `sagt_…` トークンを発行（ハッシュ保存、失効可能）。
+- **SIEM ネイティブ** — CEF または RFC 3164 syslog、汎用 webhook、`GET /forensics/export?format=ecs`（ECS NDJSON）で Wazuh、Splunk、Graylog、Loki、Elastic に連携。Sigma インポート（`POST /alerts/rules/sigma`）、YARA-L エクスポート（`GET /alerts/rules/yaral`）。
+- **フリートビュー** — `GET /remote/fleet` が全ピアのハードニング監査を統合。Helm チャート（`deploy/helm/snitch`）でコレクターをクラスタ内に配置。
+- **無料 TI フィード** — `POST /firewall/blocklist` でドメイン（StevenBlack）・IP（Blocklist.de、URLhaus/Feodo）リストを取り込み。`ti_feeds` で自動更新をスケジュール。
+
+手順レシピは [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md) を参照。
 
 ## ライセンス
 

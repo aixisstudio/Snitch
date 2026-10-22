@@ -73,7 +73,8 @@
 | Платформа | Пакет |
 |---|---|
 | **macOS (Apple Silicon)** | `brew install --cask aixisstudio/tap/snitch` — или **Snitch.app** zip/dmg из [последнего релиза](https://github.com/aixisstudio/Snitch/releases/latest) |
-| **Linux** | **Snitch AppImage / .deb / .snap** из [последнего релиза](https://github.com/aixisstudio/Snitch/releases/latest) — или `sudo docker compose up --build`, см. [Docker (Linux)](#docker-linux) |
+| **Linux** | **Snitch AppImage / .deb / .rpm / .snap** из [последнего релиза](https://github.com/aixisstudio/Snitch/releases/latest) — или `sudo docker compose up --build`, см. [Docker (Linux)](#docker-linux) |
+| **Headless (любая ОС)** | `brew install aixisstudio/tap/snitch` → демон `snitchd` (серверы/ВМ, без GUI) |
 | **Windows** | **Snitch Setup** `.exe` — установщик NSIS в один клик (нативное приложение, UAC при запуске, проверка Npcap встроена) из [последнего релиза](https://github.com/aixisstudio/Snitch/releases/latest). Облегчённая альтернатива: `Snitch-Lite-Setup` (бэкенд + UI в браузере). Требуется [Npcap](https://npcap.com/) |
 | **Все (1 клик)** | [Pinokio](https://pinokio.co/apps/github-com-aixisstudio-snitch) — ставит зависимости, запускает бэкенд, открывает UI |
 
@@ -159,6 +160,18 @@ snitch/
 ```
 
 ---
+
+### Enterprise и флот
+
+Snitch работает и headless для SOC-развёртываний — всё через файлы и бесплатно:
+
+- **Security-as-Code** — один `snitch.toml` (или `$SNITCH_CONFIG`) переопределяет все настройки; флоты через Ansible (`deploy/ansible/`), Puppet, Salt или GPO.
+- **Rust-агент** — демон без зависимостей (`agent/`) шлёт сокеты в `POST /ingest/events` с атрибуцией `/proc`→PID в Linux; `POST /ingest/enroll` выдаёт одноразовые `sagt_…` токены (хэшированные, отзываемые).
+- **SIEM-нативно** — syslog CEF или RFC 3164, универсальные webhook и `GET /forensics/export?format=ecs` (NDJSON Elastic Common Schema) питают Wazuh, Splunk, Graylog, Loki и Elastic. Импорт Sigma (`POST /alerts/rules/sigma`), экспорт YARA-L (`GET /alerts/rules/yaral`).
+- **Вид флота** — `GET /remote/fleet` объединяет аудиты всех пиров; Helm-чарт (`deploy/helm/snitch`) запускает коллектор в кластере.
+- **Бесплатные TI-фиды** — `POST /firewall/blocklist` импортирует доменные (StevenBlack) и IP-списки (Blocklist.de, URLhaus/Feodo); `ti_feeds` планирует автообновления.
+
+Пошаговые рецепты: [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md).
 
 ## Лицензия
 

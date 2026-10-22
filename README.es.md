@@ -73,7 +73,8 @@ Toda la interfaz está disponible en **English, Français, Español, Deutsch, Р
 | Plataforma | Paquete |
 |---|---|
 | **macOS (Apple Silicon)** | `brew install --cask aixisstudio/tap/snitch` — o **Snitch.app** zip/dmg desde la [última release](https://github.com/aixisstudio/Snitch/releases/latest) |
-| **Linux** | **Snitch AppImage / .deb / .snap** desde la [última release](https://github.com/aixisstudio/Snitch/releases/latest) — o `sudo docker compose up --build`, ver [Docker (Linux)](#docker-linux) |
+| **Linux** | **Snitch AppImage / .deb / .rpm / .snap** desde la [última release](https://github.com/aixisstudio/Snitch/releases/latest) — o `sudo docker compose up --build`, ver [Docker (Linux)](#docker-linux) |
+| **Headless (cualquier SO)** | `brew install aixisstudio/tap/snitch` → daemon `snitchd` (servidores/VM, sin GUI) |
 | **Windows** | **Snitch Setup** `.exe` — instalador NSIS de un clic (app nativa, prompt UAC al lanzar, detección de Npcap integrada) desde la [última release](https://github.com/aixisstudio/Snitch/releases/latest). Alternativa lite: `Snitch-Lite-Setup` (backend + UI en navegador). Requiere [Npcap](https://npcap.com/) |
 | **Todas (1 clic)** | [Pinokio](https://pinokio.co/apps/github-com-aixisstudio-snitch) — instala dependencias, lanza el backend, abre la UI |
 
@@ -159,6 +160,18 @@ snitch/
 ```
 
 ---
+
+### Enterprise y flota
+
+Snitch también funciona headless para despliegues SOC — todo por archivos y gratis:
+
+- **Security-as-Code** — un `snitch.toml` (o `$SNITCH_CONFIG`) sobreescribe todos los ajustes; provisiona flotas con Ansible (`deploy/ansible/`), Puppet, Salt o GPO.
+- **Agente Rust** — un daemon sin dependencias (`agent/`) envía sockets a `POST /ingest/events` con atribución `/proc`→PID en Linux; `POST /ingest/enroll` emite tokens `sagt_…` de un solo uso (hasheados, revocables).
+- **Nativo SIEM** — syslog CEF o RFC 3164, webhooks genéricos y `GET /forensics/export?format=ecs` (NDJSON Elastic Common Schema) alimentan Wazuh, Splunk, Graylog, Loki y Elastic. Importación Sigma (`POST /alerts/rules/sigma`), exportación YARA-L (`GET /alerts/rules/yaral`).
+- **Vista de flota** — `GET /remote/fleet` fusiona las auditorías de todos los pares; un chart Helm (`deploy/helm/snitch`) ejecuta el colector en el clúster.
+- **Feeds TI gratuitos** — `POST /firewall/blocklist` importa listas de dominios (StevenBlack) e IPs (Blocklist.de, URLhaus/Feodo); `ti_feeds` programa actualizaciones automáticas.
+
+Recetas paso a paso en [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md).
 
 ## Licencia
 

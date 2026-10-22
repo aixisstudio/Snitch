@@ -73,7 +73,8 @@
 | 平台 | 安装包 |
 |---|---|
 | **macOS (Apple Silicon)** | `brew install --cask aixisstudio/tap/snitch` —— 或从[最新发布](https://github.com/aixisstudio/Snitch/releases/latest)获取 **Snitch.app** zip/dmg |
-| **Linux** | 从[最新发布](https://github.com/aixisstudio/Snitch/releases/latest)获取 **Snitch AppImage / .deb / .snap** —— 或 `sudo docker compose up --build`，见 [Docker (Linux)](#docker-linux) |
+| **Linux** | 从[最新发布](https://github.com/aixisstudio/Snitch/releases/latest)获取 **Snitch AppImage / .deb / .rpm / .snap** —— 或 `sudo docker compose up --build`，见 [Docker (Linux)](#docker-linux) |
+| **无头模式（任意 OS）** | `brew install aixisstudio/tap/snitch` → `snitchd` 守护进程（服务器/虚拟机，无 GUI） |
 | **Windows** | **Snitch Setup** `.exe` —— 一键 NSIS 安装器（原生应用，启动时 UAC 提示，内置 Npcap 检查），来自[最新发布](https://github.com/aixisstudio/Snitch/releases/latest)。轻量替代：`Snitch-Lite-Setup`（后端＋浏览器 UI）。需要 [Npcap](https://npcap.com/) |
 | **全部（一键）** | [Pinokio](https://pinokio.co/apps/github-com-aixisstudio-snitch) —— 安装依赖、启动后端、打开 UI |
 
@@ -159,6 +160,18 @@ snitch/
 ```
 
 ---
+
+### 企业版与集群
+
+Snitch 也可以无头模式运行用于 SOC 部署 —— 全部文件驱动且免费：
+
+- **Security-as-Code** —— 一个 `snitch.toml`（或 `$SNITCH_CONFIG`）在启动时覆盖所有设置；通过 Ansible（`deploy/ansible/`）、Puppet、Salt 或 GPO 批量部署集群。
+- **Rust 代理** —— 零依赖守护进程（`agent/`）将套接字流式发送到 `POST /ingest/events`，Linux 上通过 `/proc`→PID 归因；`POST /ingest/enroll` 签发一次性 `sagt_…` 令牌（哈希存储、可撤销）。
+- **SIEM 原生** —— CEF 或 RFC 3164 syslog、通用 webhook，以及 `GET /forensics/export?format=ecs`（ECS NDJSON），开箱接入 Wazuh、Splunk、Graylog、Loki 和 Elastic。Sigma 导入（`POST /alerts/rules/sigma`）、YARA-L 导出（`GET /alerts/rules/yaral`）。
+- **集群视图** —— `GET /remote/fleet` 汇总所有节点的加固审计；Helm chart（`deploy/helm/snitch`）在集群内运行采集器。
+- **免费威胁情报源** —— `POST /firewall/blocklist` 导入域名（StevenBlack）和 IP（Blocklist.de、URLhaus/Feodo）列表；`ti_feeds` 调度自动刷新。
+
+详细步骤见 [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md)。
 
 ## 许可证
 
