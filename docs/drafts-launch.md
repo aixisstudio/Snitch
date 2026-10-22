@@ -80,7 +80,7 @@ port was contributed by strangers from the community. ⭐ on
 GitHub if useful → github.com/aixisstudio/Snitch
 ```
 
-## Reddit r/selfhosted (mardi ~14h)
+## Reddit r/selfhosted (VENDREDI — règle « New Project Friday »)
 
 **Titre :** `Snitch — self-hosted network traffic visualizer: see every connection your machine makes (Docker, AGPL)`
 
@@ -94,8 +94,10 @@ without the macOS lock-in — and without any cloud account.
 - 100% local: SQLite, token-authenticated API on loopback,
   zero telemetry, no outbound calls except opt-in GeoIP DB
 - Docker: docker run --network host ghcr.io/aixisstudio/snitch
-- macOS app + Windows exe too (Windows port was contributed
+- One-click installers too: Windows .exe, macOS .dmg/.zip,
+  Linux AppImage + .deb (Windows port was contributed
   by the community)
+- Light/dark theme, EN/FR
 
 Demo mode if you want to try without root: SNITCH_DEMO=1
 

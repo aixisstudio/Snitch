@@ -185,3 +185,12 @@ Objectif : un seul fichier à télécharger et lancer par OS. Livré via la rele
 - ✅ Nommage stable à la source : `artifactName: ${productName}-${arch}.${ext}` → `latest-linux.yml` pointe exactement `Snitch-x86_64.AppImage`
 - Réponses postées sur la PR (feedback initial + suivi v1.0.7)
 - ⚠️ CI : `--publish never` sur les builds Electron — sans ça le provider github exige GH_TOKEN et échoue ; notre job release publie les assets à la place. Release v1.0.7 publiée à la main via l'API (12 assets) ; le fix du glob dans le job release prendra effet au prochain tag
+
+## 🔧 Suivi post-v1.0.7 (22 oct.)
+
+- ✅ **Homebrew tap mis à jour** — `aixisstudio/homebrew-tap` cask v1.0.5 → **v1.0.7**, sha256 recalculé, URL alignée sur le nom stable `Snitch-macos-arm64.zip` (le pattern versionné aurait 404)
+- ✅ **GitHub Pages** — commentaires synchronisés v1.0.7 ; les boutons pointent `releases/latest/download/...` donc rien d'autre à faire
+- ✅ **Draft r/selfhosted finalisé pour vendredi** — angle Docker + installeurs 1-clic v1.0.7 (règle « New Project Friday » : aujourd'hui jeudi = trop tôt)
+- ⏳ **winget PR #455520** — toujours ouverte, attente Microsoft
+- ⏳ **AppImage PR #10605** — toujours ouverte, suivi v1.0.7 posté
+- ⏳ **HN** — 12 pts, aucun nouveau commentaire à traiter
