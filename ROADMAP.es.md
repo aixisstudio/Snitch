@@ -11,15 +11,20 @@
 | **v1.0.4** | Primera release pública — grafo en tiempo real + mapa mundial, atribución por proceso, geolocalización offline (.mmdb), alertas de anomalías, privacy score, descubrimiento LAN pasivo (ARP/OUI), monitoreo micro/cámara (Windows/Linux), modo demo, UI EN/FR |
 | **v1.0.5** | **Soporte Windows** (Npcap, backend empaquetado), iconos de proceso, +24 dominios tracker, correcciones |
 | **v1.2 (main, sin tag)** | **Suite de seguridad y caza de amenazas** — orquestación del firewall del SO (reglas IP/CIDR/dominio/proceso/puerto vía `netsh`/`iptables`/`pf`, best-effort), botón lockdown, acciones kill/suspend, threat intel opt-in (AbuseIPDB/OTX/VirusTotal), webhooks opt-in (Discord/Slack/Telegram/genérico), detección de túnel DNS / tráfico en claro / desviación de país, auditoría de seguridad, export forense (árbol de procesos + SHA-256, JSON/CSV/STIX), UI en 8 idiomas |
+| **v1.5.x** | **Capa enterprise/SOC** — `snitch.toml` declarativo, syslog CEF + RFC 3164 + `format=ecs` NDJSON, importación Sigma + exportación YARA-L, vista `/remote/fleet` + chart Helm, despliegues Ansible/Puppet/Salt/GPO, unidad systemd endurecida + nfpm `.deb`/`.rpm`, feeds TI gratuitos, MkDocs + `INTEGRATIONS.md` en 7 idiomas |
+| **v1.6.x** | **Agente e identidad de flota** — agente Rust sin dependencias (`agent/`, atribución `/proc` socket→PID en Linux), enrollment por agente (tokens `sagt_…` hasheados, `/ingest/revoke`), worker de actualización `ti_feeds` automático, CI del agente en 3 SO, fórmula headless `snitchd`, todas las alertas CodeQL cerradas, 235 tests backend |
 
-También en marcha: imagen Docker en GHCR, tap de Homebrew (`brew install --cask aixisstudio/tap/snitch`), paquete winget [enviado](https://github.com/microsoft/winget-pkgs/pull/455520), README en 8 idiomas, GitHub Discussions.
+También en marcha: imagen Docker en GHCR, tap de Homebrew (`brew install --cask aixisstudio/tap/snitch` + fórmula headless `snitchd`), paquete winget [enviado](https://github.com/microsoft/winget-pkgs/pull/455520), README en 8 idiomas, GitHub Discussions.
 
 ## 🚧 v1.x — en curso
 
 - [x] **Instalador Windows firmado** — CI conectada a [SignPath](https://signpath.org) OSS (Authenticode gratuito para proyectos aprobados); se activa al aceptar la solicitud — ver `docs/SIGNING.md`
 - [ ] **Build macOS firmado y notarizado** — requiere cuenta Apple Developer (99 $/año), no hay vía gratuita. Mientras tanto, el [tap](https://github.com/aixisstudio/homebrew-tap) quita la cuarentena
 - [ ] **Homebrew upstream** (`brew install --cask snitch`) — bloqueado: el nombre `snitch` ya lo usa otro proyecto; se retomará con la firma Developer ID
-- [ ] **Publicación winget** — [PR #455520](https://github.com/microsoft/winget-pkgs/pull/455520) abierta, esperando revisión de Microsoft
+- [ ] **Publicación winget** — [PR #455520](https://github.com/microsoft/winget-pkgs/pull/455520) (v1.0.8) abierta; el pipeline enviará builds NSIS nuevos en cada tag
+- [ ] **Chocolatey** — paquete listo; espera el secreto `CHOCO_API_KEY`
+- [ ] **Atribución del agente en Windows/macOS** — backends `GetExtendedTcpTable`/`libproc`
+- [ ] **Escala de flota** — colector con cola + PostgreSQL/TimescaleDB para >1 000 agentes
 - [x] **Instaladores Windows de 1 clic** — NSIS Electron + Inno Lite, en CI por tag; desde v1.0.6
 - [x] **Paquetes Linux** — .deb / AppImage / **snap** además de Docker (sin Flatpak: la sandbox no puede exponer la captura)
 - [x] **Auto-actualización** — electron-updater sobre los feeds `latest-*.yml`, desactivable en Ajustes

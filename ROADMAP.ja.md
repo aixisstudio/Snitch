@@ -11,15 +11,20 @@
 | **v1.0.4** | 初公開リリース — リアルタイムグラフ＋世界地図、プロセス帰属、オフラインジオロケーション（.mmdb）、異常アラート、プライバシースコア、パッシブ LAN 検出（ARP/OUI）、マイク/カメラ監視（Windows/Linux）、デモモード、UI EN/FR |
 | **v1.0.5** | **Windows 対応**（Npcap、パッケージ済みバックエンド）、プロセスアイコン、トラッカードメイン +24、修正 |
 | **v1.2（main、タグなし）** | **セキュリティ＆スレットハンティングスイート** — OS ファイアウォール連携（IP/CIDR/ドメイン/プロセス/ポートのルールを `netsh`/`iptables`/`pf` へ、best-effort）、ロックダウンスイッチ、kill/suspend アクション、オプトイン threat intel（AbuseIPDB/OTX/VirusTotal）、オプトイン webhook（Discord/Slack/Telegram/汎用）、DNS トンネル/平文/国ベースライン逸脱検知、セキュリティ監査、フォレンジックエクスポート（プロセスツリー＋SHA-256、JSON/CSV/STIX）、8 言語 UI |
+| **v1.5.x** | **エンタープライズ/SOC レイヤー** — 宣言的 `snitch.toml`、CEF + RFC 3164 syslog + `format=ecs` NDJSON、Sigma インポート + YARA-L エクスポート、`/remote/fleet` ビュー + Helm チャート、Ansible/Puppet/Salt/GPO デプロイ、強化 systemd ユニット + nfpm `.deb`/`.rpm`、無料 TI フィード、MkDocs + `INTEGRATIONS.md` ×7 言語 |
+| **v1.6.x** | **エージェント＆フリート ID** — ゼロ依存 Rust エージェント（`agent/`、Linux `/proc` ソケット→PID 帰属）、エージェント別エンロール（`sagt_…` ハッシュ済みトークン、`/ingest/revoke`）、`ti_feeds` 自動更新ワーカー、3 OS のエージェント CI、ヘッドレス `snitchd` フォーミュラ、CodeQL アラート全解消、235 backend テスト |
 
-その他稼働中： GHCR の Docker イメージ、Homebrew tap（`brew install --cask aixisstudio/tap/snitch`）、winget パッケージ[提出済み](https://github.com/microsoft/winget-pkgs/pull/455520)、8 言語 README、GitHub Discussions。
+その他稼働中： GHCR の Docker イメージ、Homebrew tap（`brew install --cask aixisstudio/tap/snitch` + ヘッドレス `snitchd` フォーミュラ）、winget パッケージ[提出済み](https://github.com/microsoft/winget-pkgs/pull/455520)、8 言語 README、GitHub Discussions。
 
 ## 🚧 v1.x — 進行中
 
 - [x] **署名付き Windows インストーラ** — CI は [SignPath](https://signpath.org) OSS 用に配線済み（承認プロジェクトに無料 Authenticode）；申請受理で有効化 — `docs/SIGNING.md` 参照
 - [ ] **署名＋公証済み macOS ビルド** — Apple Developer アカウント（年 $99）が必要で無料ルートなし。それまでは [tap](https://github.com/aixisstudio/homebrew-tap) が quarantine を除去
 - [ ] **Homebrew 本家**（`brew install --cask snitch`）— ブロック中：`snitch` 名は別プロジェクトが使用中；Developer ID 署名後に再検討
-- [ ] **winget 公開** — [PR #455520](https://github.com/microsoft/winget-pkgs/pull/455520) オープン、Microsoft レビュー待ち
+- [ ] **winget 公開** — [PR #455520](https://github.com/microsoft/winget-pkgs/pull/455520)（v1.0.8）オープン；パイプラインがタグごとに最新 NSIS を自動提出
+- [ ] **Chocolatey** — パッケージ済み；`CHOCO_API_KEY` シークレット待ち
+- [ ] **Windows/macOS のエージェント帰属** — `GetExtendedTcpTable`/`libproc` バックエンド
+- [ ] **フリート規模拡大** — キュー型コレクター + PostgreSQL/TimescaleDB（1,000+ エージェント向け）
 - [x] **Windows ワンクリックインストーラ** — Electron NSIS＋Inno Lite、タグごとに CI ビルド；v1.0.6 から
 - [x] **Linux パッケージ** — .deb / AppImage / **snap** に加え Docker（Flatpak なし：サンドボックスはパケットキャプチャを公開不可）
 - [x] **自動更新** — `latest-*.yml` フィードの electron-updater、設定で無効化可

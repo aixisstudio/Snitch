@@ -11,15 +11,20 @@
 | **v1.0.4** | Первый публичный релиз — граф реального времени + карта мира, атрибуция по процессам, офлайн-геолокация (.mmdb), тревоги аномалий, privacy score, пассивное обнаружение LAN (ARP/OUI), мониторинг микрофона/камеры (Windows/Linux), демо-режим, UI EN/FR |
 | **v1.0.5** | **Поддержка Windows** (Npcap, упакованный бэкенд), иконки процессов, +24 домена трекеров, исправления |
 | **v1.2 (main, без тега)** | **Набор безопасности и threat-hunting** — оркестрация фаервола ОС (правила IP/CIDR/домен/процесс/порт через `netsh`/`iptables`/`pf`, best-effort), кнопка lockdown, действия kill/suspend, threat intel opt-in (AbuseIPDB/OTX/VirusTotal), webhook'и opt-in (Discord/Slack/Telegram/произвольный), детекция DNS-туннеля / открытого трафика / отклонения страны, аудит безопасности, форензик-экспорт (дерево процессов + SHA-256, JSON/CSV/STIX), UI на 8 языках |
+| **v1.5.x** | **Enterprise/SOC-слой** — декларативный `snitch.toml`, syslog CEF + RFC 3164 + `format=ecs` NDJSON, импорт Sigma + экспорт YARA-L, вид `/remote/fleet` + Helm-чарт, развёртывания Ansible/Puppet/Salt/GPO, укреплённый systemd-юнит + nfpm `.deb`/`.rpm`, бесплатные TI-фиды, MkDocs + `INTEGRATIONS.md` на 7 языках |
+| **v1.6.x** | **Агент и идентичность флота** — Rust-агент без зависимостей (`agent/`, атрибуция `/proc` socket→PID в Linux), enrollment по агентам (хэшированные `sagt_…` токены, `/ingest/revoke`), авто-обновление `ti_feeds`, CI агента на 3 ОС, headless-формула `snitchd`, все алерты CodeQL закрыты, 235 backend-тестов |
 
-Также работает: Docker-образ на GHCR, Homebrew tap (`brew install --cask aixisstudio/tap/snitch`), пакет winget [отправлен](https://github.com/microsoft/winget-pkgs/pull/455520), README на 8 языках, GitHub Discussions.
+Также работает: Docker-образ на GHCR, Homebrew tap (`brew install --cask aixisstudio/tap/snitch` + headless-формула `snitchd`), пакет winget [отправлен](https://github.com/microsoft/winget-pkgs/pull/455520), README на 8 языках, GitHub Discussions.
 
 ## 🚧 v1.x — в работе
 
 - [x] **Подписанный установщик Windows** — CI подключён к [SignPath](https://signpath.org) OSS (бесплатный Authenticode для одобренных проектов); включится после принятия заявки — см. `docs/SIGNING.md`
 - [ ] **Подписанная и нотаризованная сборка macOS** — нужен аккаунт Apple Developer (99 $/год), бесплатного пути нет. Пока [tap](https://github.com/aixisstudio/homebrew-tap) снимает карантин
 - [ ] **Homebrew upstream** (`brew install --cask snitch`) — заблокировано: имя `snitch` занято другим проектом; вернёмся после появления подписи Developer ID
-- [ ] **Публикация winget** — [PR #455520](https://github.com/microsoft/winget-pkgs/pull/455520) открыт, ждёт проверки Microsoft
+- [ ] **Публикация winget** — [PR #455520](https://github.com/microsoft/winget-pkgs/pull/455520) (v1.0.8) открыт; пайплайн сам отправит новые NSIS-сборки на каждый tag
+- [ ] **Chocolatey** — пакет готов; ждёт секрет `CHOCO_API_KEY`
+- [ ] **Атрибуция агента на Windows/macOS** — бэкенды `GetExtendedTcpTable`/`libproc`
+- [ ] **Масштаб флота** — очередь-коллектор + PostgreSQL/TimescaleDB для >1 000 агентов
 - [x] **Установщики Windows в 1 клик** — Electron NSIS + Inno Lite, собираются в CI по тегам; с v1.0.6
 - [x] **Пакеты Linux** — .deb / AppImage / **snap** в дополнение к Docker (без Flatpak: sandbox не может дать захват пакетов)
 - [x] **Автообновление** — electron-updater по фидам `latest-*.yml`, отключается в настройках

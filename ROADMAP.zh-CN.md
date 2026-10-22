@@ -11,15 +11,20 @@
 | **v1.0.4** | 首个公开版本——实时图＋世界地图、按进程归属、离线地理定位（.mmdb）、异常告警、隐私评分、被动 LAN 发现（ARP/OUI）、麦克风/摄像头监控（Windows/Linux）、演示模式、EN/FR UI |
 | **v1.0.5** | **Windows 支持**（Npcap、打包后端）、进程图标、+24 个跟踪器域名、修复 |
 | **v1.2（main，未打 tag）** | **安全与威胁狩猎套件**——OS 防火墙编排（IP/CIDR/域名/进程/端口规则经 `netsh`/`iptables`/`pf` 下发，尽力而为）、lockdown 应急开关、kill/suspend 操作、可选威胁情报（AbuseIPDB/OTX/VirusTotal）、可选 webhook（Discord/Slack/Telegram/通用）、DNS 隧道/明文流量/国家基线偏离检测、安全审计、取证导出（进程树＋SHA-256、JSON/CSV/STIX）、8 语言 UI |
+| **v1.5.x** | **企业/SOC 层**——声明式 `snitch.toml`、CEF + RFC 3164 syslog + `format=ecs` NDJSON、Sigma 导入 + YARA-L 导出、`/remote/fleet` 视图 + Helm chart、Ansible/Puppet/Salt/GPO 部署、加固 systemd 单元 + nfpm `.deb`/`.rpm`、免费 TI 源、MkDocs + `INTEGRATIONS.md` ×7 语言 |
+| **v1.6.x** | **代理与集群身份**——零依赖 Rust 代理（`agent/`、Linux `/proc` 套接字→PID 归因）、按代理注册（`sagt_…` 哈希令牌、`/ingest/revoke`）、`ti_feeds` 自动刷新 worker、3 平台代理 CI、无头 `snitchd` 配方、CodeQL 告警全部关闭、235 个后端测试 |
 
-已上线：GHCR 的 Docker 镜像、Homebrew tap（`brew install --cask aixisstudio/tap/snitch`）、winget 包[已提交](https://github.com/microsoft/winget-pkgs/pull/455520)、8 语言 README、GitHub Discussions。
+已上线：GHCR 的 Docker 镜像、Homebrew tap（`brew install --cask aixisstudio/tap/snitch` + 无头 `snitchd` 配方）、winget 包[已提交](https://github.com/microsoft/winget-pkgs/pull/455520)、8 语言 README、GitHub Discussions。
 
 ## 🚧 v1.x — 进行中
 
 - [x] **签名的 Windows 安装器** —— CI 已接入 [SignPath](https://signpath.org) OSS（获批项目可免费使用 Authenticode）；申请通过后自动生效——见 `docs/SIGNING.md`
 - [ ] **签名＋公证的 macOS 构建** —— 需要 Apple Developer 账号（99 美元/年），无免费途径。在此之前 [tap](https://github.com/aixisstudio/homebrew-tap) 会代为移除隔离标记
 - [ ] **Homebrew 官方**（`brew install --cask snitch`）——受阻：`snitch` 名称已被无关项目占用；有了 Developer ID 签名后再议
-- [ ] **winget 发布** —— [PR #455520](https://github.com/microsoft/winget-pkgs/pull/455520) 已开启，等待微软审核
+- [ ] **winget 发布** —— [PR #455520](https://github.com/microsoft/winget-pkgs/pull/455520)（v1.0.8）已开启；流水线将在每个 tag 自动提交最新 NSIS 构建
+- [ ] **Chocolatey** —— 包已就绪；等待 `CHOCO_API_KEY` 密钥
+- [ ] **Windows/macOS 代理归因** —— `GetExtendedTcpTable`/`libproc` 后端
+- [ ] **集群扩展** —— 队列式采集器 + PostgreSQL/TimescaleDB（>1 000 代理）
 - [x] **Windows 一键安装器** —— Electron NSIS＋Inno Lite，随 tag 在 CI 构建；自 v1.0.6 起
 - [x] **Linux 包** —— Docker 之外的 .deb / AppImage / **snap**（无 Flatpak：沙箱无法暴露抓包能力）
 - [x] **自动更新** —— electron-updater 走 `latest-*.yml` 源，可在设置中关闭
