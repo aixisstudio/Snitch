@@ -53,6 +53,14 @@ _pending: dict[tuple, list] = defaultdict(lambda: [0, 0])
 _pending_hist: dict[tuple, list] = defaultdict(lambda: [0, 0])
 _pending_alerts: list[tuple] = []
 _pending_lock = threading.Lock()
+# EN: Cap on buffered alerts between 10 s flushes — an alert storm must
+#     not balloon RAM if the disk ever stalls. Overflow drops the oldest
+#     and is counted so it stays visible, never silent.
+# FR: Borne des alertes tamponnées entre deux flushes de 10 s — une
+#     tempête d'alertes ne doit pas gonfler la RAM si le disque traîne.
+#     Le débordement jette les plus anciennes et est compté, jamais muet.
+_MAX_PENDING_ALERTS = 10_000
+_alerts_dropped = 0
 
 
 def _utcnow_minute() -> str:
@@ -378,8 +386,25 @@ def log_alert(alert: dict) -> None:
         alert["severity"], alert["message"],
         alert.get("node_id"), json.dumps(alert.get("details", {})),
     )
+    global _alerts_dropped
     with _pending_lock:
+        if len(_pending_alerts) >= _MAX_PENDING_ALERTS:
+            # EN: drop the oldest quarter at once so a sustained storm
+            #     pays the eviction cost rarely, not per-append.
+            # FR: jeter le quart le plus ancien d'un coup pour qu'une
+            #     tempête soutenue paie le coût d'éviction rarement.
+            del _pending_alerts[:_MAX_PENDING_ALERTS // 4]
+            _alerts_dropped += _MAX_PENDING_ALERTS // 4
+            logger.warning("alert buffer overflow — %d dropped total",
+                           _alerts_dropped)
         _pending_alerts.append(row)
+
+
+def alerts_dropped() -> int:
+    """EN: Alerts discarded by the buffer cap since startup — 0 in
+    healthy operation. / FR: Alertes perdues par la borne du tampon
+    depuis le démarrage — 0 en fonctionnement sain."""
+    return _alerts_dropped
 
 
 # ── Read helpers / Aides de lecture ──────────────────────────────────────────

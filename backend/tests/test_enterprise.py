@@ -158,6 +158,82 @@ def test_sigma_conds_reject_bad_field():
             {"field": "nope", "op": "eq", "value": "x"}])
 
 
+# ── ReDoS guard / garde ReDoS ────────────────────────────────────────────
+
+def test_regex_rejects_nested_quantifiers():
+    """EN: (a+)+-shaped patterns are refused at validation — Python's re
+    has no match timeout so the shape itself is rejected.
+    FR: Les motifs de forme (a+)+ sont refusés à la validation — le re de
+    Python n'a pas de timeout donc la forme est rejetée."""
+    import pytest
+    from detection.customrules import CustomRules
+    for pat in ("(a+)+", "(.*)*", "([a-z]+)+", "(a?)+",
+                "(a{1,3})+", "((a+)b)+", "(?:a+)+", "(x{2,})+"):
+        with pytest.raises(ValueError, match="nested quantifiers"):
+            CustomRules().add("redos", "host", "regex", pat)
+
+
+def test_regex_accepts_safe_patterns():
+    """EN: Bounded and non-nested patterns stay legal — the guard must
+    not overblock. / FR: Les motifs bornés et non imbriqués restent
+    légaux — la garde ne doit pas surbloquer."""
+    from detection.customrules import CustomRules
+    for pat in ("a+b", r"[a-z]+$", "(?:ab)+", "(a|b)+", r"\+x+",
+                "(a+){2}", "x{2,3}y", "(a?b)c", "foo{bar}"):
+        CustomRules().add("ok", "host", "regex", pat)
+
+
+def test_nested_quantifier_scanner():
+    """EN: Direct unit coverage of the shape detector — escapes, char
+    classes and group-type prefixes must not confuse it.
+    FR: Couverture unitaire directe du détecteur — échappements, classes
+    et préfixes de groupe ne doivent pas le perturber."""
+    from detection.customrules import _has_nested_quantifier as f
+    assert f("(a+)+") and f("((a+)b)+") and f("([a-z]+)+")
+    assert not f("(?:ab)+") and not f("(?P<n>a)b") and not f("[+*]+")
+    assert not f(r"a\(x\)+b")                    # EN: escaped parens / FR: parenthèses échappées
+
+
+# ── ask-mode bounds / bornes du mode ask ─────────────────────────────────
+
+def test_askmode_decided_bounded():
+    """EN: Verdict memory evicts the oldest entries past _MAX_DECIDED.
+    FR: La mémoire des verdicts évinçe les plus anciens au-delà de la borne."""
+    import sys
+    import pytest
+    if sys.platform != "linux":
+        pytest.skip("NFQUEUE backend is Linux-only")
+    from detection.askmode import AskMode, _MAX_DECIDED
+    am = AskMode(on_ask=lambda e: None)
+    with am._lock:
+        for i in range(_MAX_DECIDED + 100):
+            am._remember((f"10.0.0.{i % 250}", i, "TCP"), True)
+    assert len(am._decided) == _MAX_DECIDED - _MAX_DECIDED // 4 + 100 \
+        or len(am._decided) <= _MAX_DECIDED
+
+
+def test_askmode_rollback_mirrors_inserts(monkeypatch):
+    """EN: _rollback_rules turns every -I insert into the -D delete, in
+    reverse order. / FR: _rollback_rules transforme chaque insertion -I
+    en suppression -D, en ordre inverse."""
+    import sys
+    import pytest
+    if sys.platform != "linux":
+        pytest.skip("iptables is Linux-only")
+    from detection.askmode import AskMode
+    calls = []
+    monkeypatch.setattr("subprocess.run",
+                        lambda c, **kw: calls.append(c) or None)
+    AskMode._rollback_rules([
+        ["iptables", "-w", "-I", "OUTPUT", "-o", "lo", "-j", "RETURN"],
+        ["iptables", "-w", "-I", "OUTPUT", "-j", "NFQUEUE",
+         "--queue-num", "7"],
+    ])
+    assert calls[0][3] == "-D" and "NFQUEUE" in calls[0]  # EN: jump first / FR: saut d'abord
+    assert calls[1][3] == "-D" and "lo" in calls[1]
+    assert all("-I" not in c for c in calls)
+
+
 # ── fleet merge / fusion de flotte ───────────────────────────────────────────
 
 def test_fleet_audit_merge(monkeypatch):

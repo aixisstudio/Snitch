@@ -63,6 +63,13 @@ _POOL_PORTS = {3333, 4444, 5555, 7777, 8333, 9999, 14433, 14444,
 _CPU_THRESHOLD = 70.0        # EN: sustained % to corroborate / FR: % soutenu corroborant
 _CPU_WINDOW_S = 30.0         # EN: min observation before accusing / FR: observation min avant accusation
 _COOLDOWN = 600.0            # EN: per-process alert cooldown / FR: cooldown par processus
+# EN: Bound on the suspect map — corroboration drains 32 per tick, so a
+#     flood of distinct (pid, remote) pairs is capped well above the
+#     plausible legitimate rate but far below memory concern.
+# FR: Borne de la map de suspects — la corroboration draine 32 par tick ;
+#     un flot de paires (pid, remote) est borné au-dessus du rythme
+#     légitime mais loin de tout souci mémoire.
+_MAX_SUSPECTS = 4096
 
 
 class MinerDetector:
@@ -125,10 +132,24 @@ class MinerDetector:
                 return out                       # EN: no need to suspect further
 
         # EN: Signal 2 — pool port: mark for CPU corroboration, never
-        #     enough alone. / FR: Signal 2 — port de pool : marqué pour
-        #     corroboration CPU, jamais suffisant seul.
+        #     enough alone. The suspect map is bounded — a process
+        #     sweeping many remotes (scanner, busy proxy) must not grow
+        #     it past the drain rate of 32 corroborations/tick.
+        # FR: Signal 2 — port de pool : marqué pour corroboration CPU,
+        #     jamais suffisant seul. La map est bornée — un processus
+        #     balayant beaucoup d'hôtes (scanner, proxy chargé) ne doit
+        #     pas la faire croître au-delà du rythme de 32/tick.
         if pkt.dst_port in _POOL_PORTS and pid:
             with self._lock:
+                if len(self._suspects) >= _MAX_SUSPECTS:
+                    # EN: evict the oldest quarter — stale suspects are
+                    #     the least informative anyway.
+                    # FR: évincer le quart le plus ancien — les suspects
+                    #     périmés sont les moins informatifs.
+                    stale = sorted(self._suspects.items(),
+                                   key=lambda kv: kv[1])
+                    for k, _ in stale[:_MAX_SUSPECTS // 4]:
+                        self._suspects.pop(k, None)
                 self._suspects.setdefault((pid, remote), time.time())
         return out
 

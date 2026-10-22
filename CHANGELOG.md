@@ -42,6 +42,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/) — EN/FR.
   port/process filter lists bounded to 512 entries.
   FR: Les entrées whitelist sont validées (vraies adresses, ≤512) ;
   filtres de ports/processus bornés à 512.
+- EN: **Custom-rule regexes reject nested quantifiers** — `(a+)+`,
+  `(.*)*`, `(a?)+`, `(a{1,3})+` and friends are refused at validation.
+  Python's `re` has no match timeout, so the catastrophic-backtracking
+  shape is rejected instead of hoped away; bounded-only patterns stay
+  legal. Residual (ambiguous alternation `(a|a)+`) is documented.
+  FR: **Les regex des règles refusent les quantifieurs imbriqués** —
+  `(a+)+`, `(.*)*`, `(a?)+`, `(a{1,3})+` sont refusés à la validation ;
+  les motifs bornés restent légaux.
 
 ### Changed / Modifié
 
@@ -54,6 +62,43 @@ The format follows [Keep a Changelog](https://keepachangelog.com/) — EN/FR.
   private-prefix enumeration can't grow the map forever.
   FR: `lan_devices` est désormais bornée (1024 entrées, éviction de la
   plus discrète).
+
+### Fixed / Corrigé
+
+- EN: **ask-mode rollback is now complete** — a mid-start iptables
+  failure mirror-deletes every rule already planted (previously the
+  NFQUEUE jump or RETURN exemptions could strand the host's outbound
+  traffic until reboot), and `stop()` removes the full rule set instead
+  of only the queue jump (repeated start/stop used to stack stale
+  RETURN rules on OUTPUT).
+  FR: **Rollback du mode ask désormais complet** — un échec iptables en
+  cours de start supprime en miroir toutes les règles posées (le saut
+  NFQUEUE ou les exemptions pouvaient étrangler le trafic sortant
+  jusqu'au reboot), et `stop()` retire l'ensemble complet.
+- EN: **NFQUEUE verdicts are race-safe** — `decide()`/timeout-waiter
+  verdicts survive a concurrent `stop()` closing the socket instead of
+  surfacing as API 500s; remembered verdicts are bounded at 65 536
+  entries (ephemeral ports grow them forever otherwise).
+  FR: **Verdicts NFQUEUE insensibles aux courses** — les verdicts
+  survivent à un `stop()` concurrent ; les verdicts mémorisés sont
+  bornés à 65 536 entrées.
+- EN: libpcap `_sockaddr_ip` reads the 2-byte family before sizing the
+  struct (no more 24-byte over-read on short sockaddrs), and a failed
+  BPF compile/setfilter closes the live handle instead of leaking it.
+  FR: `_sockaddr_ip` lit la famille avant de dimensionner la lecture ;
+  un échec BPF ferme le handle live au lieu de le fuiter.
+- EN: the buffered-alert queue is capped at 10 000 between 10 s flushes
+  (oldest-quarter eviction, `alerts_dropped()` counter) and the miner
+  suspect map at 4 096 — alert storms can no longer balloon RAM.
+  FR: la file d'alertes tampon est bornée à 10 000 entre flushes
+  (éviction du quart le plus ancien, compteur `alerts_dropped()`) et la
+  map de suspects mineur à 4 096.
+- EN: media monitor polls every 10 s by default (was 3 s — each Linux
+  tick walks every process's open files); `SNITCH_MEDIA_INTERVAL`
+  (3–300 s) overrides.
+  FR: le moniteur média sonde toutes les 10 s par défaut (3 s avant —
+  chaque tick Linux parcourt les fichiers ouverts de tous les
+  processus) ; `SNITCH_MEDIA_INTERVAL` (3–300 s) ajuste.
 
 - EN: **All project surfaces synced to v1.6.3** — README (Rust agent,
   enrollment, `ti_feeds`, `.rpm`, `snitchd` formula), ROADMAP (v1.5.x/

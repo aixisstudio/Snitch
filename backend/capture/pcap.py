@@ -248,12 +248,17 @@ def _sockaddr_ip(ptr: Optional[int]) -> Optional[str]:
     """
     if not ptr:
         return None
-    raw = ctypes.string_at(ptr, 24)
-    family = raw[1] if sys.platform == "darwin" else int.from_bytes(raw[0:2], "little")
+    # EN: Read the 2-byte family FIRST — a short sockaddr (sa_len/
+    #     sa_family only, e.g. AF_UNIX) must not be over-read for 24 bytes.
+    # FR: Lire la famille sur 2 octets D'ABORD — un sockaddr court
+    #     (sa_len/sa_family seuls, ex. AF_UNIX) ne doit pas être relu
+    #     sur 24 octets.
+    head = ctypes.string_at(ptr, 2)
+    family = head[1] if sys.platform == "darwin" else int.from_bytes(head, "little")
     if family == socket.AF_INET:
-        return socket.inet_ntop(socket.AF_INET, raw[4:8])
+        return socket.inet_ntop(socket.AF_INET, ctypes.string_at(ptr + 4, 4))
     if family == socket.AF_INET6:
-        return socket.inet_ntop(socket.AF_INET6, raw[8:24])
+        return socket.inet_ntop(socket.AF_INET6, ctypes.string_at(ptr + 8, 16))
     return None
 
 
@@ -322,6 +327,14 @@ class PcapSession:
                     raise PcapError(f"pcap_compile({bpf_filter!r}): {self._err()}")
                 if self._lib.pcap_setfilter(self._handle, ctypes.byref(prog)) != 0:
                     raise PcapError(f"pcap_setfilter: {self._err()}")
+            except Exception:
+                # EN: A filter failure must not strand the live handle —
+                #     nothing else will ever close it after __init__ raises.
+                # FR: Un échec de filtre ne doit pas orpheliner le handle
+                #     live — plus rien ne le fermera si __init__ lève.
+                self._lib.pcap_close(self._handle)
+                self._closed = True
+                raise
             finally:
                 self._lib.pcap_freecode(ctypes.byref(prog))
 

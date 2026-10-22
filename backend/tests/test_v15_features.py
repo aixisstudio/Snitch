@@ -893,3 +893,23 @@ def test_askmode_exempt_bounded():
     am = AskMode(lambda ctx: None)
     am._exempt = [f"10.0.0.{i}" for i in range(200)][:64]
     assert len(am._exempt) == 64
+
+
+def test_miner_suspects_bounded():
+    """EN: A process sweeping many pool-port remotes cannot grow the
+    suspect map past _MAX_SUSPECTS — the oldest quarter is evicted.
+    FR: Un processus balayant beaucoup d'hôtes pool-port ne peut faire
+    croître la map au-delà de la borne — le quart le plus ancien est
+    évincé."""
+    from detection.miner import MinerDetector, _MAX_SUSPECTS
+
+    class P:
+        direction, protocol, dst_port = "out", "TCP", 3333
+        dst_ip, process_name, pid, app_head = "1.2.3.4", "p", 42, b""
+
+    m = MinerDetector()
+    with m._lock:
+        for i in range(_MAX_SUSPECTS + 10):
+            m._suspects[(1, f"10.0.{i // 250}.{i % 250}")] = 0.0
+    m.analyze_packet(P())
+    assert len(m._suspects) <= _MAX_SUSPECTS

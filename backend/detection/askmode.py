@@ -56,6 +56,13 @@ logger = logging.getLogger(__name__)
 
 _QUEUE_NUM = 7
 _MAX_PENDING = 512
+# EN: Cap on remembered verdicts — long-running hosts see endless fresh
+#     (ip, port) pairs via ephemeral ports, so keep only the most recent
+#     decisions (dict order = insertion order).
+# FR: Borne des verdicts retenus — un hôte longue durée voit défiler des
+#     paires (ip, port) sans fin via les ports éphémères ; on ne garde que
+#     les décisions récentes (ordre du dict = ordre d'insertion).
+_MAX_DECIDED = 65_536
 _DEFAULT_TIMEOUT = 15.0
 
 
@@ -96,12 +103,18 @@ class AskMode:
         self._decided: dict[tuple, bool] = {}
         self._lock = threading.Lock()
         self._rule_installed = False
+        # EN: Rules planted by the last successful start() — needed so
+        #     stop() can remove the complete set, not just the queue jump.
+        # FR: Règles posées par le dernier start() réussi — nécessaire pour
+        #     que stop() retire l'ensemble complet, pas seulement le saut.
+        self._installed: list[list[str]] = []
         # EN: IPs exempted from diversion at start (whitelist — "allow
-        #     always" verdicts). Bounded; tracked for clean removal.
+        #     always" verdicts). Bounded; their delete-mirrors ride in
+        #     _installed like every other rule.
         # FR: IPs exemptées du détournement au start (whitelist — verdicts
-        #     « autoriser toujours »). Bornées ; suivies pour le retrait.
+        #     « autoriser toujours »). Bornées ; leurs suppressions miroir
+        #     voyagent dans _installed comme les autres règles.
         self._exempt: list[str] = []
-        self._exempt_rules: list[list[str]] = []
 
     # ── lifecycle / cycle de vie ──────────────────────────────────────────
 
@@ -185,16 +198,35 @@ class AskMode:
             cmds.insert(len(cmds) - 1,
                         ["iptables", "-w", "-I", "OUTPUT", "-d", ip,
                          "-j", "RETURN"])
-            self._exempt_rules.append(
-                ["iptables", "-w", "-D", "OUTPUT", "-d", ip, "-j",
-                 "RETURN"])
+        # EN: Rules land one at a time — track each inserted rule so a
+        #     mid-sequence failure rolls back EVERYTHING it already
+        #     planted (a stranded NFQUEUE jump would wedge the host's
+        #     outbound traffic until reboot).
+        # FR: Les règles atterrissent une à une — suivre chaque insertion
+        #     pour qu'un échec à mi-parcours annule TOUT ce qui a été posé
+        #     (un saut NFQUEUE orphelin bloquerait le trafic sortant de
+        #     l'hôte jusqu'au reboot).
+        inserted: list[list[str]] = []
         for c in cmds:
             try:
                 subprocess.run(c, timeout=10, check=False,
                                capture_output=True)
+                inserted.append(c)
             except OSError as e:
-                self.stop()
+                self._rollback_rules(inserted)
+                try:
+                    if self._nfq is not None:
+                        self._nfq.close()
+                finally:
+                    self._nfq = None
                 return False, f"iptables failed: {e}"
+        # EN: Remember EVERY rule planted — stop() removes the full set,
+        #     not just the queue jump + exemptions (repeated start/stop
+        #     cycles used to stack stale RETURN rules on OUTPUT).
+        # FR: Retenir CHAQUE règle posée — stop() retire l'ensemble
+        #     complet, pas seulement le saut + exemptions (les cycles
+        #     start/stop empilaient des règles RETURN périmées sur OUTPUT).
+        self._installed = inserted
         self._rule_installed = True
         self._running = True
         self._thread = threading.Thread(target=self._run, daemon=True,
@@ -217,6 +249,22 @@ class AskMode:
             logger.warning("askmode nfqueue loop ended: %s", e)
         finally:
             self._running = False
+
+    @staticmethod
+    def _rollback_rules(inserted: list[list[str]]) -> None:
+        """EN: Undo partial rule installation — every `-I` insert becomes
+            the mirror `-D` delete, applied in reverse order so dependant
+            entries unwind cleanly. Best-effort, never raises.
+        FR: Annuler une installation partielle — chaque `-I` devient le
+            `-D` miroir, appliqué en ordre inverse. Au mieux, ne lève jamais."""
+        import subprocess
+        for c in reversed(inserted):
+            rm = ["-D" if a == "-I" else a for a in c]
+            try:
+                subprocess.run(rm, timeout=10, check=False,
+                               capture_output=True)
+            except OSError:
+                pass
 
     def stop(self) -> None:
         self._running = False
@@ -242,14 +290,13 @@ class AskMode:
         except Exception:                          # noqa: BLE001
             pass
         if self._rule_installed:
-            import subprocess
-            subprocess.run(["iptables", "-w", "-D", "OUTPUT", "-j",
-                            "NFQUEUE", "--queue-num", str(_QUEUE_NUM)],
-                           timeout=10, check=False, capture_output=True)
-            for rm in self._exempt_rules:
-                subprocess.run(rm, timeout=10, check=False,
-                               capture_output=True)
-            self._exempt_rules.clear()
+            # EN: Mirror-delete every rule start() planted — jump AND all
+            #     the RETURN exemptions, in reverse insertion order.
+            # FR: Suppression miroir de toutes les règles posées par
+            #     start() — saut ET toutes les exemptions RETURN, en
+            #     ordre inverse d'insertion.
+            self._rollback_rules(self._installed)
+            self._installed = []
             self._rule_installed = False
 
     # ── verdict path / chemin du verdict ─────────────────────────────────
@@ -327,6 +374,27 @@ class AskMode:
             except Exception:                      # noqa: BLE001
                 pass
 
+    def _remember(self, key: tuple, allow: bool) -> None:
+        """EN: Record a verdict under the lock, evicting the oldest
+            quarter once the cache overflows.
+        FR: Mémoriser un verdict sous le verrou, en évinçant le quart le
+            plus ancien une fois le cache plein. Caller holds _lock."""
+        self._decided[key] = allow
+        if len(self._decided) > _MAX_DECIDED:
+            for k in list(self._decided)[:_MAX_DECIDED // 4]:
+                del self._decided[k]
+
+    def _verdict(self, pkt_id: int, allow: bool) -> None:
+        """EN: Emit an NFQUEUE verdict, swallowing the races a concurrent
+            stop() creates by closing the socket mid-verdict.
+        FR: Émettre un verdict NFQUEUE en absorbant les courses créées par
+            un stop() concurrent qui ferme le socket en plein verdict."""
+        try:
+            if self._nfq is not None:
+                self._nfq.verdict(pkt_id, allow)
+        except Exception:                          # noqa: BLE001 — stop() raced
+            pass
+
     def _waiter(self, key: tuple, ev: threading.Event) -> None:
         """EN: Holds one packet until decide() or the timeout; the recv
         loop keeps serving other flows meanwhile.
@@ -336,9 +404,9 @@ class AskMode:
             return                                 # EN: decide() applied it
         with self._lock:
             ent = self._pending.pop(key, None)
-            self._decided[key] = self._failopen
-        if ent is not None and self._nfq is not None:
-            self._nfq.verdict(ent[1], self._failopen)
+            self._remember(key, self._failopen)
+        if ent is not None:
+            self._verdict(ent[1], self._failopen)
 
     def decide(self, remote_ip: str, remote_port: int, proto: str,
                allow: bool) -> bool:
@@ -348,11 +416,10 @@ class AskMode:
         key = (remote_ip, int(remote_port), (proto or "TCP").upper())
         with self._lock:
             ent = self._pending.pop(key, None)
-            self._decided[key] = bool(allow)
+            self._remember(key, bool(allow))
         if ent is None:
             return False
-        if self._nfq is not None:
-            self._nfq.verdict(ent[1], bool(allow))
+        self._verdict(ent[1], bool(allow))
         ent[0].set()
         return True
 

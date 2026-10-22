@@ -2065,7 +2065,20 @@ async def _startup() -> None:
     threading.Thread(target=_flush_loop, daemon=True).start()
     threading.Thread(target=_cleanup_loop, daemon=True).start()
 
-    _media_monitor = MediaMonitor(callback=_on_media_change, interval=3)
+    # EN: 10 s default — on Linux each tick walks every process's open
+    #     files, which is real work on a busy host; mic-state latency does
+    #     not need sub-second freshness. SNITCH_MEDIA_INTERVAL overrides.
+    # FR: 10 s par défaut — sous Linux chaque tick parcourt les fichiers
+    #     ouverts de tous les processus, un vrai coût sur hôte chargé ;
+    #     la fraîcheur du micro n'exige pas la seconde.
+    #     SNITCH_MEDIA_INTERVAL permet d'ajuster.
+    try:
+        _media_iv = max(3, min(300, int(os.environ.get(
+            "SNITCH_MEDIA_INTERVAL", "10"))))
+    except ValueError:
+        _media_iv = 10
+    _media_monitor = MediaMonitor(callback=_on_media_change,
+                                  interval=_media_iv)
     threading.Thread(target=_media_monitor.start, daemon=True).start()
 
 

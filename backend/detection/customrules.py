@@ -16,9 +16,11 @@ EN: User-defined alert rules — a deliberately SMALL matcher, not a
     Supported ops     : eq, ne, contains, regex, gt, lt, cidr.
     Actions           : alert (default) | block (firewall rule on the
                         matched remote_ip — the per-flow kill-switch).
-    Regex is bounded (pattern <= 200 chars, applied with a per-packet
-    compiled cache of <= 64 patterns) so a bad rule cannot DoS the
-    packet path; an invalid rule fails validation at creation.
+    Regex is bounded (pattern <= 200 chars, nested quantifiers rejected
+    at validation, compiled cache <= 64 patterns) so a bad rule cannot
+    DoS the packet path; an invalid rule fails validation at creation.
+    Residual: ambiguous alternation under a quantifier ((a|a)+) is a
+    known unblocked shape — the matcher stays O(fields) worst-case.
 
 FR: Règles d'alerte définies par l'utilisateur — un filtreur
     volontairement PETIT, pas un langage de signatures. Une règle choisit
@@ -55,6 +57,135 @@ _ACTIONS = ("alert", "block")
 _MAX_RULES = 256
 _MAX_PATTERN = 200
 _MAX_COMPILED = 64
+# EN: Nested-quantifier detector — the dominant catastrophic-backtracking
+#     shape: a group that CONTAINS a quantifier is itself quantified
+#     ((a+)+, (.*)*, ([a-z]+)+). Python's `re` has no match timeout, so
+#     the only honest defence is rejecting the shape at validation time.
+#     The scan skips escapes and char classes to avoid flagging
+#     `[+*]` or `\+` as real quantifiers.
+# FR: Détecteur de quantifieurs imbriqués — la forme dominante du
+#     backtracking catastrophique : un groupe CONTENANT un quantifieur
+#     est lui-même quantifié ((a+)+, (.*)*, ([a-z]+)+). Le `re` de Python
+#     n'a pas de timeout de match ; la seule défense honnête est de
+#     rejeter la forme à la validation. Le scan ignore les échappements
+#     et les classes de caractères pour ne pas signaler `[+*]` ou `\+`.
+def _brace_quant(pattern: str, i: int) -> int:
+    """EN: Classify pattern[i] == '{' — 0 = not a quantifier (literal),
+        1 = bounded ({n}, {n,m}, {,m}), 2 = unbounded ({n,}).
+    FR: Classer pattern[i] == '{' — 0 = pas un quantifieur (littéral),
+        1 = borné ({n}, {n,m}, {,m}), 2 = non borné ({n,})."""
+    j = pattern.find("}", i + 1)
+    if j == -1 or j - i > 8:
+        return 0
+    inner = pattern[i + 1:j]
+    if not inner or not all(ch.isdigit() or ch == "," for ch in inner):
+        return 0
+    if inner.endswith(",") and inner[:-1].isdigit():
+        return 2                            # EN: {n,} — open upper bound / FR: borne haute ouverte
+    return 1
+
+
+def _unbounded_quant(pattern: str, i: int) -> bool:
+    """EN: True when pattern[i] opens an UNBOUNDED repetition — '+', '*'
+        or '{n,}'. '?' and '{n,m}' are bounded and cannot produce
+        exponential backtracking as the OUTER loop.
+    FR: Vrai quand pattern[i] ouvre une répétition NON bornée — '+', '*'
+        ou '{n,}'. '?' et '{n,m}' sont bornés et ne peuvent produire un
+        backtracking exponentiel comme boucle EXTERNE."""
+    c = pattern[i]
+    if c in "+*":
+        return True
+    if c == "{":
+        return _brace_quant(pattern, i) == 2
+    return False
+
+
+def _any_quant(pattern: str, i: int) -> bool:
+    """EN: True when pattern[i] is ANY real quantifier — the INNER
+        criterion. Even a bounded inner repetition under an unbounded
+        outer one is catastrophic: (a{1,3})+ partitions the input
+        exponentially many ways.
+    FR: Vrai quand pattern[i] est un vrai quantifieur — le critère
+        INTERNE. Même une répétition interne bornée sous une externe non
+        bornée est catastrophique : (a{1,3})+ partitionne l'entrée de
+        façon exponentielle."""
+    c = pattern[i]
+    if c in "+*?":
+        return True
+    if c == "{":
+        return _brace_quant(pattern, i) != 0
+    return False
+
+
+def _has_nested_quantifier(pattern: str) -> bool:
+    """EN: True when an unboundedly-quantified group itself contains any
+        quantifier — the (a+)+ / (.*)* / (a?)+ catastrophic shapes.
+    FR: Vrai quand un groupe quantifié sans borne contient un quantifieur
+        — les formes catastrophiques (a+)+ / (.*)* / (a?)+."""
+    stack: list[bool] = []          # EN: group → contains a quantifier / FR: groupe → contient un quantifieur
+    i, n = 0, len(pattern)
+    while i < n:
+        c = pattern[i]
+        if c == "\\":
+            i += 2
+            continue
+        if c == "[":
+            # EN: skip the whole char class (handles ]-first and escapes)
+            # FR: sauter toute la classe (gère ]-premier et échappements)
+            i += 1
+            if i < n and pattern[i] == "^":
+                i += 1
+            if i < n and pattern[i] == "]":
+                i += 1
+            while i < n:
+                if pattern[i] == "\\":
+                    i += 2
+                    continue
+                if pattern[i] == "]":
+                    break
+                i += 1
+            i += 1
+            continue
+        if c == "(":
+            stack.append(False)
+            i += 1
+            # EN: (?: ?= ?! ?<= ?<! ?P<name> ?P= ?# (?flags — the '?' is a
+            #     group-type marker, not a quantifier; skip the prefix so
+            #     it never flags the group as quantified.
+            # FR: (?: ?= ?! ?<= ?<! ?P<name> ?P= ?# (?flags — le '?' est
+            #     un marqueur de type de groupe, pas un quantifieur ;
+            #     sauter le préfixe pour ne pas marquer le groupe.
+            if i < n and pattern[i] == "?":
+                i += 1
+                while i < n and pattern[i] in ":<>=!P#aiLmsux_":
+                    i += 1
+                if i >= 2 and pattern[i - 1] == "<":
+                    # EN: (?P<name> — consume the name up to '>'
+                    # FR: (?P<name> — consommer le nom jusqu'à '>'
+                    while i < n and pattern[i] not in ")>":
+                        i += 1
+                    if i < n:
+                        i += 1
+            continue
+        if c == ")":
+            inner = stack.pop() if stack else False
+            i += 1
+            # EN: unbounded quantifier right after the group close?
+            # FR: quantifieur non borné juste après la fermeture ?
+            if i < n and _unbounded_quant(pattern, i) and inner:
+                return True
+            # EN: the parent "contains a quantifier" whenever the child
+            #     carried one — (a+)b inside (...) + is dangerous too.
+            # FR: le parent « contient un quantifieur » dès que l'enfant
+            #     en portait un — (a+)b dans (...) + est dangereux aussi.
+            if stack and inner:
+                stack[-1] = True
+            i += 1
+            continue
+        if c in "+*?{" and _any_quant(pattern, i) and stack:
+            stack[-1] = True
+        i += 1
+    return False
 
 
 class CustomRules:
@@ -123,6 +254,10 @@ class CustomRules:
                     re.compile(value)
                 except re.error as exc:
                     raise ValueError(f"bad regex: {exc}") from exc
+                if _has_nested_quantifier(value):
+                    raise ValueError(
+                        "nested quantifiers rejected (ReDoS risk) — "
+                        "rewrite without (…+/…*)+" )
             if c["op"] == "cidr":
                 ipaddress.ip_network(value, strict=False)
             if c["op"] in ("gt", "lt") and \

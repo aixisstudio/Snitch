@@ -95,3 +95,20 @@ def test_get_alerts_reads_persisted():
     rows = db.get_alerts(100)
     hit = [r for r in rows if r["id"] == alert["id"]]
     assert hit and hit[0]["type"] == "PORT_SCAN" and hit[0]["details"]["ports"] == 25
+
+
+def test_alert_buffer_cap_counts_drops():
+    """EN: The alert buffer is bounded — past _MAX_PENDING_ALERTS the
+    oldest quarter is evicted and alerts_dropped() counts it. Flush at the
+    end so the suite's buffer state stays clean.
+    FR: Le tampon d'alertes est borné — au-delà de la borne le quart le
+    plus ancien est évincé et alerts_dropped() le compte. Flush final pour
+    garder l'état propre."""
+    before = db.alerts_dropped()
+    for i in range(db._MAX_PENDING_ALERTS + 1):
+        db.log_alert({
+            "id": f"cap-{i}", "timestamp": "2026-01-01T00:00",
+            "type": "T", "severity": "info", "message": "m",
+        })
+    assert db.alerts_dropped() > before
+    db.flush()
