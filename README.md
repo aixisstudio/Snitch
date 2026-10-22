@@ -57,6 +57,7 @@ The entire interface is available in **English and French**: use the `EN / FR` t
 | Tracker Detection | Suffix-matched domain lists shipped as editable data files (`backend/classifier/lists/`) |
 | Bandwidth Monitor | Live MB/s sparkline |
 | EN / FR UI | Full bilingual interface, one click to switch |
+| Light / Dark Theme | Follows your OS preference by default, manual toggle persists |
 
 ### Download
 
@@ -245,6 +246,7 @@ Toute l'interface est disponible en **français et en anglais** : utilisez le s�
 | Détection de trackers | Listes de domaines par suffixe, livrées en fichiers de données éditables (`backend/classifier/lists/`) |
 | Moniteur de débit | Sparkline MB/s en direct |
 | UI FR / EN | Interface entièrement bilingue, bascule en un clic |
+| Thème clair / sombre | Suit la préférence système par défaut, bascule manuelle persistée |
 
 ### Téléchargement
 
