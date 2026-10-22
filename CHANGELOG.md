@@ -6,6 +6,19 @@ All notable changes to Snitch. / Toutes les modifications notables de Snitch.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/) — EN/FR.
 
+## [1.6.0] — 2026-10-22 — enterprise layer / couche entreprise
+
+### Added / Ajouté
+
+- **Security-as-Code config file / Fichier de config Security-as-Code** — `backend/configfile.py` applies `$SNITCH_CONFIG`, else `snitch.toml`/`snitch.json` in the data dir at startup; every declared key overrides the DB so Ansible/Puppet/GPO provision Snitch with one file (`packaging/snitch.toml.example`). / `configfile.py` applique `$SNITCH_CONFIG` ou `snitch.toml`/`.json` du data dir ; chaque clé déclarée écrase la DB — un fichier suffit pour provisionner.
+- **Sigma rule import / Import de règles Sigma** — `POST /alerts/rules/sigma` + `detection/sigma.py`: a bounded, documented subset (field selections, `|contains`/`|startswith`/`|endswith`/`|re`/`|cidr`/`|gt`/`|lt`/`|all`, `1 of`/`all of` conditions) compiled into multi-clause AND custom rules (`conds:`); unmappable selections are reported in `skipped`, never mistranslated. / Sous-ensemble borné et documenté compilé en règles AND multi-clauses ; les sélections non mappables sont rapportées dans `skipped`.
+- **IP threat feeds / Flux TI IP** — `POST /firewall/blocklist` accepts `kind: "ip"` (Blocklist.de, URLhaus/Feodo exports, plain IP-per-line or CSV) imported as `ip` rules; private/reserved/loopback never imported, CIDRs over 4096 addresses rejected. `kind: "domain"` unchanged. / `kind: "ip"` importe les flux IP en règles `ip` ; privées/réservées jamais importées.
+- **Fleet console view / Vue console de flotte** — `GET /remote/fleet` merges every `gossip_peers` node's `/security/audit` (agent count, worst/mean hardening score, per-peer findings) — any Snitch instance can act as the collector; per-peer failures degrade gracefully. / `GET /remote/fleet` fusionne les `/security/audit` des pairs — n'importe quelle instance fait collecteur.
+- **CEF syslog output / Sortie syslog CEF** — `syslog_format: "cef"` wraps forwarded alerts in `CEF:0|Cognition|Snitch|…` (ArcSight/Wazuh/Splunk-ready) over the same UDP/TCP syslog path; `rfc3164` remains the default. / `syslog_format: "cef"` enveloppe les alertes en CEF; `rfc3164` reste le défaut.
+- **ECS export / Export ECS** — `GET /forensics/export?format=ecs` emits NDJSON Elastic Common Schema 8.11 (alerts → `event.kind=alert`, process entries carry `file.hash.sha256`), ingestible by Elastic Agent/Logstash/OpenSearch. / NDJSON ECS 8.11 ingérable par Elastic/Logstash/OpenSearch.
+- **Deployment assets / Assets de déploiement** — hardened systemd unit (`deploy/systemd/`), Ansible role + playbook (`deploy/ansible/`), Helm chart for collector/agent modes (`deploy/helm/snitch/`), nfpm config for .deb/.rpm (`packaging/nfpm.yaml`), MkDocs site (`mkdocs.yml`), integration guide `docs/INTEGRATIONS.md` (Wazuh, Splunk, Graylog/Loki, Ansible, Docker/K8s), canonical GitHub labels (`.github/labels.yml`). / Unité systemd durcie, rôle Ansible, chart Helm (collecteur/agent), nfpm .deb/.rpm, site MkDocs, guide d'intégrations, labels GitHub.
+- **Multi-clause custom rules / Règles multi-clauses** — `customrules` rules may now carry `conds:` (Sigma-style AND over any field set); the single `field/op/value` form is unchanged. / Les règles acceptent `conds:` (AND multi-champs façon Sigma) ; la forme simple est inchangée.
+
 ## [1.5.3] — 2026-10-22
 
 ### Added / Ajouté

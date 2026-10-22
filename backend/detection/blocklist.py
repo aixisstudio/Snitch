@@ -79,6 +79,56 @@ def parse_domains(text: str) -> list[str]:
     return out
 
 
+def parse_ips(text: str) -> list[str]:
+    """EN: Extract unique PUBLIC IPs from IP-feed text — one-per-line
+    lists (Blocklist.de, Feodo CSV `ip,port,...`), CIDR lines expanded
+    only for /32-/64 hosts, hosts-format lines use their first token.
+    Private/reserved/loopback addresses are skipped — an IP feed never
+    rewrites your LAN into the firewall. Order-preserving dedupe.
+    FR: Extraire les IP PUBLIQUES uniques d'un flux IP — listes une-par-
+    ligne (Blocklist.de, CSV Feodo `ip,port,…`), CIDR limité aux hôtes
+    /32-/64, format hosts = premier token. Les IP privées/réservées/
+    loopback sont ignorées — un flux IP ne réécrit jamais le LAN dans
+    le pare-feu. Dédup en conservant l'ordre."""
+    seen: set[str] = set()
+    out: list[str] = []
+    for raw in text.splitlines():
+        line = raw.split("#", 1)[0].strip()
+        if not line:
+            continue
+        # EN: CSV feeds ("ip,port,...") or plain "ip" / "ip port"-style.
+        # FR: Flux CSV (« ip,port,… ») ou « ip » / « ip port » simple.
+        token = re.split(r"[,\s;]", line, maxsplit=1)[0].strip()
+        if "/" in token:
+            try:
+                net = ipaddress.ip_network(token, strict=False)
+            except ValueError:
+                continue
+            if net.num_addresses > 4096:
+                continue                      # EN: refuse giant CIDRs / FR: refuser les gros CIDR
+            for ip in net.hosts() if net.num_addresses > 2 else net:
+                s = str(ip)
+                if s not in seen and not ip.is_private \
+                        and not ip.is_reserved and not ip.is_loopback \
+                        and not ip.is_link_local and not ip.is_multicast:
+                    seen.add(s)
+                    out.append(s)
+            continue
+        try:
+            ip = ipaddress.ip_address(token)
+        except ValueError:
+            continue
+        if ip.is_private or ip.is_reserved or ip.is_loopback \
+                or ip.is_link_local or ip.is_multicast \
+                or ip.is_unspecified:
+            continue
+        s = str(ip)
+        if s not in seen:
+            seen.add(s)
+            out.append(s)
+    return out
+
+
 def _looks_like_ip(token: str) -> bool:
     try:
         ipaddress.ip_address(token)

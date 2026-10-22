@@ -113,3 +113,41 @@ class PeerSync:
     def status(self) -> dict:
         return {"peers": self._peers,
                 "last": dict(self._state)}
+
+    def fleet_audit(self) -> dict:
+        """EN: Lightweight fleet console — GET /security/audit from every
+        configured peer (authenticated, bounded timeout, failures are
+        per-peer errors not crashes) and merge into one view: agent
+        count, worst score, per-peer findings. This is the honest
+        minimal version of "regroup N agents in one dashboard" — peers
+        are still the operator-listed gossip_peers, so trust domain is
+        unchanged. / FR: Console de flotte légère — GET /security/audit
+        de chaque pair configuré et fusion en une vue. Version honnête
+        minimale du « regrouper N agents » — les pairs sont les
+        gossip_peers de l'opérateur, domaine de confiance inchangé."""
+        agents: list[dict] = []
+        for peer in self._peers:
+            req = urllib.request.Request(
+                f"{peer}/security/audit",
+                headers={"Authorization":
+                         f"Bearer {self._token_getter()}"})
+            try:
+                with urllib.request.urlopen(req, timeout=_TIMEOUT) as r:
+                    data = json.loads(r.read().decode("utf-8", "replace"))
+                data["peer"] = peer
+                data["reachable"] = True
+                agents.append(data)
+            except urllib.error.HTTPError as e:
+                agents.append({"peer": peer, "reachable": False,
+                               "error": f"http {e.code}"})
+            except (urllib.error.URLError, OSError, ValueError) as e:
+                agents.append({"peer": peer, "reachable": False,
+                               "error": str(e)[:160]})
+        scores = [a["score"] for a in agents
+                  if a.get("reachable") and isinstance(a.get("score"), int)]
+        return {"agent_count": len(agents),
+                "reachable": sum(1 for a in agents if a.get("reachable")),
+                "worst_score": min(scores) if scores else None,
+                "mean_score": round(sum(scores) / len(scores), 1)
+                if scores else None,
+                "agents": agents}

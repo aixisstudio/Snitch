@@ -1,0 +1,62 @@
+---
+# Snitch — minimal Ansible role (headless Linux deploy)
+# EN: Installs the backend into /opt/snitch, drops the declarative
+#     config (/etc/snitch/snitch.toml — the Security-as-Code file the
+#     backend applies at startup) and enables the systemd unit.
+#     Usage:  ansible-playbook -i hosts deploy/ansible/site.yml
+# FR: Installe le backend dans /opt/snitch, dépose la config
+#     déclarative (/etc/snitch/snitch.toml — le fichier Security-as-Code
+#     appliqué au démarrage) et active l'unité systemd.
+
+- name: Create the snitch system user / Créer l'utilisateur système snitch
+  ansible.builtin.user:
+    name: snitch
+    system: true
+    create_home: false
+    shell: /usr/sbin/nologin
+
+- name: Install runtime dependencies / Installer les dépendances
+  ansible.builtin.package:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - python3
+    - python3-venv
+    - libpcap0.8          # EN: Debian name — override for dnf distros / FR: nom Debian — surcharger pour dnf
+  ignore_errors: true     # EN: package names differ across distros / FR: noms différents selon la distro
+
+- name: Deploy the backend tree / Déployer l'arborescence backend
+  ansible.builtin.copy:
+    src: backend/
+    dest: /opt/snitch/backend/
+    owner: root
+    group: snitch
+    mode: "0644"
+
+- name: Create the virtualenv + pinned deps / Créer le venv + deps épinglées
+  ansible.builtin.pip:
+    requirements: /opt/snitch/backend/requirements.txt
+    virtualenv: /opt/snitch/backend/env
+    virtualenv_python: python3
+
+- name: Deploy the declarative config / Déployer la config déclarative
+  ansible.builtin.template:
+    src: snitch.toml.j2
+    dest: /etc/snitch/snitch.toml
+    owner: root
+    group: snitch
+    mode: "0640"
+
+- name: Deploy + enable the systemd unit / Déployer + activer l'unité
+  ansible.builtin.copy:
+    src: systemd/snitch.service
+    dest: /etc/systemd/system/snitch.service
+    mode: "0644"
+  notify: reload systemd
+
+- name: Start snitch / Démarrer snitch
+  ansible.builtin.systemd:
+    name: snitch
+    state: started
+    enabled: true
+    daemon_reload: true

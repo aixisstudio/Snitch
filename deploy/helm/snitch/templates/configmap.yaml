@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "snitch.fullname" . }}-config
+  labels:
+    app: {{ include "snitch.name" . }}
+data:
+  snitch.toml: |
+    # EN: Declarative config rendered from .Values.config
+    # FR: Config déclarative rendue depuis .Values.config
+    {{- if .Values.config.syslog_addr }}
+    syslog_addr = {{ .Values.config.syslog_addr | quote }}
+    syslog_format = {{ .Values.config.syslog_format | quote }}
+    {{- end }}
+    ask_enabled = {{ .Values.config.ask_enabled }}
+    kill_switch_enabled = {{ .Values.config.kill_switch_enabled }}
+    gossip_peers = {{ .Values.config.gossip_peers | toJson }}

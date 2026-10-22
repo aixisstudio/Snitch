@@ -87,55 +87,79 @@ class CustomRules:
 
     # ── CRUD ─────────────────────────────────────────────────────────────────
 
+    @staticmethod
+    def _clauses(rule: dict) -> list[dict]:
+        """EN: The rule's AND-clauses — `conds` (Sigma-style multi-field
+        AND) when present, else the single top-level condition.
+        FR: Les clauses AND de la règle — `conds` (multi-champ façon
+        Sigma) si présentes, sinon la condition simple."""
+        return rule.get("conds") or [rule]
+
     def _validate(self, rule: dict) -> None:
-        if rule.get("field") not in _FIELDS:
-            raise ValueError(f"unknown field: {rule.get('field')}")
-        if rule.get("op") not in _OPS:
-            raise ValueError(f"unknown op: {rule.get('op')}")
+        clauses = self._clauses(rule)
+        if not clauses or len(clauses) > 16:
+            raise ValueError("a rule needs 1..16 clauses")
+        first_field = clauses[0].get("field")
+        for c in clauses:
+            if c.get("field") not in _FIELDS:
+                raise ValueError(f"unknown field: {c.get('field')}")
+            if c.get("op") not in _OPS:
+                raise ValueError(f"unknown op: {c.get('op')}")
+            # EN: asn/country need the local geo DB — eq/ne/contains on
+            #     the resolved value only.
+            # FR: asn/country exigent la base geo — eq/ne/contains
+            #     seulement sur la valeur résolue.
+            if c.get("field") in ("asn", "country") and \
+                    c.get("op") not in ("eq", "ne", "contains"):
+                raise ValueError(f"op {c.get('op')} not meaningful for "
+                                 f"{c.get('field')}")
+            value = str(c.get("value", ""))
+            if not value:
+                raise ValueError("empty value")
+            if c["op"] == "regex":
+                if len(value) > _MAX_PATTERN:
+                    raise ValueError("pattern too long")
+                try:
+                    re.compile(value)
+                except re.error as exc:
+                    raise ValueError(f"bad regex: {exc}") from exc
+            if c["op"] == "cidr":
+                ipaddress.ip_network(value, strict=False)
+            if c["op"] in ("gt", "lt") and \
+                    c["field"] in ("remote_port", "size"):
+                int(value)                           # EN: numeric ops need numbers / FR: ops numériques
         if rule.get("severity", "warning") not in _SEVERITIES:
             raise ValueError(f"unknown severity: {rule.get('severity')}")
         if rule.get("action", "alert") not in _ACTIONS:
             raise ValueError(f"unknown action: {rule.get('action')}")
-        # EN: asn/country need the local geo DB — eq/ne/contains on the
-        #     resolved value only; cidr/gt/lt would be meaningless.
-        # FR: asn/country exigent la base geo locale — eq/ne/contains sur
-        #     la valeur résolue seulement.
-        if rule.get("field") in ("asn", "country") and \
-                rule.get("op") not in ("eq", "ne", "contains"):
-            raise ValueError(f"op {rule.get('op')} not meaningful for "
-                             f"{rule.get('field')}")
         if rule.get("action") == "block" and \
-                rule.get("field") not in ("remote_ip", "host",
-                                          "process_name", "asn", "country"):
+                first_field not in ("remote_ip", "host",
+                                    "process_name", "asn", "country"):
             raise ValueError("block action needs a blockable field "
                              "(remote_ip/host/process_name/asn/country)")
-        value = str(rule.get("value", ""))
-        if not value:
-            raise ValueError("empty value")
-        if rule["op"] == "regex":
-            if len(value) > _MAX_PATTERN:
-                raise ValueError("pattern too long")
-            try:
-                re.compile(value)
-            except re.error as exc:
-                raise ValueError(f"bad regex: {exc}") from exc
-        if rule["op"] == "cidr":
-            ipaddress.ip_network(value, strict=False)
-        if rule["op"] in ("gt", "lt") and rule["field"] in ("remote_port", "size"):
-            int(value)                               # EN: numeric ops need numbers / FR: ops numériques
 
     def add(self, name: str, field: str, op: str, value: str,
-            severity: str = "warning", action: str = "alert") -> dict:
+            severity: str = "warning", action: str = "alert",
+            conds: Optional[list] = None) -> dict:
         if len(self._rules) >= _MAX_RULES:
             raise ValueError("rule limit reached")
         rule = {
             "id": uuid.uuid4().hex[:10],
             "name": (name or "").strip()[:120] or f"{field} {op} {value}",
-            "field": field, "op": op, "value": str(value).strip(),
             "severity": severity, "enabled": True,
             "action": action or "alert",
             "hits": 0, "created": time.time(),
         }
+        if conds:
+            # EN: Multi-clause AND rule (Sigma-style selection) — no
+            #     top-level field/op/value. / FR: Règle AND multi-clauses
+            #     (selection façon Sigma) — pas de field/op/value simple.
+            rule["conds"] = [{"field": str(c.get("field", "")),
+                              "op": str(c.get("op", "")),
+                              "value": str(c.get("value", "")).strip()}
+                             for c in conds]
+        else:
+            rule.update(field=field, op=op, value=str(value).strip())
         self._validate(rule)
         self._rules.append(rule)
         return rule
@@ -234,8 +258,11 @@ class CustomRules:
         for r in self._rules:
             if not r.get("enabled"):
                 continue
-            if self._match_one(
-                    r, self._field_value(pkt, r["field"], geo)):
+            # EN: every clause of the rule must match (Sigma-style AND).
+            # FR: chaque clause de la règle doit matcher (AND façon Sigma).
+            if all(self._match_one(
+                    c, self._field_value(pkt, c["field"], geo))
+                    for c in self._clauses(r)):
                 h = self._hits.setdefault(r["id"], {"count": 0, "last": 0.0})
                 h["count"] += 1
                 h["last"] = time.time()

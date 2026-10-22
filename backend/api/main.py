@@ -382,6 +382,13 @@ class BlocklistBody(BaseModel):
     url: str = ""
     action: str = "block"
     max_entries: int = 500
+    # EN: "domain" (hosts/domain lists — StevenBlack…) or "ip"
+    #     (IP feeds — Blocklist.de, URLhaus/Feodo exports). Default
+    #     keeps the historic domain behaviour.
+    # FR: « domain » (listes hosts/domaines — StevenBlack…) ou « ip »
+    #     (flux IP — Blocklist.de, exports URLhaus/Feodo). Le défaut
+    #     conserve le comportement historique.
+    kind: str = "domain"
 
 
 class CustomRuleBody(BaseModel):
@@ -1156,10 +1163,19 @@ def _process_batch(packets: list[Packet]) -> None:
         #     vraie règle pare-feu sur l'IP distante (dédupliquée).
         for m in custom_rules.check(pkt, geo)[:1]:
             r = m["rule"]
+            # EN: Single-condition rules show their clause; multi-clause
+            #     (Sigma) rules show the clause count — the full conds are
+            #     in details.rule either way. / FR: Les règles simples
+            #     affichent leur clause ; les règles multi-clauses
+            #     (Sigma) affichent le nombre — les conds complètes sont
+            #     dans details.rule.
+            cond = (f"{r['field']} {r['op']} {r['value']}"
+                    if r.get("field")
+                    else f"{len(r.get('conds', []))} clauses")
             a = Alert(
                 type="CUSTOM_RULE", severity=r["severity"],
                 message=f"Custom rule matched: {r['name']} "
-                        f"({r['field']} {r['op']} {r['value']}) — hit #{m['count']}"
+                        f"({cond}) — hit #{m['count']}"
                         + (" by " + pkt.process_name if pkt.process_name else ""),
                 node_id=remote_ip,
                 details={"rule": r, "process": pkt.process_name,
@@ -1838,6 +1854,17 @@ def _load_settings() -> None:
         whitelist et exclusions de processus survivent aux redémarrages.
     """
     global _port_filter, _excluded_processes, _whitelisted_ips, _watchlist
+    # EN: Security-as-Code — a snitch.toml/snitch.json in the data dir (or
+    #     $SNITCH_CONFIG) is applied FIRST, so fleet provisioning works
+    #     without touching the UI. Declared keys override the DB.
+    # FR: Security-as-Code — un snitch.toml/snitch.json dans le data dir
+    #     (ou $SNITCH_CONFIG) s'applique EN PREMIER : le provisionnement de
+    #     flotte marche sans toucher l'UI. Les clés déclarées priment.
+    try:
+        import configfile
+        configfile.apply(data_dir(), db.set_setting)
+    except Exception as e:                              # noqa: BLE001
+        logger.warning("config file apply failed: %s", e)
     _port_filter = db.get_setting("ports", []) or []
     _excluded_processes = set(db.get_setting("excluded_processes", []) or [])
     _whitelisted_ips = set(db.get_setting("whitelisted_ips", []) or [])
@@ -1870,7 +1897,9 @@ def _load_settings() -> None:
     notifier.configure(db.get_setting("webhook_url", "") or "",
                        bool(db.get_setting("webhook_enabled", False)),
                        db.get_setting("telegram_chat_id", "") or "",
-                       db.get_setting("syslog_addr", "") or "")
+                       db.get_setting("syslog_addr", "") or "",
+                       db.get_setting("syslog_format", "rfc3164") or "rfc3164",
+                       __version__)
     # EN: Opt-in IOC peer sync — explicit peer list only, packs leave only
     #     for operator-listed addresses (detection/gossip.py).
     # FR: Sync IOC entre pairs opt-in — liste explicite seulement.
@@ -2067,11 +2096,13 @@ async def post_settings(body: SettingsBody) -> dict:
             ti.configure(db.get_setting("ti_provider", "none") or "none",
                          db.get_setting("ti_api_key", "") or "")
         if key in ("webhook_url", "webhook_enabled", "telegram_chat_id",
-                   "syslog_addr"):
+                   "syslog_addr", "syslog_format"):
             notifier.configure(db.get_setting("webhook_url", "") or "",
                                bool(db.get_setting("webhook_enabled", False)),
                                db.get_setting("telegram_chat_id", "") or "",
-                               db.get_setting("syslog_addr", "") or "")
+                               db.get_setting("syslog_addr", "") or "",
+                               db.get_setting("syslog_format", "rfc3164")
+                               or "rfc3164", __version__)
         if key == "ask_enabled":
             # EN: Live toggle of NFQUEUE ask mode — stop is always safe;
             #     start reports platform availability honestly.
@@ -2813,6 +2844,8 @@ async def firewall_blocklist(body: BlocklistBody) -> dict:
         raise HTTPException(400, "provide exactly one of path or url")
     if body.action not in ("block", "sinkhole"):
         raise HTTPException(400, "action must be block or sinkhole")
+    if body.kind not in ("domain", "ip"):
+        raise HTTPException(400, "kind must be domain or ip")
     remote = bool(body.url)
 
     def _load_text() -> str:
@@ -2830,18 +2863,24 @@ async def firewall_blocklist(body: BlocklistBody) -> dict:
         text = await loop.run_in_executor(None, _load_text)
     except (ValueError, OSError) as exc:
         raise HTTPException(400, str(exc))
-    domains = blocklist.parse_domains(text)
+    # EN: `kind` picks the extractor — domains for hosts-style lists,
+    #     IPs for feed-style lists (private/reserved never imported).
+    # FR: `kind` choisit l'extracteur — domaines pour les listes façon
+    #     hosts, IP pour les flux (privées/réservées jamais importées).
+    parse = blocklist.parse_ips if body.kind == "ip" \
+        else blocklist.parse_domains
+    entries = parse(text)
     cap = blocklist.clamp_max(body.max_entries)
-    truncated = len(domains) > cap
-    domains = domains[:cap]
+    truncated = len(entries) > cap
+    entries = entries[:cap]
 
     def _apply() -> tuple[int, int]:
         added = skipped = 0
-        for d in domains:
-            if fw._find_rule("domain", d, body.action):
+        for d in entries:
+            if fw._find_rule(body.kind, d, body.action):
                 skipped += 1
                 continue
-            fw.add_rule("domain", d, body.action)
+            fw.add_rule(body.kind, d, body.action)
             added += 1
         return added, skipped
 
@@ -2849,7 +2888,8 @@ async def firewall_blocklist(body: BlocklistBody) -> dict:
     rules, lockdown = fw.serialized()
     db.set_setting("firewall_rules", rules)
     await broadcast({"type": "firewall", "rules": rules, "lockdown": lockdown})
-    return {"ok": True, "remote_fetch": remote, "parsed": len(domains),
+    return {"ok": True, "remote_fetch": remote, "kind": body.kind,
+            "parsed": len(entries),
             "added": added, "skipped": skipped, "truncated": truncated}
 
 
@@ -2889,6 +2929,42 @@ async def alert_rules_delete(rule_id: str) -> dict:
         raise HTTPException(404, "rule not found")
     db.set_setting("custom_rules", custom_rules.serialized())
     return {"ok": True}
+
+
+@app.post("/alerts/rules/sigma", dependencies=_AUTH)
+async def alert_rules_sigma(body: dict) -> dict:
+    """EN: Import a Sigma detection YAML — converted into custom rules
+        through detection/sigma.py's BOUNDED subset (detection field→value
+        maps, |modifiers, list OR/|all AND, selection/1-of/all-of
+        conditions). Unmappable selections are reported in `skipped`,
+        never silently mistranslated. Imported rules are alert-only
+        (Sigma has no block semantics).
+    FR: Importer un YAML Sigma — converti en règles custom via le
+        sous-ensemble BORNÉ de detection/sigma.py. Les sélections non
+        mappables sont rapportées dans `skipped`. Les règles importées
+        sont alert-only (Sigma n'a pas de sémantique de blocage)."""
+    import detection.sigma as sig
+    text = str((body or {}).get("yaml", ""))
+    if not text.strip() or len(text) > 200_000:
+        raise HTTPException(400, "empty or oversized sigma yaml")
+    try:
+        out = sig.convert(text)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    imported = []
+    for r in out["rules"]:
+        try:
+            rule = custom_rules.add(r["name"], None, None, None,
+                                    r["severity"], "alert",
+                                    conds=r["conds"])
+        except ValueError as exc:
+            out["skipped"].append(f"{r['name']}: {exc}")
+            continue
+        rule["sigma_id"] = r["sigma_id"]
+        imported.append(rule)
+    db.set_setting("custom_rules", custom_rules.serialized())
+    return {"ok": True, "imported": len(imported),
+            "rules": imported, "skipped": out["skipped"]}
 
 
 @app.post("/alerts/rules/{rule_id}/toggle", dependencies=_AUTH)
@@ -3166,6 +3242,21 @@ async def ioc_sync_status() -> dict:
     """EN: Peer-sync status — configured peers + per-peer last results.
     FR: État de la sync IOC — pairs configurés + derniers résultats."""
     return peer_sync.status()
+
+
+@app.get("/remote/fleet", dependencies=_AUTH)
+async def fleet_view() -> dict:
+    """EN: Lightweight fleet console — merges every configured peer's
+        /security/audit into one dashboard view (agent count, worst and
+        mean hardening score, per-agent findings). The "regroup N agents"
+        feature in its honest minimal form: any Snitch instance can act
+        as the collector; peers come from `gossip_peers`.
+    FR: Console de flotte légère — fusion des /security/audit de chaque
+        pair configuré (nombre d'agents, pire et moyenne des scores,
+        constats par agent). La version honnête minimale du « regrouper
+        N agents » : n'importe quelle instance peut jouer le collecteur."""
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, peer_sync.fleet_audit)
 
 
 @app.post("/remote/ioc_sync", dependencies=_AUTH)
@@ -3534,7 +3625,70 @@ async def forensics_export(process: Optional[str] = None,
         return _forensics_csv(bundle)
     if format == "stix":
         return _forensics_stix(bundle, ip=ip)
+    if format == "ecs":
+        return _forensics_ecs(bundle)
     return bundle
+
+
+def _forensics_ecs(bundle: dict) -> PlainTextResponse:
+    """EN: Elastic Common Schema NDJSON — one line per event so Elastic
+        Agent / Logstash / OpenSearch ingest it without a parser plugin.
+        Alerts map to event.kind=alert + destination/process slots;
+        process entries carry file.hash.sha256 for hash-based hunting.
+    FR: NDJSON Elastic Common Schema — une ligne par événement, ingérable
+        par Elastic Agent / Logstash / OpenSearch sans plugin. Les alertes
+        mappent event.kind=alert + destination/process ; les processus
+        portent file.hash.sha256 pour la chasse par hash."""
+    base = {
+        "ecs": {"version": "8.11"},
+        "observer": {"vendor": "Cognition", "product": "Snitch",
+                     "version": bundle["version"], "type": "firewall"},
+        "host": {"name": bundle["host"]},
+    }
+    lines: list[str] = []
+    for a in bundle.get("alerts", []):
+        det = a.get("details") or {}
+        ev = dict(base)
+        ev["@timestamp"] = a.get("timestamp") or bundle["generated_at"]
+        ev["event"] = {
+            "kind": "alert", "category": ["network"],
+            "type": ["indicator"], "dataset": "snitch.alerts",
+            "action": a.get("type", "ALERT"),
+            "severity": {"critical": 80, "warning": 50}.get(
+                a.get("severity"), 21),
+        }
+        if det.get("ip") or a.get("node_id"):
+            ev["destination"] = {"ip": det.get("ip") or a.get("node_id")}
+            if det.get("port"):
+                ev["destination"]["port"] = det["port"]
+        if det.get("process"):
+            ev["process"] = {"name": det["process"]}
+            if det.get("pid"):
+                ev["process"]["pid"] = det["pid"]
+        ev["message"] = a.get("message", "")
+        ev["rule"] = {"name": a.get("type", "?")}
+        lines.append(json.dumps(ev, ensure_ascii=False))
+    for p in bundle.get("processes", []):
+        ev = dict(base)
+        ev["@timestamp"] = bundle["generated_at"]
+        ev["event"] = {"kind": "event", "category": ["process"],
+                       "type": ["info"], "dataset": "snitch.forensics"}
+        proc = {"name": p.get("name"), "pid": p.get("pid"),
+                "executable": p.get("exe"),
+                "command_line": " ".join(p.get("cmdline") or [])}
+        if p.get("sha256"):
+            ev["file"] = {"hash": {"sha256": p["sha256"]},
+                          "path": p.get("exe")}
+        if p.get("parents"):
+            par = p["parents"][0]
+            proc["parent"] = {"name": par.get("name"),
+                              "pid": par.get("pid")}
+        ev["process"] = proc
+        lines.append(json.dumps(ev, ensure_ascii=False))
+    return PlainTextResponse(
+        "\n".join(lines) + "\n", media_type="application/x-ndjson",
+        headers={"Content-Disposition":
+                 'attachment; filename="snitch-forensics.ndjson"'})
 
 
 def _forensics_csv(bundle: dict) -> PlainTextResponse:

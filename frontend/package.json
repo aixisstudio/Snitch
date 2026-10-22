@@ -1,6 +1,6 @@
 {
   "name": "snitch-frontend",
-  "version": "1.5.3",
+  "version": "1.6.0",
   "private": true,
   "license": "AGPL-3.0-or-later",
   "description": "Snitch UI \u2014 React + D3.js / Interface React + D3.js",

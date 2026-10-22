@@ -1,0 +1,55 @@
+# Snitch — nfpm packaging (one file → .deb AND .rpm AND .apk)
+# EN: Build:  nfpm package -f packaging/nfpm.yaml -p deb
+#             nfpm package -f packaging/nfpm.yaml -p rpm
+#     Requires a prepared staging tree: backend/ + venv under /opt/snitch.
+#     Chocolatey/winget/brew formulas live in their own upstream repos —
+#     see docs/INTEGRATIONS.md for the submission steps.
+# FR: Build : nfpm package -f packaging/nfpm.yaml -p deb|rpm.
+#     Exige un arbre staging : backend/ + venv sous /opt/snitch. Les
+#     formulas choco/winget/brew vivent dans leurs dépôts upstream.
+name: snitch
+arch: amd64
+platform: linux
+version: "1.6.0"
+release: 1
+section: net
+priority: optional
+maintainer: "Snitch contributors <noreply@aixisstudio.github.io>"
+description: |
+  Local-first network observability and outbound firewall —
+  packet capture via libpcap, per-process traffic graph, alerting,
+  custom rules, Sigma import, CEF/ECS/syslog SIEM output.
+  Observabilité réseau local-first et pare-feu sortant.
+vendor: Snitch
+homepage: https://github.com/aixisstudio/Snitch
+license: AGPL-3.0-or-later
+contents:
+  - src: staging/opt/snitch/backend
+    dst: /opt/snitch/backend
+  - src: deploy/systemd/snitch.service
+    dst: /usr/lib/systemd/system/snitch.service
+    type: config|noreplace
+  - src: packaging/snitch.toml.example
+    dst: /etc/snitch/snitch.toml
+    type: config|noreplace
+overrides:
+  rpm:
+    contents:
+      - src: deploy/systemd/snitch.service
+        dst: /usr/lib/systemd/system/snitch.service
+  deb:
+    dependencies:
+      - python3
+      - python3-venv
+      - libpcap0.8
+  rpm:
+    dependencies:
+      - python3
+      - libpcap
+scripts:
+  postinstall: |
+    #!/bin/sh
+    id snitch >/dev/null 2>&1 || \
+        useradd --system --no-create-home --shell /usr/sbin/nologin snitch
+    systemctl daemon-reload >/dev/null 2>&1 || true
+    echo "Enable with: systemctl enable --now snitch"

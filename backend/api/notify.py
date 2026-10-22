@@ -42,6 +42,41 @@ _TIMEOUT_S = 8
 #     alertes Snitch dans un SIEM : warning→4, critical→2.
 _SEV_TO_SYSLOG = {"warning": 4, "critical": 2}
 
+# EN: CEF (ArcSight Common Event Format) 0–10 scale — SIEM connectors
+#     (Wazuh, Graylog, Splunk UF, Elastic Agent) parse it natively.
+# FR: Échelle CEF 0–10 — les connecteurs SIEM le parsent nativement.
+_SEV_TO_CEF = {"warning": 5, "critical": 8}
+
+
+def _cef_escape(s: str, header: bool = False) -> str:
+    """EN: CEF escaping — `\\` everywhere, `|` in header fields,
+    `=`+newlines in extension values. / FR: Échappement CEF."""
+    s = str(s).replace("\\", "\\\\")
+    if header:
+        return s.replace("|", "\\|")
+    return s.replace("=", "\\=").replace("\n", "\\n").replace("\r", "")
+
+
+def to_cef(alert: dict, version: str) -> str:
+    """EN: One alert as a CEF:0 line — vendor/product/version/signature/
+    name/severity then the extension. `details.ip/process` map to the
+    standard dst/sproc slots so SIEM correlation works out of the box.
+    FR: Une alerte en ligne CEF:0 — `details.ip/process` mappent les
+    champs standard dst/sproc pour la corrélation SIEM directe."""
+    sev = _SEV_TO_CEF.get(alert.get("severity"), 3)
+    det = alert.get("details") or {}
+    ext = {
+        "rt": alert.get("timestamp") or "",
+        "dst": det.get("ip") or alert.get("node_id") or "",
+        "sproc": det.get("process") or "",
+        "cs1Label": "alertType", "cs1": alert.get("type") or "",
+        "cs2Label": "reasons", "cs2": ",".join(det.get("reasons") or []),
+    }
+    ext_s = " ".join(f"{k}={_cef_escape(v)}" for k, v in ext.items() if v)
+    return "CEF:0|Cognition|Snitch|{}|{}|{}|{}|{}".format(
+        _cef_escape(version, True), _cef_escape(alert.get("type"), True),
+        _cef_escape(alert.get("message"), True), sev, ext_s)
+
 
 class WebhookNotifier:
     """EN: Holds webhook settings + dispatches alert payloads.
@@ -53,14 +88,23 @@ class WebhookNotifier:
         self._enabled = False
         self._chat_id = ""
         self._syslog = ""
+        self._syslog_format = "rfc3164"
+        self._version = "?"
 
     def configure(self, url: str, enabled: bool, chat_id: str = "",
-                  syslog_addr: str = "") -> None:
+                  syslog_addr: str = "", syslog_format: str = "rfc3164",
+                  version: str = "?") -> None:
         with self._lock:
             self._url = (url or "").strip()
             self._enabled = bool(enabled)
             self._chat_id = (chat_id or "").strip()
             self._syslog = (syslog_addr or "").strip()
+            # EN: "cef" wraps the message in ArcSight CEF inside the
+            #     syslog envelope — anything else keeps plain RFC 3164.
+            # FR: « cef » enveloppe le message en CEF ArcSight dans
+            #     l'enveloppe syslog — sinon RFC 3164 brut.
+            self._syslog_format = "cef" if syslog_format == "cef" else "rfc3164"
+            self._version = version
 
     def config(self) -> dict:
         with self._lock:
@@ -68,7 +112,8 @@ class WebhookNotifier:
                     "url_set": bool(self._url),
                     "url_masked": (self._url[:32] + "…") if len(self._url) > 32 else self._url,
                     "chat_id_set": bool(self._chat_id),
-                    "syslog_set": bool(self._syslog)}
+                    "syslog_set": bool(self._syslog),
+                    "syslog_format": self._syslog_format}
 
     def dispatch(self, alert: dict) -> None:
         """EN: Synchronous POST — must run in an executor, never on the event
@@ -79,15 +124,20 @@ class WebhookNotifier:
             url, enabled, chat_id = \
                 self._url, self._enabled, self._chat_id
             syslog_addr = self._syslog
+            syslog_format = self._syslog_format
+            version = self._version
         if alert.get("severity") not in _FORWARD:
             return
         text = f"[{alert.get('severity','').upper()}] {alert.get('type')}: {alert.get('message')}"
         # EN: Syslog path is independent of webhook_enabled — a SIEM user
-        #     may want ONLY syslog. UDP by default, tcp:// for TCP.
+        #     may want ONLY syslog. UDP by default, tcp:// for TCP. The
+        #     body is RFC 3164 text or a CEF:0 payload per syslog_format.
         # FR: Le chemin syslog est indépendant du webhook — UDP par
-        #     défaut, tcp:// pour TCP.
+        #     défaut. Le corps est du texte RFC 3164 ou un payload CEF:0
+        #     selon syslog_format.
         if syslog_addr:
-            self._send_syslog(syslog_addr, alert, text)
+            body = to_cef(alert, version) if syslog_format == "cef" else text
+            self._send_syslog(syslog_addr, alert, body)
         if not enabled or not url:
             return
         if "discord.com" in url or "slack.com" in url:

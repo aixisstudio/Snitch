@@ -1,0 +1,25 @@
+# Snitch — Docs-as-Code (MkDocs)
+# EN: Serve locally with `pip install mkdocs-material && mkdocs serve`.
+#     English files only in the nav — every doc ships 6 translations next
+#     to it (*.de.md, *.fr.md inside the same tree).
+# FR: Servir localement : `pip install mkdocs-material && mkdocs serve`.
+#     Nav anglaise — chaque doc a 6 traductions à côté.
+site_name: Snitch
+site_description: Local-first network observability & outbound firewall
+repo_url: https://github.com/aixisstudio/Snitch
+docs_dir: docs
+theme:
+  name: readthedocs
+nav:
+  - Home: ../README.md
+  - Architecture: architecture.md
+  - Firewall & blocking: FIREWALL.md
+  - Integrations (SIEM/deploy): INTEGRATIONS.md
+  - Packaging & signing: PACKAGING.md
+  - Signing deep-dive: SIGNING.md
+  - Threat model: threat-model.md
+  - Privacy score: privacy-score.md
+markdown_extensions:
+  - admonition
+  - toc:
+      permalink: true

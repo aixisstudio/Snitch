@@ -1,0 +1,11 @@
+---
+# Snitch — example site playbook / playbook d'exemple
+#   ansible-playbook -i inventory deploy/ansible/site.yml
+- hosts: snitch_agents
+  become: true
+  vars:
+    snitch_syslog_addr: "siem.example.com:514"
+    snitch_syslog_format: "cef"
+    snitch_peers: ["sec-01:8000", "sec-02:8000"]
+  roles:
+    - snitch

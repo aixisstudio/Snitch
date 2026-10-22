@@ -1,0 +1,38 @@
+{{- if ne .Values.mode "agent" }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "snitch.fullname" . }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - port: {{ .Values.service.port }}
+      targetPort: 8000
+  selector:
+    app: {{ include "snitch.name" . }}
+{{- end }}
+{{- if .Values.token }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "snitch.fullname" . }}-token
+type: Opaque
+stringData:
+  token: {{ .Values.token }}
+{{- end }}
+{{- if .Values.persistence.enabled }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "snitch.fullname" . }}-data
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: {{ .Values.persistence.size }}
+  {{- if .Values.persistence.storageClass }}
+  storageClassName: {{ .Values.persistence.storageClass }}
+  {{- end }}
+{{- end }}

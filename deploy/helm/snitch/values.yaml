@@ -1,0 +1,43 @@
+# Snitch Helm values / valeurs Helm Snitch
+image:
+  repository: ghcr.io/aixisstudio/snitch
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+# EN: "collector" exposes the API in-cluster and polls peers via
+#     /remote/fleet; "agent" runs as a DaemonSet on each node.
+# FR: « collector » expose l'API dans le cluster et sonde les pairs via
+#     /remote/fleet ; « agent » tourne en DaemonSet sur chaque nœud.
+mode: collector
+replicas: 1
+
+service:
+  type: ClusterIP
+  port: 8000
+
+# EN: A fixed API token — REQUIRED for anything reachable off-loopback.
+#     Generate once: openssl rand -hex 32
+# FR: Jeton API fixe — REQUIS pour tout accès hors loopback.
+token: ""
+
+# EN: Declarative settings — rendered into snitch.toml (Security-as-Code).
+# FR: Réglages déclaratifs — rendus dans snitch.toml.
+config:
+  syslog_addr: ""
+  syslog_format: "cef"
+  ask_enabled: false
+  kill_switch_enabled: true
+  # EN: Agent-mode: list each OTHER node here so /remote/fleet can merge.
+  # FR: Mode agent : lister les AUTRES nœuds pour /remote/fleet.
+  gossip_peers: []
+
+persistence:
+  enabled: true
+  size: 1Gi
+  storageClass: ""
+
+# EN: Agent capture needs NET_RAW/NET_ADMIN on the node — granted only
+#     in agent mode. Collector stays unprivileged.
+# FR: La capture agent exige NET_RAW/NET_ADMIN sur le nœud — accordés
+#     seulement en mode agent. Le collecteur reste non privilégié.
+agentCapabilities: true

@@ -241,6 +241,31 @@ snitch/
 └── dist/          Compiled output (backend exe, installer)
 ```
 
+### Enterprise & fleet
+
+Snitch also ships as a headless agent for SOC/SOC-adjacent deployments —
+everything is file-driven and free:
+
+- **Security-as-Code** — one `snitch.toml` (or `$SNITCH_CONFIG`) overrides
+  every setting at startup; provision a whole fleet with Ansible
+  (`deploy/ansible/`), Puppet, Salt or GPO.
+- **SIEM-native** — CEF or RFC 3164 syslog, generic webhooks, and
+  `GET /forensics/export?format=ecs` (Elastic Common Schema NDJSON) feed
+  Wazuh, Splunk, Graylog, Loki and Elastic out of the box.
+- **Sigma import** — `POST /alerts/rules/sigma` compiles a documented
+  Sigma subset into Snitch rules (`skipped` reasons for anything
+  unmappable, never silent).
+- **Fleet view** — `GET /remote/fleet` merges every configured peer's
+  hardening audit into one dashboard; a Helm chart
+  (`deploy/helm/snitch`) runs the collector in-cluster.
+- **Headless** — hardened systemd unit (`deploy/systemd/`), nfpm
+  `.deb`/`.rpm` packaging (`packaging/`), Docker image — no GUI needed.
+- **Free threat feeds** — `POST /firewall/blocklist` imports domain
+  (StevenBlack) and IP (Blocklist.de, URLhaus/Feodo) lists, locally or
+  via explicit opt-in fetch.
+
+Step-by-step recipes live in [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md).
+
 ### Contribute
 
 Bug reports and PRs are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md).
@@ -410,6 +435,30 @@ snitch/
 ├── data/          Données d'exécution (SQLite, bases .mmdb dans geo/)
 └── dist/          Sortie compilée (exe backend, installateur)
 ```
+
+### Entreprise & flotte
+
+Snitch fonctionne aussi en agent headless pour déploiements SOC — tout
+est piloté par fichiers et gratuit :
+
+- **Security-as-Code** — un `snitch.toml` (ou `$SNITCH_CONFIG`) écrase
+  chaque réglage au démarrage ; provisionnez toute une flotte via Ansible
+  (`deploy/ansible/`), Puppet, Salt ou GPO.
+- **Natif SIEM** — syslog CEF ou RFC 3164, webhooks génériques et
+  `GET /forensics/export?format=ecs` (NDJSON Elastic Common Schema)
+  alimentent Wazuh, Splunk, Graylog, Loki et Elastic.
+- **Import Sigma** — `POST /alerts/rules/sigma` compile un sous-ensemble
+  Sigma documenté en règles Snitch (motifs `skipped` pour l'inmappable).
+- **Vue de flotte** — `GET /remote/fleet` fusionne l'audit de durcissement
+  de chaque pair ; un chart Helm (`deploy/helm/snitch`) fait tourner le
+  collecteur en cluster.
+- **Headless** — unité systemd durcie (`deploy/systemd/`), packaging
+  `.deb`/`.rpm` via nfpm (`packaging/`), image Docker — sans GUI.
+- **Flux TI gratuits** — `POST /firewall/blocklist` importe les listes
+  de domaines (StevenBlack) et d'IP (Blocklist.de, URLhaus/Feodo),
+  localement ou via fetch opt-in explicite.
+
+Recettes pas-à-pas dans [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md).
 
 ### Contribuer
 

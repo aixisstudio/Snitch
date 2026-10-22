@@ -90,7 +90,7 @@ def score(name: str) -> Optional[dict]:
     name = name.rstrip(".").lower()
     if name.replace(".", "").isdigit() or ":" in name:
         return None                              # EN: IP literal / FR: IP
-    labels = [l for l in name.split(".") if l]
+    labels = [lbl for lbl in name.split(".") if lbl]
     if len(labels) < 2:
         return None
 

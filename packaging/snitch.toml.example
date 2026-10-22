@@ -1,0 +1,25 @@
+# Snitch — declarative config example / exemple de config déclarative.
+# Copy to /etc/snitch/snitch.toml (or $SNITCH_CONFIG, or the data dir).
+# Copier vers /etc/snitch/snitch.toml (ou $SNITCH_CONFIG, ou le data dir).
+
+# EN: SIEM forwarding — syslog_format: "cef" | "rfc3164"
+# FR: Relais SIEM — syslog_format : « cef » | « rfc3164 »
+# syslog_addr = "siem.example.com:514"     # udp — tcp://host:514 for TCP
+# syslog_format = "cef"
+
+# EN: Ask-on-first-connect (Linux NFQUEUE) — needs root, off on headless.
+# FR: Ask-on-first-connect (NFQUEUE Linux) — root requis, off en headless.
+ask_enabled = false
+ask_timeout = 20
+ask_failopen = false
+
+# EN: Automatic volume kill-switch. / FR: Kill-switch de volume auto.
+kill_switch_enabled = true
+upload_threshold_mb = 500
+
+# EN: Fleet peers for IOC gossip + /remote/fleet merge.
+# FR: Pairs de flotte pour le gossip IOC + fusion /remote/fleet.
+# gossip_peers = ["sec-01.corp:8000"]
+
+# EN: Monitored ports (empty = all). / FR: Ports surveillés (vide = tous).
+# ports = [80, 443]

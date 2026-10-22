@@ -1,0 +1,72 @@
+apiVersion: apps/v1
+kind: {{ if eq .Values.mode "agent" }}DaemonSet{{ else }}Deployment{{ end }}
+metadata:
+  name: {{ include "snitch.fullname" . }}
+  labels:
+    app: {{ include "snitch.name" . }}
+spec:
+  {{- if ne .Values.mode "agent" }}
+  replicas: {{ .Values.replicas }}
+  {{- end }}
+  selector:
+    matchLabels:
+      app: {{ include "snitch.name" . }}
+  template:
+    metadata:
+      labels:
+        app: {{ include "snitch.name" . }}
+    spec:
+      hostNetwork: {{ eq .Values.mode "agent" }}
+      containers:
+        - name: snitch
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: 8000
+          env:
+            - name: SNITCH_BIND
+              value: "0.0.0.0"
+            - name: SNITCH_PORT
+              value: "8000"
+            - name: SNITCH_CONFIG
+              value: /etc/snitch/snitch.toml
+            - name: SNITCH_DATA_DIR
+              value: /var/lib/snitch
+            {{- if .Values.token }}
+            - name: SNITCH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "snitch.fullname" . }}-token
+                  key: token
+            {{- end }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            {{- if and (eq .Values.mode "agent") .Values.agentCapabilities }}
+            capabilities:
+              add: ["NET_RAW", "NET_ADMIN"]
+            {{- else }}
+            capabilities:
+              drop: ["ALL"]
+            {{- end }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/snitch
+              readOnly: true
+            - name: data
+              mountPath: /var/lib/snitch
+          readinessProbe:
+            tcpSocket:
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 15
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "snitch.fullname" . }}-config
+        - name: data
+          {{- if .Values.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "snitch.fullname" . }}-data
+          {{- else }}
+          emptyDir: {}
+          {{- end }}

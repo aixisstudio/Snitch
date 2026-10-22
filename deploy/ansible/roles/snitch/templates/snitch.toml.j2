@@ -1,0 +1,29 @@
+# Snitch — declarative config (Security-as-Code), rendered by Ansible.
+# EN: Every key here OVERRIDES the UI/DB value at startup — this file is
+#     the fleet source of truth. Keys are the /settings names.
+# FR: Chaque clé ÉCRASE la valeur UI/DB au démarrage — ce fichier est la
+#     source de vérité de la flotte. Les clés sont les noms de /settings.
+
+# EN: SIEM output — CEF over syslog (Wazuh/Splunk/ArcSight-ready).
+# FR: Sortie SIEM — CEF via syslog (compatible Wazuh/Splunk/ArcSight).
+{% if snitch_syslog_addr is defined %}
+syslog_addr = "{{ snitch_syslog_addr }}"
+syslog_format = "{{ snitch_syslog_format | default('cef') }}"
+{% endif %}
+
+# EN: Ask-on-first-connect (Linux NFQUEUE) — false on headless servers.
+# FR: Ask-on-first-connect (NFQUEUE Linux) — false sur serveurs headless.
+ask_enabled = {{ snitch_ask_enabled | default(false) | lower }}
+
+# EN: Volume kill-switch. / FR: Kill-switch de volume.
+kill_switch_enabled = {{ snitch_kill_switch | default(true) | lower }}
+upload_threshold_mb = {{ snitch_upload_threshold | default(500) }}
+
+# EN: Fleet peers — this node's gossip_peers, also used by /remote/fleet.
+# FR: Pairs de flotte — gossip_peers du nœud, utilisés par /remote/fleet.
+{% if snitch_peers is defined %}
+gossip_peers = {{ snitch_peers | to_json }}
+{% endif %}
+
+# EN: Monitored ports / FR: Ports surveillés
+ports = {{ snitch_ports | default([80, 443]) | to_json }}

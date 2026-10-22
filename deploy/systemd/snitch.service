@@ -1,0 +1,55 @@
+# Snitch backend — systemd unit (headless/daemon mode)
+# EN: Runs the FastAPI backend as a hardened system service. Packet
+#     capture needs CAP_NET_RAW (libpcap); firewall management needs
+#     CAP_NET_ADMIN — both granted via AmbientCapabilities, no full
+#     root required for the process identity.
+#     Install:  sudo install -m644 deploy/systemd/snitch.service /etc/systemd/system/
+#               sudo systemctl daemon-reload && sudo systemctl enable --now snitch
+# FR: Lance le backend FastAPI en service système durci. La capture
+#     exige CAP_NET_RAW (libpcap) ; le pare-feu CAP_NET_ADMIN — via
+#     AmbientCapabilities, sans root complet pour l'identité du processus.
+
+[Unit]
+Description=Snitch — local-first network observability & outbound firewall
+Documentation=https://github.com/aixisstudio/Snitch
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+# EN: Dedicated unprivileged user; create with:
+#     useradd --system --no-create-home --shell /usr/sbin/nologin snitch
+# FR: Utilisateur dédié non privilégié :
+#     useradd --system --no-create-home --shell /usr/sbin/nologin snitch
+User=snitch
+Group=snitch
+WorkingDirectory=/opt/snitch/backend
+ExecStart=/opt/snitch/backend/env/bin/python -m uvicorn api.main:app \
+    --host 127.0.0.1 --port 8000
+Restart=on-failure
+RestartSec=5s
+
+# EN: Exactly the two capabilities capture+firewall need — nothing more.
+# FR: Exactement les deux capacités capture+pare-feu — rien de plus.
+AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN
+CapabilityBoundingSet=CAP_NET_RAW CAP_NET_ADMIN
+
+# EN: Headless mode — set SNITCH_DEMO=1 here for a synthetic-traffic
+#     demo box; SNITCH_CONFIG points at the declarative settings file.
+# FR: Mode headless — SNITCH_DEMO=1 pour une démo synthétique ;
+#     SNITCH_CONFIG pointe le fichier de settings déclaratif.
+Environment=SNITCH_CONFIG=/etc/snitch/snitch.toml
+Environment=SNITCH_DATA_DIR=/var/lib/snitch
+
+# EN: Hardening — the backend only needs its data dir writable.
+# FR: Durcissement — le backend n'a besoin d'écrire que dans son data dir.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/snitch
+StateDirectory=snitch
+ConfigurationDirectory=snitch
+
+[Install]
+WantedBy=multi-user.target
