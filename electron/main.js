@@ -430,8 +430,10 @@ function launchBackendElevated() {
   //     précédent a laissé le dossier de données en root — sous POSIX les
   //     variables d'environnement ci-dessous portent le jeton de toute façon,
   //     donc une écriture ratée ne doit pas interrompre le démarrage.
+  let tokenFileWritten = false
   try {
     fs.writeFileSync(path.join(dataDir, 'api_token.txt'), API_TOKEN, { mode: 0o600 })
+    tokenFileWritten = true
   } catch { /* EN: token still reaches the backend via env / FR: le jeton arrive quand même via l'env */ }
 
   if (isWindows) {
@@ -443,17 +445,17 @@ function launchBackendElevated() {
     ], { windowsHide: true, stdio: 'ignore' })
   } else if (process.platform === 'darwin') {
     // EN: Escape for the AppleScript double-quoted string, then the shell.
-    //     SNITCH_TOKEN travels in the command env — osascript runs it through
-    //     `sh -c`, so assignment prefixes survive elevation. (Token exposure in
-    //     `ps` is acceptable: it is a per-launch random secret on a loopback
-    //     API, gone with the process.)
+    //     The token normally travels via the api_token.txt file written above
+    //     so it never appears in `ps`; the SNITCH_TOKEN env prefix is only a
+    //     fallback for when that write failed (root-owned data dir).
     // FR: Échapper pour la chaîne AppleScript entre guillemets, puis le shell.
-    //     SNITCH_TOKEN voyage dans l'env de la commande — osascript l'exécute
-    //     via `sh -c`, donc les préfixes d'affectation survivent à l'élévation.
-    //     (Exposition du jeton dans `ps` acceptable : secret aléatoire par
-    //     lancement sur une API loopback, mort avec le processus.)
+    //     Le jeton voyage normalement via le fichier api_token.txt écrit
+    //     ci-dessus et n'apparaît donc jamais dans `ps` ; le préfixe
+    //     SNITCH_TOKEN n'est qu'un repli quand cette écriture a échoué
+    //     (dossier de données possédé par root).
     const esc = s => s.replace(/(["\\$`])/g, '\\$1')
-    const shellCmd = `SNITCH_DATA_DIR="${dataDir}" SNITCH_TOKEN="${API_TOKEN}" "${backendExe}" --port ${backendPort}`
+    const tokenPrefix = tokenFileWritten ? '' : `SNITCH_TOKEN="${API_TOKEN}" `
+    const shellCmd = `SNITCH_DATA_DIR="${dataDir}" ${tokenPrefix}"${backendExe}" --port ${backendPort}`
     backendProc = spawn('osascript', [
       '-e', `do shell script "${esc(shellCmd)}" with administrator privileges`,
     ], { stdio: 'ignore' })
@@ -467,8 +469,15 @@ function launchBackendElevated() {
     const pkexecBin = ['/usr/bin/pkexec', '/bin/pkexec', '/usr/local/bin/pkexec']
       .find(p => fs.existsSync(p))
     if (!pkexecBin) { spawnBackendPlain(); return }
+    // EN: Same rule as macOS — prefer the token file over an env assignment
+    //     visible in /proc/<pid>/cmdline; env only when the write failed.
+    // FR: Même règle que macOS — préférer le fichier de jeton à une
+    //     affectation d'env visible dans /proc/<pid>/cmdline ; l'env sert
+    //     seulement si l'écriture a échoué.
+    const envArgs = [`SNITCH_DATA_DIR=${dataDir}`]
+    if (!tokenFileWritten) envArgs.push(`SNITCH_TOKEN=${API_TOKEN}`)
     backendProc = spawn(pkexecBin, [
-      'env', `SNITCH_DATA_DIR=${dataDir}`, `SNITCH_TOKEN=${API_TOKEN}`,
+      'env', ...envArgs,
       backendExe, '--port', String(backendPort),
     ], { stdio: 'ignore' })
   }

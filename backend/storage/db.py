@@ -51,6 +51,7 @@ _conn_lock = threading.Lock()
 # FR: Accumulateur d'écriture en mémoire — (minute, catégorie) -> [paquets, octets].
 _pending: dict[tuple, list] = defaultdict(lambda: [0, 0])
 _pending_hist: dict[tuple, list] = defaultdict(lambda: [0, 0])
+_pending_alerts: list[tuple] = []
 _pending_lock = threading.Lock()
 
 
@@ -319,12 +320,14 @@ def flush() -> None:
         Appelé par le thread de flush toutes les ~10 s.
     """
     with _pending_lock:
-        if not _pending and not _pending_hist:
+        if not _pending and not _pending_hist and not _pending_alerts:
             return
         batch = dict(_pending)
         _pending.clear()
         hist_batch = dict(_pending_hist)
         _pending_hist.clear()
+        alert_rows = list(_pending_alerts)
+        _pending_alerts.clear()
 
     rows = [(m, c, v[0], v[1]) for (m, c), v in batch.items()]
     hist_rows = [(m, d, k, v[0], v[1]) for (m, d, k), v in hist_batch.items()]
@@ -345,6 +348,12 @@ def flush() -> None:
                     packets = packets + excluded.packets,
                     bytes   = bytes   + excluded.bytes
             """, hist_rows)
+            if alert_rows:
+                conn.executemany("""
+                    INSERT OR IGNORE INTO alerts_log
+                        (id, ts, type, severity, message, node_id, details)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, alert_rows)
             conn.commit()
     except sqlite3.Error as exc:
         logger.error("flush failed: %s", exc)
@@ -352,25 +361,25 @@ def flush() -> None:
 
 def log_alert(alert: dict) -> None:
     """
-    EN: Persist one alert. INSERT OR IGNORE makes retries idempotent on the
-        UUID primary key.
-    FR: Persister une alerte. INSERT OR IGNORE rend les réessais idempotents
-        grâce à la clé primaire UUID.
+    EN: Buffer one alert for the next flush() — previously this did an
+        INSERT + COMMIT per alert on the event loop, so an alert storm
+        (port scan) stalled the packet pipeline on disk fsyncs. Batched with
+        the 10 s accumulator flush instead. INSERT OR IGNORE keeps retries
+        idempotent on the UUID primary key.
+    FR: Mettre une alerte en tampon jusqu'au prochain flush() — auparavant
+        chaque alerte faisait un INSERT + COMMIT sur la boucle
+        événementielle, donc une tempête d'alertes (scan de ports) bloquait
+        le pipeline de paquets sur des fsync disque. Désormais groupées avec
+        le flush d'accumulateur de 10 s. INSERT OR IGNORE rend les réessais
+        idempotents grâce à la clé primaire UUID.
     """
-    try:
-        with _conn_lock:
-            conn = get_conn()
-            conn.execute("""
-                INSERT OR IGNORE INTO alerts_log (id, ts, type, severity, message, node_id, details)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (
-                alert["id"], alert["timestamp"], alert["type"],
-                alert["severity"], alert["message"],
-                alert.get("node_id"), json.dumps(alert.get("details", {})),
-            ))
-            conn.commit()
-    except sqlite3.Error as exc:
-        logger.error("log_alert failed: %s", exc)
+    row = (
+        alert["id"], alert["timestamp"], alert["type"],
+        alert["severity"], alert["message"],
+        alert.get("node_id"), json.dumps(alert.get("details", {})),
+    )
+    with _pending_lock:
+        _pending_alerts.append(row)
 
 
 # ── Read helpers / Aides de lecture ──────────────────────────────────────────

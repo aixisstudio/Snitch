@@ -42,8 +42,12 @@ def test_log_alert_persists():
     }
     db.log_alert(alert)
     # EN: Second insert of the same id must be a no-op (INSERT OR IGNORE).
+    #     Alerts are buffered and written by flush(), like the accumulators.
     # FR: Une seconde insertion du même id doit être un no-op (INSERT OR IGNORE).
+    #     Les alertes sont mises en tampon et écrites par flush(), comme les
+    #     accumulateurs.
     db.log_alert(alert)
+    db.flush()
 
     with db._conn_lock:
         rows = db.get_conn().execute(
@@ -87,6 +91,7 @@ def test_get_alerts_reads_persisted():
         "details": {"ports": 25},
     }
     db.log_alert(alert)
+    db.flush()
     rows = db.get_alerts(100)
     hit = [r for r in rows if r["id"] == alert["id"]]
     assert hit and hit[0]["type"] == "PORT_SCAN" and hit[0]["details"]["ports"] == 25

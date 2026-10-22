@@ -1273,12 +1273,28 @@ async def set_ip_whitelist(body: WhitelistBody) -> dict:
         await broadcast({"type": "nodes_removed", "ids": removed_ids})
     return {"whitelisted_ips": sorted(_whitelisted_ips)}
 
+# EN: Upper bound for `minutes` query params — a week. Prevents absurd
+#     values (minutes=1e9) from scanning the whole history table; the
+#     retention cleanup makes anything older empty anyway.
+# FR: Borne haute pour le paramètre `minutes` — une semaine. Empêche des
+#     valeurs absurdes (minutes=1e9) de scanner toute la table d'historique ;
+#     le nettoyage par rétention vide de toute façon tout ce qui est plus vieux.
+MAX_HISTORY_MINUTES = 7 * 24 * 60
+
+
+def _clamp_minutes(minutes: int) -> int:
+    """EN: Clamp a client-supplied lookback window to [1, one week].
+    FR: Borner une fenêtre d'historique fournie par le client à [1, 1 semaine]."""
+    return max(1, min(int(minutes), MAX_HISTORY_MINUTES))
+
+
 @app.get("/timeline", dependencies=_AUTH)
 async def get_timeline(minutes: int = 60) -> dict:
     """EN: Per-minute aggregates for the timeline chart.
     FR: Agrégats par minute pour le graphique timeline."""
     loop = asyncio.get_running_loop()
-    data = await loop.run_in_executor(None, db.get_timeline, minutes)
+    data = await loop.run_in_executor(
+        None, db.get_timeline, _clamp_minutes(minutes))
     return {"timeline": data}
 
 
@@ -1358,7 +1374,7 @@ async def get_host_history(ip: str, minutes: int = 60) -> dict:
     """EN: Per-host byte/packet history. / FR: Historique par hôte."""
     loop = asyncio.get_running_loop()
     return {"history": await loop.run_in_executor(
-        None, db.get_history, "host", ip, minutes)}
+        None, db.get_history, "host", ip, _clamp_minutes(minutes))}
 
 
 @app.get("/history/process/{name}", dependencies=_AUTH)
@@ -1366,7 +1382,7 @@ async def get_process_history(name: str, minutes: int = 60) -> dict:
     """EN: Per-process byte/packet history. / FR: Historique par processus."""
     loop = asyncio.get_running_loop()
     return {"history": await loop.run_in_executor(
-        None, db.get_history, "process", name, minutes)}
+        None, db.get_history, "process", name, _clamp_minutes(minutes))}
 
 
 @app.get("/history/top_processes", dependencies=_AUTH)
@@ -1375,7 +1391,7 @@ async def get_top_processes(minutes: int = 60) -> dict:
     FR: Plus gros émetteurs par processus — la source de la vue Apps."""
     loop = asyncio.get_running_loop()
     return {"processes": await loop.run_in_executor(
-        None, db.get_top_processes, minutes)}
+        None, db.get_top_processes, _clamp_minutes(minutes))}
 
 
 # ── Diagnostics / Diagnostic ────────────────────────────────────────────────
@@ -1461,6 +1477,13 @@ def _download_dbip() -> dict:
     geo_dir = data_dir() / "geo"
     geo_dir.mkdir(parents=True, exist_ok=True)
 
+    # EN: Sanity ceilings — DB-IP Lite is ~40 MB gzip / ~130 MB plain. A
+    #     broken or hostile upstream must not exhaust disk or memory.
+    # FR: Plafonds de bon sens — DB-IP Lite fait ~40 Mo gzip / ~130 Mo en
+    #     clair. Un amont cassé ou hostile ne doit pas épuiser disque ou RAM.
+    MAX_GZIP_BYTES = 128 * 1024 * 1024
+    MAX_PLAIN_BYTES = 512 * 1024 * 1024
+
     downloaded = []
     errors = []
     for remote, local in files.items():
@@ -1468,8 +1491,23 @@ def _download_dbip() -> dict:
         try:
             req = urllib.request.Request(url, headers={"User-Agent": "Snitch/1.1"})
             with urllib.request.urlopen(req, timeout=60) as resp:
-                data = gzip.decompress(resp.read())
-            (geo_dir / local).write_bytes(data)
+                # EN: Read at most cap+1 so an oversize body is detected, not
+                #     silently truncated into a corrupt database.
+                # FR: Lire au plus borne+1 pour détecter un corps trop gros
+                #     plutôt que de tronquer silencieusement en base corrompue.
+                raw = resp.read(MAX_GZIP_BYTES + 1)
+            if len(raw) > MAX_GZIP_BYTES:
+                raise ValueError("download exceeds size limit")
+            data = gzip.decompress(raw)
+            if len(data) > MAX_PLAIN_BYTES:
+                raise ValueError("decompressed database exceeds size limit")
+            # EN: Atomic install — a crashed write must not leave a partial
+            #     .mmdb that maxminddb then chokes on.
+            # FR: Installation atomique — une écriture interrompue ne doit pas
+            #     laisser un .mmdb partiel sur lequel maxminddb échouerait.
+            tmp = geo_dir / f"{local}.tmp"
+            tmp.write_bytes(data)
+            os.replace(tmp, geo_dir / local)
             downloaded.append(local)
         except Exception as exc:
             errors.append(f"{local}: {exc}")

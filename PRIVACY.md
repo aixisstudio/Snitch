@@ -12,7 +12,8 @@ update checks, no phone-home of any kind.
 - captures packets on your local interfaces (passive observation),
 - reads your system ARP/neighbour table (no active scanning),
 - resolves reverse DNS via your OS resolver — standard PTR lookups that
-  already happen implicitly with any network activity,
+  already happen implicitly with any network activity (set
+  `SNITCH_DISABLE_PTR=1` to disable them entirely),
 - serves a web UI on `127.0.0.1` for your own browser.
 
 **Geolocation is offline-only.** If you place a DB-IP Lite or MaxMind
@@ -48,7 +49,8 @@ vérification de mise à jour, aucun appel sortant.
 - capturer les paquets sur vos interfaces locales (observation passive),
 - lire la table ARP/voisinage système (pas de scan actif),
 - résoudre le DNS inverse via le résolveur de votre OS — des requêtes PTR
-  standard qui ont déjà lieu implicitement avec toute activité réseau,
+  standard qui ont déjà lieu implicitement avec toute activité réseau
+  (`SNITCH_DISABLE_PTR=1` pour les désactiver complètement),
 - servir une UI web sur `127.0.0.1` pour votre propre navigateur.
 
 **La géolocalisation est 100 % hors ligne.** Si vous placez un fichier

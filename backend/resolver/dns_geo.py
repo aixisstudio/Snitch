@@ -51,6 +51,7 @@ import asyncio
 import gzip
 import ipaddress
 import logging
+import os
 import socket
 import sys
 import threading
@@ -166,14 +167,30 @@ def lookup_domain(ip: str) -> Optional[str]:
 
 # ── Reverse DNS / DNS inverse ────────────────────────────────────────────────
 
+# EN: SNITCH_DISABLE_PTR=1 turns reverse-DNS lookups off entirely. PTR
+#     queries go to YOUR configured resolver — they reveal nothing the
+#     resolver does not already see from your forward lookups, but they are
+#     still outbound traffic, so the strictest setups can opt out.
+# FR: SNITCH_DISABLE_PTR=1 désactive totalement le DNS inverse. Les requêtes
+#     PTR partent vers VOTRE résolveur configuré — elles ne révèlent rien que
+#     le résolveur ne voie déjà via vos requêtes directes, mais restent du
+#     trafic sortant, donc les configurations les plus strictes peuvent
+#     s'en passer.
+_DISABLE_PTR = os.environ.get("SNITCH_DISABLE_PTR") == "1"
+
+
 @lru_cache(maxsize=2048)
 def resolve_hostname(ip: str) -> Optional[str]:
     """
-    EN: Reverse DNS — None on NXDOMAIN/timeout. lru_cache caches negatives
-        too: PTR absence is stable, so that's the desired behavior.
-    FR: DNS inverse — None sur NXDOMAIN/timeout. lru_cache met aussi en cache
-        les échecs : l'absence de PTR est stable, c'est le comportement voulu.
+    EN: Reverse DNS — None on NXDOMAIN/timeout, and always None when
+        SNITCH_DISABLE_PTR=1. lru_cache caches negatives too: PTR absence is
+        stable, so that's the desired behavior.
+    FR: DNS inverse — None sur NXDOMAIN/timeout, et toujours None avec
+        SNITCH_DISABLE_PTR=1. lru_cache met aussi en cache les échecs :
+        l'absence de PTR est stable, c'est le comportement voulu.
     """
+    if _DISABLE_PTR:
+        return None
     try:
         return socket.gethostbyaddr(ip)[0]
     except Exception:

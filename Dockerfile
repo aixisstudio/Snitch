@@ -33,6 +33,12 @@ COPY backend/ ./backend/
 # FR: Application React compilée — servie en fichiers statiques par FastAPI.
 COPY --from=frontend-builder /build/dist ./frontend_dist/
 
+# EN: No USER directive — the container intentionally runs as root because
+#     libpcap needs CAP_NET_RAW/CAP_NET_ADMIN to capture. Compose grants only
+#     those two caps; do NOT add a USER here or capture silently stops.
+# FR: Pas de directive USER — le conteneur tourne volontairement en root car
+#     libpcap exige CAP_NET_RAW/CAP_NET_ADMIN pour capturer. Compose n'accorde
+#     que ces deux capacités ; ne PAS ajouter de USER, la capture s'arrêterait.
 EXPOSE 8000
 WORKDIR /app/backend
 CMD ["python", "run_backend.py"]

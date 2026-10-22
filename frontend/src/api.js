@@ -84,6 +84,13 @@ export function getToken() {
     const fromUrl = new URLSearchParams(window.location.search).get('token')
     if (fromUrl) {
       sessionStorage.setItem('snitch_token', fromUrl)
+      // EN: Strip the token from the address bar so it cannot linger in
+      //     browser history — the stored copy keeps auth working.
+      // FR: Retirer le jeton de la barre d'adresse pour qu'il ne reste pas
+      //     dans l'historique du navigateur — la copie stockée suffit.
+      const clean = new URL(window.location.href)
+      clean.searchParams.delete('token')
+      window.history.replaceState(null, '', clean)
       return fromUrl
     }
     const stored = sessionStorage.getItem('snitch_token')

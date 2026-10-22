@@ -370,12 +370,23 @@ class PacketSniffer:
                                         bpf_filter=self._bpf_filter)
             logger.info("capture on %s (linktype=%d, filter=%r)",
                         self.iface, self._session.linktype, self._bpf_filter)
+            # EN: Refresh the local-IP set periodically — a VPN toggle or a
+            #     DHCP renewal changes our addresses, and a frozen set would
+            #     silently classify all new traffic as "not_for_us".
+            # FR: Rafraîchir périodiquement les IP locales — une bascule VPN
+            #     ou un renouvellement DHCP change nos adresses, et un
+            #     ensemble figé classerait tout le nouveau trafic en
+            #     « not_for_us ».
+            last_ip_refresh = time.monotonic()
             while self._running:
                 try:
                     pkt = self._session.next_packet()
                 except PcapError as exc:
                     logger.error("capture error: %s", exc)
                     break
+                if time.monotonic() - last_ip_refresh > 30:
+                    self.local_ips = get_local_ips()
+                    last_ip_refresh = time.monotonic()
                 if pkt is not None:
                     self._handle_frame(*pkt)
         except PcapError as exc:
