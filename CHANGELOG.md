@@ -6,6 +6,21 @@ All notable changes to Snitch. / Toutes les modifications notables de Snitch.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/) — EN/FR.
 
+## [1.5.1] — 2026-10-22
+
+### Added / Ajouté
+
+- **Settings UI for the new opt-ins / Réglages UI des nouveaux opt-ins** — syslog address, ask-on-connect (timeout + fail-open + live availability), IOC peer list + periodic toggle are all editable in Settings; `ask_timeout`/`ask_failopen`/`gossip_enabled` apply live. / Adresse syslog, ask-on-connect, liste de pairs IOC + bascule périodique — tous éditables dans les Réglages, appliqués à chaud.
+- **Periodic IOC push / Push IOC périodique** — `gossip_enabled` re-pushes your salted-Merkle proof pack to configured peers every 5 min automatically. / `gossip_enabled` repousse le paquet Merkle salé toutes les 5 min.
+- **eBPF enforcer endpoints / Endpoints enforceur eBPF** — `GET /security/ebpf_enforce`, `POST /security/ebpf/isolate {pid}`, `POST /security/ebpf/block {ip}` wire the cgroup-skb enforcer into the API. / Le enforcer cgroup-skb exposé : statut + isolation de pid + blocage d'IP.
+- **Translated v1.5 docs / Docs v1.5 traduites** — CHANGELOG, PRIVACY and FIREWALL sections now exist in de/es/ja/pt-BR/ru/zh-CN. / Sections CHANGELOG, PRIVACY et FIREWALL v1.5 en de/es/ja/pt-BR/ru/zh-CN.
+
+### Fixed / Corrigé
+
+- **eBPF attach scope / Portée de l'attach eBPF** — the cgroup-skb program attached at the cgroup2 *root*, which would have made every blocked-IP drop host-wide; it now attaches to the dedicated `snitch` cgroup so drops apply only to `isolate_pid()`-moved processes, as documented. / Le programme cgroup-skb s'attachait à la racine cgroup2 — chaque blocage aurait été global ; attach au cgroup `snitch` dédié désormais.
+- **iForest split quality / Qualité des splits iForest** — trees now only split on features with variance in the subset (constant columns compressed every score toward 0.5) and draw a fresh subsample per tree — measurably better baseline/outlier contrast. / Les arbres ne splittent que sur les features à variance réelle + sous-échantillon frais par arbre — contraste réel restauré.
+- **Flaky ML test / Test ML flaky** — seeded forest + realistic baseline (stable destination set) make the score assertion deterministic. / Forêt seedée + baseline réaliste rendent l'assertion déterministe.
+
 ## [1.5.0] — 2026-10-22
 
 ### Added / Ajouté
@@ -23,19 +38,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/) — EN/FR.
 - **Actionable alerts / Alertes actionnables** — alert details now carry `pid`/`process`; the UI offers one-click **Block IP** (real firewall rule), **Kill**, **Suspend**, and ASK_VERDICT **Allow/Deny** buttons; explanation templates gained remediation actions for all new types. / Les alertes portent `pid`/`process` ; l'UI propose Bloquer IP, Tuer, Suspendre et Autoriser/Refuser ; gabarits d'explication avec actions de remédiation.
 - **nftables backend / Backend nftables** — Linux firewall rules, lockdown, IP-sinkhole DNAT and domain refresh now drive `nft` directly when iptables is absent (dedicated `inet snitch` table, comment-tagged handle cleanup); per-process rules refuse honestly (no PID owner match in nft). / Règles, lockdown, DNAT sinkhole et refresh domaine pilotent `nft` quand iptables est absent ; les règles par processus refusent honnêtement.
 - **firejail sandbox fallback / Repli firejail** — Linux containment falls back to `firejail --net=none --quiet` when `unshare` is unavailable; `available()` reports which backend it will use. / Repli `firejail --net=none` quand `unshare` est absent ; `available()` rapporte le backend choisi.
-- **Settings UI for the new opt-ins / Réglages UI des nouveaux opt-ins** — syslog address, ask-on-connect (timeout + fail-open + live availability), IOC peer list + periodic toggle are all editable in Settings; `ask_timeout`/`ask_failopen`/`gossip_enabled` apply live. / Adresse syslog, ask-on-connect (timeout + fail-open + dispo en direct), liste de pairs IOC + bascule périodique — tous éditables dans les Réglages ; appliqués à chaud.
-- **Periodic IOC push / Push IOC périodique** — `gossip_enabled` re-pushes your salted-Merkle proof pack to configured peers every 5 min automatically (was manual-endpoint only). / `gossip_enabled` repousse le paquet Merkle salé toutes les 5 min (avant : endpoint manuel seul).
-- **eBPF enforcer endpoints / Endpoints enforceur eBPF** — `GET /security/ebpf_enforce`, `POST /security/ebpf/isolate {pid}`, `POST /security/ebpf/block {ip}` wire the cgroup-skb enforcer into the API (lazy start, honest failure). / Le enforcer cgroup-skb exposé : statut + isolation de pid + blocage d'IP (démarrage paresseux, échec honnête).
-- **Variance-aware iForest splits / Splits iForest à variance réelle** — trees now only split on features with variance in the subset (constant columns produced degenerate fat leaves that compressed every score toward 0.5) and draw a fresh subsample per tree — measurably better contrast between baseline and outliers. / Les arbres ne splittent que sur les features à variance réelle (les colonnes constantes compressaient les scores vers 0,5) + sous-échantillon frais par arbre — contraste mesurablement meilleur.
-
-### Fixed / Corrigé
-
 - **Real-OS integration tests / Tests d'intégration OS réels** — new `integration` CI job (per-OS) running `tests/test_integration_os.py` with `SNITCH_OS_INTEGRATION=1`: Linux proves `unshare -n` egress denial, real `iptables` DROP + live connect failure, `tc` clsact/flower, `perf_event_open`; Windows opens the real `fwpuclnt` engine and proves a WFP BLOCK filter with a TCP connect that fails then recovers after key-delete; macOS proves `sandbox-exec` deny-network end-to-end and hosts-file sinkhole apply/remove. Every test cleans up in `finally` and skips honestly when the primitive is unavailable. / Nouveau job CI `integration` par OS exécutant `tests/test_integration_os.py` : `unshare`, `iptables` réels + connexion probée, `tc`, `perf` sous Linux ; moteur WFP + blocage prouvé par connexion TCP sous Windows ; `sandbox-exec` + hosts sous macOS. Nettoyage en `finally`, skip honnête si la primitive manque.
 - **WFP filter enums + byte order / Enums WFP + ordre des octets** — real Windows CI caught `FWP_DATA_TYPE` constants off-by-N (`BYTE_ARRAY16`=11, `BYTE_BLOB`=12, composite addr-mask types at 0x100/0x101) and host-order IPv4 encoding in `FWP_V4_ADDR_AND_MASK` (must be network order); filters now actually match traffic on real Windows. / La CI Windows réelle a attrapé des constantes `FWP_DATA_TYPE` décalées et un encodage IPv4 host-order — les filtres matchent maintenant réellement.
-- **perfprobe Windows import / Import perfprobe Windows** — `fcntl` is now imported lazily inside the Linux path instead of top-level (collection crash on Windows). / `fcntl` importé paresseusement dans le chemin Linux (crash de collecte sous Windows).
-- **eBPF attach scope / Portée de l'attach eBPF** — the cgroup-skb program attached at the cgroup2 *root*, which would have made every blocked-IP drop host-wide; it now attaches to the dedicated `snitch` cgroup so drops apply only to `isolate_pid()`-moved processes, as documented. / Le programme cgroup-skb s'attachait à la racine cgroup2 — chaque blocage aurait été global ; il s'attache au cgroup `snitch` dédié, drops limités aux processus isolés, comme documenté.
-
-## [1.4.0] — 2026-10-23
+- **perfprobe Windows import / Import perfprobe Windows** — `fcntl` is now imported lazily inside the Linux path instead of top-level (collection crash on Windows). / `fcntl` importé paresseusement dans le chemin Linux (crash de collecte sous Windows).## [1.4.0] — 2026-10-23
 
 ### Added / Ajouté
 
