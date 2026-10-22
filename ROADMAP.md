@@ -27,7 +27,7 @@ Also live / également en place : Docker image on GHCR, Homebrew tap (`brew inst
 
 - Per-process bandwidth history / historique de débit par processus
 - Custom alert rules in the UI / règles d'alerte personnalisées dans l'UI
-- Light theme / thème clair
+- ~~Light theme / thème clair~~ — shipped in v1.0.7 / livré en v1.0.7
 - More languages — the i18n layer is ready / autres langues — l'i18n est prête
 - Optional remote pairing for headless hosts — consent-gated, token-protected / appairage optionnel d'hôtes sans écran — avec consentement et jeton
 - Map layers: ASN / organisation view / couches de carte : vue ASN / organisation

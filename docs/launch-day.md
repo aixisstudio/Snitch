@@ -180,6 +180,8 @@ Objectif : un seul fichier à télécharger et lancer par OS. Livré via la rele
 `@probonopd` a soumis Snitch à [appimage.github.io](https://github.com/AppImage/appimage.github.io/pull/10605) — test bot **passed**. Points traités :
 
 - ✅ Nommage corrigé : `Snitch-linux-x64.AppImage` → `Snitch-x86_64.AppImage` (convention catalogue, sans token OS) — asset v1.0.6 renommé + site + CI alignés
-- ✅ Update info : `publish: github` ajouté à electron-builder → `latest-linux.yml` + `.zsync` embarqués dès la prochaine release (AppImageUpdate)
-- 🎨 Thème sombre assumé pour l'instant ; le thème clair reste à la roadmap (respectera le thème système)
-- Réponse postée sur la PR
+- ✅ Update info : `publish: github` ajouté à electron-builder → `latest-linux.yml` publié sur v1.0.7 (AppImageUpdate) — le `.zsync` n'est pas généré avec `--publish never`, non bloquant
+- ✅ Thème clair livré en v1.0.7 — `prefers-color-scheme` respecté par défaut + toggle soleil/lune persisté (inversion préservant la teinte de la palette sombre)
+- ✅ Nommage stable à la source : `artifactName: ${productName}-${arch}.${ext}` → `latest-linux.yml` pointe exactement `Snitch-x86_64.AppImage`
+- Réponses postées sur la PR (feedback initial + suivi v1.0.7)
+- ⚠️ CI : `--publish never` sur les builds Electron — sans ça le provider github exige GH_TOKEN et échoue ; notre job release publie les assets à la place. Release v1.0.7 publiée à la main via l'API (12 assets) ; le fix du glob dans le job release prendra effet au prochain tag
