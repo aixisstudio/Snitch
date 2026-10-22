@@ -17,10 +17,7 @@
 [![Downloads](https://img.shields.io/github/downloads/aixisstudio/Snitch/total?color=brightgreen&style=flat)](https://github.com/aixisstudio/Snitch/releases/latest)
 [![GitHub stars](https://img.shields.io/github/stars/aixisstudio/Snitch?style=flat-square&logo=github)](https://github.com/aixisstudio/Snitch/stargazers)
 [![Star History](https://img.shields.io/badge/⭐-Star%20History-orange)](https://star-history.com/#aixisstudio/Snitch&Date)
-<!-- Community badges — UNCOMMENT once the server exists and paste the
-     real invite URL (channels: #announcements #general #dev #help).
-     [![Discord](https://img.shields.io/badge/Discord-join-5865F2?logo=discord)](https://discord.gg/INVITE_CODE)
-     [![Matrix](https://img.shields.io/badge/Matrix-join-0dbd8b?logo=matrix)](https://matrix.to/#/#snitch:matrix.org) -->
+[![Discussions](https://img.shields.io/badge/GitHub-Discussions-181717?logo=github)](https://github.com/aixisstudio/Snitch/discussions)
 
 <!-- EN: Live capture of the demo mode (SNITCH_DEMO=1) — synthetic traffic only.
      FR: Capture du mode démo (SNITCH_DEMO=1) — trafic synthétique uniquement. -->
@@ -273,6 +270,10 @@ Step-by-step recipes live in [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md).
 ### Contribute
 
 Bug reports and PRs are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md).
+Everything community lives on GitHub: **issues** for bugs,
+[**Discussions**](https://github.com/aixisstudio/Snitch/discussions)
+for ideas, questions and feedback — indexed and searchable, no chat
+server to moderate.
 
 **Translations** — the UI is fully localized in 8 languages and every string
 lives in a single plain file per locale under `frontend/src/locales/`
@@ -467,6 +468,10 @@ Recettes pas-à-pas dans [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md).
 ### Contribuer
 
 Rapports de bugs et PR bienvenus — voir [CONTRIBUTING.md](CONTRIBUTING.md).
+Toute la communauté vit sur GitHub : les **issues** pour les bugs, les
+[**Discussions**](https://github.com/aixisstudio/Snitch/discussions)
+pour les idées, questions et retours — indexé et recherchable, sans
+serveur de chat à modérer.
 
 **Traductions** — l'UI est entièrement localisée en 8 langues et chaque
 chaîne vit dans un seul fichier par locale sous `frontend/src/locales/`

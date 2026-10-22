@@ -1,0 +1,20 @@
+# Snitch — issue template chooser config
+# EN: Everything community happens on GitHub — no Discord/Matrix to
+#     moderate, and answers stay searchable next to the code.
+#     - Bugs / features → the templates below (filed as issues)
+#     - Ideas, questions, "how do I…", show-and-tell → Discussions
+# FR: Toute la communauté vit sur GitHub — pas de Discord/Matrix à
+#     modérer, et les réponses restent recherchables près du code.
+#     - Bugs / features → les templates ci-dessous (issues)
+#     - Idées, questions, « comment faire… », retours → Discussions
+blank_issues_enabled: false
+contact_links:
+  - name: "💬 GitHub Discussions / Discussions GitHub"
+    url: https://github.com/aixisstudio/Snitch/discussions
+    about: "Ideas, questions and feedback — ask here instead of opening an issue / Idées, questions et retours — à poser ici plutôt qu'en issue"
+  - name: "🔒 Security report / Rapport de sécurité"
+    url: https://github.com/aixisstudio/Snitch/security/advisories/new
+    about: "Private vulnerability reporting — do NOT open a public issue / Signalement privé de vulnérabilité — PAS d'issue publique"
+  - name: "📖 Integration guides / Guides d'intégration"
+    url: https://github.com/aixisstudio/Snitch/blob/main/docs/INTEGRATIONS.md
+    about: "SIEM, fleet, deploy recipes — check the docs first / Recettes SIEM, flotte, déploiement — lire la doc d'abord"
