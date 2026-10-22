@@ -283,6 +283,11 @@ never ship data off the machine:
   `python-netfilterqueue`: `detection/nfqueue.py` speaks
   nfnetlink_queue over AF_NETLINK directly. Linux + root + iptables
   only.
+- **Permanent ask verdicts** — the four classic choices exist:
+  allow once / deny once (session-scoped) and allow always /
+  deny always (`permanent=true` → the IP lands in `whitelisted_ips`
+  or a persisted firewall block rule, and whitelisted IPs get an
+  iptables RETURN exemption so they are never re-asked).
 
 ---
 
@@ -576,3 +581,8 @@ honnêtement et n'envoient jamais de données hors de la machine :
   `python-netfilterqueue` : `detection/nfqueue.py` parle
   nfnetlink_queue en AF_NETLINK directement. Linux + root + iptables
   seulement.
+- **Verdicts ask permanents** — les quatre choix classiques existent :
+  autoriser / refuser une fois (portée session) et toujours autoriser /
+  toujours refuser (`permanent=true` → l'IP rejoint `whitelisted_ips`
+  ou une règle de blocage persistée, et les IP whitelistées reçoivent
+  une exemption iptables RETURN pour ne plus jamais être demandées).

@@ -435,6 +435,8 @@ export default {
   alert_act_suspend: 'Anhalten',
   alert_act_allow: 'Erlauben',
   alert_act_deny: 'Verweigern',
+  alert_act_allow_perm: 'Immer erlauben',
+  alert_act_deny_perm: 'Immer verweigern',
   ar_action: 'Aktion',
   ar_action_alert: 'Nur Alarm',
   ar_action_block: 'Alarm + Block',

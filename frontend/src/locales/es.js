@@ -433,6 +433,8 @@ export default {  // Navegación
   alert_act_suspend: 'Suspender',
   alert_act_allow: 'Permitir',
   alert_act_deny: 'Denegar',
+  alert_act_allow_perm: 'Permitir siempre',
+  alert_act_deny_perm: 'Denegar siempre',
   ar_action: 'Acción',
   ar_action_alert: 'Solo alerta',
   ar_action_block: 'Alerta + bloqueo',

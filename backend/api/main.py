@@ -324,13 +324,18 @@ class IocImportBody(BaseModel):
 
 class AskVerdictBody(BaseModel):
     """EN: /security/ask/verdict payload — allow/deny one pending flow.
-    `remember` stores the decision for the session (default True).
+    Decisions persist per flow-key for the session; `permanent=True`
+    additionally writes durable policy: allow → whitelisted_ips, deny →
+    a persisted firewall block rule on the remote IP.
     FR: Charge utile du verdict ask — autoriser/refuser un flux en
-    attente. `remember` mémorise la décision pour la session."""
+    attente. La décision tient pour la session ; `permanent=True` écrit
+    en plus une politique durable : allow → whitelisted_ips, deny →
+    règle de blocage pare-feu persistée."""
     remote_ip: str
     remote_port: int
     proto: str = "TCP"
     allow: bool
+    permanent: bool = False
 
 
 class PairingBody(BaseModel):
@@ -1878,7 +1883,7 @@ def _load_settings() -> None:
         timeout=db.get_setting("ask_timeout", 15),
         failopen=bool(db.get_setting("ask_failopen", False)))
     if db.get_setting("ask_enabled", False):
-        ok, why = ask_mode.start()
+        ok, why = ask_mode.start(exempt_ips=sorted(_whitelisted_ips))
         if not ok:
             logger.warning("ask mode unavailable: %s", why)
     # EN: Local SLM enrichment — loopback-only by construction, opt-in.
@@ -2073,7 +2078,8 @@ async def post_settings(body: SettingsBody) -> dict:
             # FR: Bascule à chaud du mode ask NFQUEUE — stop toujours sûr ;
             #     start rapporte honnêtement la disponibilité plateforme.
             if value:
-                ok, why = ask_mode.start()
+                ok, why = ask_mode.start(
+                    exempt_ips=sorted(_whitelisted_ips))
                 if not ok:
                     logger.warning("ask mode unavailable: %s", why)
             else:
@@ -3196,12 +3202,35 @@ async def ask_verdict(body: AskVerdictBody) -> dict:
         remembers the decision for the session.
     FR: Verdict pour un flux NFQUEUE en attente — le paquet est gelé
         depuis l'alerte ASK_VERDICT ; `allow` l'accepte ou le droppe et
-        mémorise la décision pour la session."""
+        mémorise la décision pour la session. `permanent` écrit en plus
+        une politique durable (whitelist ou règle pare-feu)."""
     loop = asyncio.get_running_loop()
     decided = await loop.run_in_executor(
         None, ask_mode.decide, body.remote_ip, body.remote_port,
         body.proto, body.allow)
+    persisted = None
+    if body.permanent:
+        if body.allow:
+            # EN: "Allow always" → durable whitelist entry for the IP.
+            # FR: « Autoriser toujours » → entrée whitelist durable.
+            _whitelisted_ips.add(body.remote_ip)
+            db.set_setting("whitelisted_ips",
+                           sorted(_whitelisted_ips))
+            persisted = "whitelisted"
+        else:
+            # EN: "Deny always" → a REAL persisted firewall block rule.
+            # FR: « Bloquer définitivement » → vraie règle pare-feu.
+            try:
+                await loop.run_in_executor(
+                    None, fw.add_rule, "ip", body.remote_ip, "block", 0)
+                rules, _lock = fw.serialized()
+                db.set_setting("firewall_rules", rules)
+                await broadcast({"type": "firewall", "rules": rules})
+                persisted = "firewall_rule"
+            except ValueError:
+                persisted = None
     return {"ok": decided,
+            "persisted": persisted,
             "note": "flow already timed out — OS policy applied"
                     if not decided else "verdict applied"}
 

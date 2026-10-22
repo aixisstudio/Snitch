@@ -439,6 +439,8 @@ export default {  // Navigation
   alert_act_suspend: 'Suspend',
   alert_act_allow: 'Allow',
   alert_act_deny: 'Deny',
+  alert_act_allow_perm: 'Allow always',
+  alert_act_deny_perm: 'Deny always',
   ar_action: 'Action',
   ar_action_alert: 'Alert only',
   ar_action_block: 'Alert + block',

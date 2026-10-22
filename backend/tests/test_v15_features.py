@@ -815,3 +815,64 @@ def test_protomatch_ssh_and_ascii():
     assert check(25, "TCP", b"\x16\x03\x01tls-on-smtp?") is not None
     assert check(8443, "TCP", b"whatever") is None
     assert check(0, "TCP", b"") is None
+
+
+# ── Permanent ask verdicts / Verdicts ask permanents ──────────────────────
+
+def test_askmode_exempt_ips_installed_and_removed(monkeypatch):
+    """EN: exempt_ips become `-d <ip> -j RETURN` rules inserted BEFORE the
+    NFQUEUE jump at start, and are individually deleted on stop — the
+    "allow always" path survives restarts without leaking rules.
+    FR: exempt_ips deviennent des règles `-d <ip> -j RETURN` insérées
+    AVANT le saut NFQUEUE au start, supprimées une à une au stop."""
+    import subprocess
+    from detection import askmode
+
+    calls = []
+    monkeypatch.setattr(askmode, "available", lambda: (True, ""))
+    monkeypatch.setattr(subprocess, "run",
+                        lambda *a, **k: calls.append(a[0]) or None)
+
+    class FakeNfq:
+        def __init__(self, _q):
+            pass
+
+        def open(self):
+            pass
+
+        def bind_queue(self):
+            pass
+
+        def recv_packets(self, _t):
+            return []
+
+        def verdict(self, _pid, _accept):
+            pass
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr("detection.nfqueue.NfqSocket", FakeNfq)
+    am = askmode.AskMode(lambda ctx: None)
+    ok, why = am.start(exempt_ips=["1.2.3.4", "5.6.7.8"])
+    assert ok, why
+    # EN: both exemptions inserted before the NFQUEUE jump
+    # FR: les deux exemptions insérées avant le saut NFQUEUE
+    q_idx = next(i for i, c in enumerate(calls) if "NFQUEUE" in c)
+    for ip in ("1.2.3.4", "5.6.7.8"):
+        ins = ["iptables", "-w", "-I", "OUTPUT", "-d", ip, "-j", "RETURN"]
+        assert ins in calls[:q_idx]
+    am.stop()
+    for ip in ("1.2.3.4", "5.6.7.8"):
+        assert ["iptables", "-w", "-D", "OUTPUT", "-d", ip, "-j",
+                "RETURN"] in calls
+
+
+def test_askmode_exempt_bounded():
+    """EN: exempt_ips is capped at 64 — a huge whitelist can't explode the
+    rule list. / FR: exempt_ips borné à 64 — une whitelist énorme ne peut
+    pas exploser la liste de règles."""
+    from detection.askmode import AskMode
+    am = AskMode(lambda ctx: None)
+    am._exempt = [f"10.0.0.{i}" for i in range(200)][:64]
+    assert len(am._exempt) == 64

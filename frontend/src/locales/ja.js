@@ -435,6 +435,8 @@ export default {
   alert_act_suspend: '一時停止',
   alert_act_allow: '許可',
   alert_act_deny: '拒否',
+  alert_act_allow_perm: '常に許可',
+  alert_act_deny_perm: '常に拒否',
   ar_action: 'アクション',
   ar_action_alert: 'アラートのみ',
   ar_action_block: 'アラート+ブロック',

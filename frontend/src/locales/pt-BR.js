@@ -435,6 +435,8 @@ export default {
   alert_act_suspend: 'Suspender',
   alert_act_allow: 'Permitir',
   alert_act_deny: 'Negar',
+  alert_act_allow_perm: 'Permitir sempre',
+  alert_act_deny_perm: 'Negar sempre',
   ar_action: 'Ação',
   ar_action_alert: 'Só alerta',
   ar_action_block: 'Alerta + bloqueio',

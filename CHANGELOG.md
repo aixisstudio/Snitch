@@ -6,6 +6,13 @@ All notable changes to Snitch. / Toutes les modifications notables de Snitch.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/) — EN/FR.
 
+## [1.5.3] — 2026-10-22
+
+### Added / Ajouté
+
+- **Permanent ask verdicts / Verdicts ask permanents** — `POST /security/ask/verdict` accepts `permanent`: allow-always writes the IP to `whitelisted_ips` (and gets an iptables RETURN exemption at next start, so the flow is never re-asked), deny-always creates a persisted firewall block rule. The UI now offers all four classic choices. / `permanent` sur le verdict ask : autoriser-toujours whitelist l'IP (+ exemption iptables au prochain start), refuser-toujours crée une règle de blocage persistée. Les quatre choix classiques sont dans l'UI.
+- **Translation contribution docs / Doc contribution traductions** — README explains how to add a language (one file under `frontend/src/locales/` + registration in `i18n.jsx`). / Le README explique comment ajouter une langue (un fichier dans `frontend/src/locales/` + enregistrement dans `i18n.jsx`).
+
 ## [1.5.2] — 2026-10-22
 
 ### Added / Ajouté

@@ -96,6 +96,12 @@ class AskMode:
         self._decided: dict[tuple, bool] = {}
         self._lock = threading.Lock()
         self._rule_installed = False
+        # EN: IPs exempted from diversion at start (whitelist — "allow
+        #     always" verdicts). Bounded; tracked for clean removal.
+        # FR: IPs exemptées du détournement au start (whitelist — verdicts
+        #     « autoriser toujours »). Bornées ; suivies pour le retrait.
+        self._exempt: list[str] = []
+        self._exempt_rules: list[list[str]] = []
 
     # ── lifecycle / cycle de vie ──────────────────────────────────────────
 
@@ -113,10 +119,15 @@ class AskMode:
         if failopen is not None:
             self._failopen = bool(failopen)
 
-    def start(self) -> tuple[bool, str]:
+    def start(self, exempt_ips: Optional[list] = None) -> tuple[bool, str]:
+        """EN: `exempt_ips` get iptables RETURN rules before the NFQUEUE
+        jump so "allow always" verdicts survive restarts — bounded to 64.
+        FR: `exempt_ips` reçoivent des règles RETURN avant le saut NFQUEUE
+        — les verdicts « autoriser toujours » survivent au redémarrage."""
         ok, why = available()
         if not ok:
             return False, why
+        self._exempt = list(exempt_ips or [])[:64]
         import subprocess
         from .nfqueue import NfqSocket                        # noqa: PLC0415
         try:
@@ -149,6 +160,17 @@ class AskMode:
             ["iptables", "-w", "-I", "OUTPUT", "-j", "NFQUEUE",
              "--queue-num", str(_QUEUE_NUM)],
         ]
+        # EN: Per-IP exemptions ride BEFORE the queue jump — they keep the
+        #     LAN/UI exemption insertion order intact.
+        # FR: Les exemptions par IP précèdent le saut — l'ordre d'insertion
+        #     des exemptions LAN/UI est préservé.
+        for ip in self._exempt:
+            cmds.insert(len(cmds) - 1,
+                        ["iptables", "-w", "-I", "OUTPUT", "-d", ip,
+                         "-j", "RETURN"])
+            self._exempt_rules.append(
+                ["iptables", "-w", "-D", "OUTPUT", "-d", ip, "-j",
+                 "RETURN"])
         for c in cmds:
             try:
                 subprocess.run(c, timeout=10, check=False,
@@ -207,6 +229,10 @@ class AskMode:
             subprocess.run(["iptables", "-w", "-D", "OUTPUT", "-j",
                             "NFQUEUE", "--queue-num", str(_QUEUE_NUM)],
                            timeout=10, check=False, capture_output=True)
+            for rm in self._exempt_rules:
+                subprocess.run(rm, timeout=10, check=False,
+                               capture_output=True)
+            self._exempt_rules.clear()
             self._rule_installed = False
 
     # ── verdict path / chemin du verdict ─────────────────────────────────

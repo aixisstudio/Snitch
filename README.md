@@ -241,6 +241,19 @@ snitch/
 └── dist/          Compiled output (backend exe, installer)
 ```
 
+### Contribute
+
+Bug reports and PRs are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+**Translations** — the UI is fully localized in 8 languages and every string
+lives in a single plain file per locale under `frontend/src/locales/`
+(`en.js`, `fr.js`, `de.js`, `es.js`, `ru.js`, `ja.js`, `pt-BR.js`,
+`zh-CN.js`). Adding Polish, Korean, Italian or any other language is a
+one-file, zero-code-change pull request: copy `en.js`, translate the
+values, then register the import, `LANGS` entry and display name in
+`frontend/src/i18n.jsx`. Docs (`PRIVACY`, `FIREWALL`, `CHANGELOG`…)
+follow the same per-language file pattern.
+
 ---
 
 ## Français
@@ -397,6 +410,20 @@ snitch/
 ├── data/          Données d'exécution (SQLite, bases .mmdb dans geo/)
 └── dist/          Sortie compilée (exe backend, installateur)
 ```
+
+### Contribuer
+
+Rapports de bugs et PR bienvenus — voir [CONTRIBUTING.md](CONTRIBUTING.md).
+
+**Traductions** — l'UI est entièrement localisée en 8 langues et chaque
+chaîne vit dans un seul fichier par locale sous `frontend/src/locales/`
+(`en.js`, `fr.js`, `de.js`, `es.js`, `ru.js`, `ja.js`, `pt-BR.js`,
+`zh-CN.js`). Ajouter le polonais, le coréen, l'italien ou toute autre
+langue est une PR d'un seul fichier, sans toucher au code : copier
+`en.js`, traduire les valeurs, puis enregistrer l'import, l'entrée
+`LANGS` et le nom d'affichage dans `frontend/src/i18n.jsx`. Les docs
+(`PRIVACY`, `FIREWALL`, `CHANGELOG`…) suivent le même schéma de
+fichier par langue.
 
 ---
 

@@ -117,6 +117,20 @@ function AlertActions({ alert }) {
             style={{ ...btn, color: '#ef4444', borderColor: '#ef444444' }}>
             <ShieldX size={10} /> {t('alert_act_deny')}
           </button>
+          <button onClick={() => post('/security/ask/verdict',
+            { remote_ip: d.remote_ip, remote_port: d.remote_port,
+              proto: d.proto, allow: true, permanent: true }, 'allow+')}
+            title={t('alert_act_allow_perm')}
+            style={{ ...btn, color: '#4ade80', borderColor: '#4ade8044' }}>
+            {t('alert_act_allow_perm')}
+          </button>
+          <button onClick={() => post('/security/ask/verdict',
+            { remote_ip: d.remote_ip, remote_port: d.remote_port,
+              proto: d.proto, allow: false, permanent: true }, 'deny+')}
+            title={t('alert_act_deny_perm')}
+            style={{ ...btn, color: '#ef4444', borderColor: '#ef444444' }}>
+            {t('alert_act_deny_perm')}
+          </button>
         </>
       )}
       {d.ip && !alert._grouped && done !== 'block' && (

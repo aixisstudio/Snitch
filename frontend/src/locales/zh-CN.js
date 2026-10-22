@@ -435,6 +435,8 @@ export default {
   alert_act_suspend: '挂起',
   alert_act_allow: '允许',
   alert_act_deny: '拒绝',
+  alert_act_allow_perm: '始终允许',
+  alert_act_deny_perm: '始终拒绝',
   ar_action: '动作',
   ar_action_alert: '仅告警',
   ar_action_block: '告警+封锁',

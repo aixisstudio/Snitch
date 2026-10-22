@@ -435,6 +435,8 @@ export default {
   alert_act_suspend: 'Приостановить',
   alert_act_allow: 'Разрешить',
   alert_act_deny: 'Запретить',
+  alert_act_allow_perm: 'Всегда разрешать',
+  alert_act_deny_perm: 'Всегда запрещать',
   ar_action: 'Действие',
   ar_action_alert: 'Только алерт',
   ar_action_block: 'Алерт + блок',
