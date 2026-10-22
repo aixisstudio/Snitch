@@ -4,7 +4,7 @@
 #     repository » et les gestionnaires de références peuvent l'importer.
 cff-version: 1.2.0
 message: "If you use this software, please cite it as below. / Si vous utilisez ce logiciel, merci de le citer ainsi."
-title: "Snitch — Real-time network traffic visualizer"
+title: "Snitch — Real-time network monitor + outbound firewall"
 authors:
   - name: "aiXis"
     website: "https://aixis.fr/"
@@ -13,9 +13,10 @@ repository-code: "https://github.com/aixisstudio/Snitch"
 license: AGPL-3.0-or-later
 keywords:
   - network monitor
+  - outbound firewall
   - packet capture
   - privacy
-  - traffic visualization
+  - siem
   - cybersecurity
-version: "1.6.1"
-date-released: "2026-10-01"
+version: "1.6.3"
+date-released: "2026-10-22"

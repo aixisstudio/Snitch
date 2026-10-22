@@ -19,7 +19,8 @@ are very welcome.
   without explicit, opt-in user consent.
 - **Bilingual**: docstrings and UI strings in English AND French.
 - **Tests**: every bug fix ships a test. `pytest backend/tests` and
-  `npm test` in `frontend/` must pass.
+  `npm test` in `frontend/` must pass. Rust agent changes need
+  `cargo test` in `agent/` — `ci-agent.yml` covers all three OS.
 - **Keep diffs focused** — one concern per PR.
 
 **Dev setup**
@@ -50,5 +51,7 @@ de `frontend/src/i18n.jsx`.
   consentement explicite et opt-in de l'utilisateur.
 - **Bilingue** : docstrings et chaînes UI en anglais ET en français.
 - **Tests** : chaque correction s'accompagne d'un test. `pytest
-  backend/tests` et `npm test` dans `frontend/` doivent passer.
+  backend/tests` et `npm test` dans `frontend/` doivent passer. Les
+  changements de l'agent Rust exigent `cargo test` dans `agent/` —
+  `ci-agent.yml` couvre les trois OS.
 - **Diffs ciblées** — un sujet par PR.
