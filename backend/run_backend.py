@@ -99,11 +99,18 @@ if __name__ == '__main__':
 
     # EN: Loopback-only by default everywhere — Electron AND Docker/dev.
     #     Set SNITCH_BIND=0.0.0.0 to expose (token auth still applies).
+    #     The persisted `lan_bind` setting (written by POST /remote/pairing)
+    #     is honoured at the lowest precedence — env and argv always win.
     # FR: Loopback uniquement par défaut partout — Electron ET Docker/dev.
     #     Poser SNITCH_BIND=0.0.0.0 pour exposer (le jeton reste exigé).
+    #     Le réglage persisté `lan_bind` (écrit par POST /remote/pairing)
+    #     est honoré en dernière priorité — env et argv gagnent toujours.
+    import storage.db as _db
+    _lan_bind = _db.get_setting("lan_bind", "") or ""
     uvicorn.run(
         app,
-        host=os.environ.get('SNITCH_BIND') or argv_bind or '127.0.0.1',
+        host=(os.environ.get('SNITCH_BIND') or argv_bind
+              or _lan_bind or '127.0.0.1'),
         port=int(os.environ.get('SNITCH_PORT') or argv_port or '8000'),
         log_level='warning',
     )

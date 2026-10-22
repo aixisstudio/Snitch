@@ -11,9 +11,11 @@ EN: Local SLM enrichment — a REAL small language model, not a simulated
       * OPT-IN — disabled by default; the deterministic bilingual
         templates (explain.py) always remain the fallback, so nothing
         breaks when the model is down.
-      * NO BUNDLED MODEL — Snitch never downloads weights itself; the
-        user points it at their own local server. Model names are
-        user-provided or auto-detected from /api/tags.
+      * TWO LOCAL BACKENDS — `ollama` talks to a loopback endpoint;
+        `embedded` loads a user-provided GGUF file through the optional
+        `llama-cpp-python` package — zero network at all. Snitch never
+        downloads weights itself: the user points it at a model they
+        fetched on their own.
 
 FR: Enrichissement SLM local — un VRAI petit modèle de langage, pas un
     simulacre. Si l'utilisateur fait tourner Ollama (ou toute API
@@ -25,8 +27,10 @@ FR: Enrichissement SLM local — un VRAI petit modèle de langage, pas un
         jamais la machine. Vérifié à chaque configure().
       * OPT-IN — désactivé par défaut ; les gabarits bilingues
         déterministes (explain.py) restent le repli permanent.
-      * PAS DE MODÈLE EMBARQUÉ — Snitch ne télécharge jamais de poids ;
-        l'utilisateur pointe vers son propre serveur local.
+      * DEUX BACKENDS LOCAUX — `ollama` parle à un endpoint loopback ;
+        `embedded` charge un fichier GGUF fourni par l'utilisateur via le
+        paquet optionnel `llama-cpp-python` — zéro réseau. Snitch ne
+        télécharge jamais de poids.
 """
 
 from __future__ import annotations
@@ -66,18 +70,29 @@ class LocalSlm:
         self._enabled = False
         self._endpoint = "http://127.0.0.1:11434"
         self._model = ""                            # EN: empty → autodetect / FR: vide → autodétecté
+        self._mode = "ollama"                       # EN: ollama | embedded / FR: ollama | embedded
+        self._model_path = ""                       # EN: user GGUF path / FR: chemin GGUF utilisateur
+        self._llama = None                          # EN: lazy Llama() / FR: Llama() paresseux
         self._cache: dict[tuple, tuple[float, str]] = {}
 
     # ── config / configuration ───────────────────────────────────────────────
 
     def configure(self, enabled: bool, endpoint: str = "",
-                  model: str = "") -> None:
+                  model: str = "", mode: str = "",
+                  model_path: str = "") -> None:
         with self._lock:
             self._enabled = bool(enabled)
             if endpoint and _is_loopback(endpoint):
                 self._endpoint = endpoint.rstrip("/")
             if model is not None:
                 self._model = model.strip()
+            if mode in ("ollama", "embedded"):
+                if mode != self._mode:
+                    self._llama = None              # EN: backend switch → reload / FR: changement → recharger
+                self._mode = mode
+            if model_path and model_path != self._model_path:
+                self._model_path = model_path.strip()
+                self._llama = None                  # EN: new weights → reload / FR: nouveaux poids → recharger
 
     # ── status / état ────────────────────────────────────────────────────────
 
@@ -100,15 +115,47 @@ class LocalSlm:
         affiché, jamais caché)."""
         with self._lock:
             enabled, endpoint, model = self._enabled, self._endpoint, self._model
+            mode, mpath = self._mode, self._model_path
         reachable = False
         detected = ""
         if enabled:
-            detected = self._detect_model() if not model else ""
-            reachable = bool(model or detected)
+            if mode == "embedded":
+                import os
+                reachable = bool(mpath) and os.path.isfile(mpath)
+            else:
+                detected = self._detect_model() if not model else ""
+                reachable = bool(model or detected)
         return {"enabled": enabled, "reachable": reachable,
-                "endpoint": endpoint,
-                "model": model or detected,
-                "loopback_only": True}
+                "endpoint": endpoint, "mode": mode,
+                "model": model or detected or mpath,
+                "loopback_only": mode != "embedded" or True}
+
+    # ── embedded backend / backend embarqué ───────────────────────────────────
+
+    def _load_embedded(self) -> object | None:
+        """EN: Lazy-load the user-supplied GGUF via llama-cpp-python —
+            first call pays the load cost (~seconds); the model object is
+            reused afterwards. Returns None when the package or the file
+            is missing — the caller falls back to templates.
+        FR: Charge le GGUF fourni par l'utilisateur via llama-cpp-python —
+            le premier appel paie le coût de chargement ; l'objet est
+            réutilisé ensuite. Renvoie None si paquet/fichier absent."""
+        with self._lock:
+            if self._llama is not None:
+                return self._llama
+            path = self._model_path
+        try:
+            from llama_cpp import Llama
+        except ImportError:
+            return None
+        try:
+            llama = Llama(model_path=path, n_ctx=512, n_threads=2,
+                          verbose=False)
+        except Exception:                            # noqa: BLE001
+            return None
+        with self._lock:
+            self._llama = llama
+        return llama
 
     # ── generation / génération ──────────────────────────────────────────────
 
@@ -124,11 +171,7 @@ class LocalSlm:
                 return None
             endpoint = self._endpoint
             model = self._model
-        if not _is_loopback(endpoint):
-            return None
-        model = model or self._detect_model()
-        if not model:
-            return None
+            mode = self._mode
         import hashlib
         key = (alert_type, lang,
                hashlib.sha256(json.dumps(details, sort_keys=True,
@@ -144,16 +187,36 @@ class LocalSlm:
             f"and what the user should check. No preamble.\n"
             f"ALERT TYPE: {alert_type}\nDETAILS: {json.dumps(details, default=str)[:600]}"
         )
-        try:
-            body = json.dumps({"model": model, "prompt": prompt,
-                               "stream": False}).encode()
-            req = urllib.request.Request(f"{endpoint}/api/generate",
-                                         data=body,
-                                         headers={"Content-Type": "application/json"})
-            with urllib.request.urlopen(req, timeout=_TIMEOUT) as r:
-                text = (json.loads(r.read()).get("response") or "").strip()
-        except Exception:                            # noqa: BLE001
-            return None
+        text = None
+        if mode == "embedded":
+            # EN: Zero-network path — inference runs fully in-process.
+            # FR: Chemin zéro-réseau — l'inférence tourne entièrement en
+            #     processus.
+            llama = self._load_embedded()
+            if llama is not None:
+                try:
+                    out = llama(prompt, max_tokens=160,
+                                stop=["\n\n"], temperature=0.3)
+                    text = (out.get("choices", [{}])[0]
+                            .get("text") or "").strip()
+                except Exception:                    # noqa: BLE001
+                    text = None
+        else:
+            if not _is_loopback(endpoint):
+                return None
+            model = model or self._detect_model()
+            if not model:
+                return None
+            try:
+                body = json.dumps({"model": model, "prompt": prompt,
+                                   "stream": False}).encode()
+                req = urllib.request.Request(f"{endpoint}/api/generate",
+                                             data=body,
+                                             headers={"Content-Type": "application/json"})
+                with urllib.request.urlopen(req, timeout=_TIMEOUT) as r:
+                    text = (json.loads(r.read()).get("response") or "").strip()
+            except Exception:                        # noqa: BLE001
+                return None
         if text:
             with self._lock:
                 self._cache[key] = (time.time(), text)

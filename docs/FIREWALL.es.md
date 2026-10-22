@@ -105,3 +105,15 @@ Todas están **desactivadas por defecto o se autolimitan**, degradan honestament
 - **Contadores hardware** — `POST /security/perf` muestrea ciclos/instrucciones vía `perf_event_open` (Linux).
 - **LLM local** — opt-in (`slm_enabled`): `/security/explain` llama a un endpoint Ollama **solo loopback** — endpoints remotos rechazados.
 - **Paquetes IOC** — `GET /security/iocpack` exporta un Bloom + randomized response (nunca en claro); `POST /security/iocpack/import` comprueba destinos de forma probabilística.
+
+### Novedades de política y respuesta (v1.4)
+
+- **Perfiles nombrados** — `POST /firewall/profile`: `permissive` (tabla rasa), `balanced` (base de salida prudente) o `strict` (base + lockdown); se expanden en reglas ordinarias con deduplicación.
+- **Reglas de alerta personalizadas** — `GET/POST/DELETE /alerts/rules`: campo + operador + valor → alertas `CUSTOM_RULE` (solo alerta, nunca bloquea).
+- **Importar blocklist** — `POST /firewall/blocklist`: archivo local (local puro) o URL opt-in (fetch HTTPS ≤4 MiB, señalado `remote_fetch`) → reglas `domain`, deduplicadas, tope 500–5000.
+- **Export PCAP** — `GET /forensics/pcap` (filtros `ip`/`process`): anillo de tramas ~4 MiB como `.pcap` para Wireshark.
+- **Emparejamiento remoto** — `POST /remote/pairing` persiste `lan_bind` para el próximo inicio; el token sigue obligatorio. `GET /remote/pairing` reporta bind + IPs LAN.
+- **Sandbox sin red** — `POST /security/sandbox` ejecuta un binario con cero egress (`unshare -n` Linux, `sandbox-exec` macOS; `contrib/snitch-contain` manual).
+- **Modelo embebido** — `slm_mode=embedded` carga un `.gguf` del usuario vía `llama-cpp-python` — cero red.
+- **Esqueletos nativos** — `contrib/wfp-callout/` (callout WFP en C + firma) y `contrib/macos-filter/` (`NEFilterDataProvider` Swift + entitlements): scaffolding de investigación, no se distribuyen.
+- **ASN** — con `GeoLite2-ASN.mmdb`/`dbip-asn-lite.mmdb`, los nodos llevan `asn` además de `org`.

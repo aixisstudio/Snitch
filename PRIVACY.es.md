@@ -77,3 +77,11 @@ visitadas a un tercero en claro.
 Directorio de datos: `data/` en dev/Docker, `%LOCALAPPDATA%\Snitch` en
 Windows, `~/Library/Application Support/Snitch` en macOS,
 `~/.local/share/snitch` en Linux cuando está instalado.
+
+## Novedades v1.4 (privacidad)
+
+- **Importar blocklist por URL (opt-in)** — un *archivo local* es una lectura puramente local; una *URL* realiza un único fetch HTTPS acotado (≤4 MiB, ≤10 s), confirmado en la UI y marcado `remote_fetch`.
+- **Emparejamiento remoto (opt-in, desactivado)** — la API solo escucha en 127.0.0.1; activar el pairing persiste `lan_bind` para el próximo arranque — el token sigue obligatorio en cada petición.
+- **Sandbox sin red** — `POST /security/sandbox` ejecuta un binario en un namespace sin red (`unshare -n` Linux) o seatbelt (`sandbox-exec` macOS): egress cero, la salida queda en la máquina.
+- **Pruebas IOC `format=proof`** — hojas SHA-256 saladas + raíz Merkle: pertenencia exacta sin enumerar indicadores no sospechados; nada se transmite automáticamente.
+- **Modelo embebido** — `slm_mode=embedded` carga tu `.gguf` en proceso vía `llama-cpp-python` — cero red; Snitch nunca descarga pesos.

@@ -44,22 +44,27 @@ export function SettingsPanel({ onClose, lang, setLang, watchlist = [], onWatchl
   const [watchInput, setWatchInput] = useState('')
   const [updStatus, setUpdStatus] = useState(null)
   const [updCheck, setUpdCheck] = useState(true)
+  const [pairing, setPairing] = useState(null)
+  const [sbPath, setSbPath] = useState('')
+  const [sbResult, setSbResult] = useState(null)
 
   useEffect(() => {
     ;(async () => {
       const base = await apiBase()
       const headers = await authHeaders()
       try {
-        const [s, g, i] = await Promise.all([
+        const [s, g, i, p] = await Promise.all([
           fetch(`${base}/settings`, { headers }).then(r => r.json()),
           fetch(`${base}/geo/status`, { headers }).then(r => r.json()),
           fetch(`${base}/capture/interfaces`, { headers }).then(r => r.json()),
+          fetch(`${base}/remote/pairing`, { headers }).then(r => r.json()),
         ])
         setSettings(s.settings || {})
         setRetention(s.settings?.retention_hours ?? 24)
         setUploadMb(s.settings?.upload_threshold_mb ?? 50)
         setGeoStatus(g)
         setIfaces(i.interfaces || [])
+        setPairing(p)
       } catch { setSettings({}) }
       if (window.snitch?.getAutoLaunch) {
         setAutoLaunch(await window.snitch.getAutoLaunch())
@@ -135,6 +140,49 @@ export function SettingsPanel({ onClose, lang, setLang, watchlist = [], onWatchl
     a.download = `snitch-diagnostics-${Date.now()}.json`
     a.click()
     URL.revokeObjectURL(a.href)
+  }
+
+  /**
+   * EN: Remote pairing — opt-in LAN exposure persisted as `lan_bind`.
+   *     The backend cannot rebind a live socket, so the answer's
+   *     `restart_required` is surfaced verbatim.
+   * FR: Pairing distant — exposition LAN opt-in persistée en `lan_bind`.
+   *     Le backend ne peut pas re-binder un socket actif, donc
+   *     `restart_required` est affiché tel quel.
+   */
+  async function setPairingOn(on) {
+    const base = await apiBase()
+    const res = await fetch(`${base}/remote/pairing`, {
+      method: 'POST',
+      headers: await authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ enabled: on, bind: '0.0.0.0' }),
+    }).then(r => r.json())
+    const p = await fetch(`${base}/remote/pairing`, { headers: await authHeaders() }).then(r => r.json())
+    setPairing({ ...p, _justSet: res.lan_bind })
+  }
+
+  /**
+   * EN: Sandbox detonation — run a binary with zero network egress
+   *     (network namespace on Linux, sandbox-exec on macOS). Bounded
+   *     runtime; the result says honestly whether egress was denied.
+   * FR: Détonation en sandbox — exécuter un binaire avec zéro égress
+   *     réseau (namespace réseau sous Linux, sandbox-exec sous macOS).
+   *     Durée bornée ; le résultat dit honnêtement si l'égress était
+   *     bloqué.
+   */
+  async function detonate(e) {
+    e.preventDefault()
+    if (!sbPath.trim()) return
+    setSbResult({ running: true })
+    const base = await apiBase()
+    try {
+      const res = await fetch(`${base}/security/sandbox`, {
+        method: 'POST',
+        headers: await authHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ path: sbPath.trim(), seconds: 10 }),
+      }).then(r => r.json())
+      setSbResult(res)
+    } catch (ex) { setSbResult({ ok: false, error: String(ex.message || ex) }) }
   }
 
   const row = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid var(--bg)' }
@@ -489,33 +537,137 @@ export function SettingsPanel({ onClose, lang, setLang, watchlist = [], onWatchl
             </button>
           </div>
           {settings?.slm_enabled && (
-            <form onSubmit={e => {
-              e.preventDefault()
-              save('slm_endpoint', e.target.elements.slme.value.trim())
-              save('slm_model', e.target.elements.slmm.value.trim())
-            }} style={{ display: 'flex', gap: 6, marginTop: 8 }}>
-              <input
-                name="slme"
-                defaultValue={settings?.slm_endpoint ?? ''}
-                placeholder="http://127.0.0.1:11434"
-                aria-label={t('slm_endpoint')}
-                style={{ flex: 2, background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', padding: '6px 10px', fontSize: 11, outline: 'none' }}
-              />
-              <input
-                name="slmm"
-                defaultValue={settings?.slm_model ?? ''}
-                placeholder="llama3.2"
-                aria-label={t('slm_model')}
-                style={{ flex: 1, background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', padding: '6px 10px', fontSize: 11, outline: 'none' }}
-              />
-              <button type="submit" style={{
-                background: 'var(--bg)', border: '1px solid var(--border)',
-                borderRadius: 6, color: 'var(--text-dim)', padding: '6px 12px',
-                fontSize: 10, cursor: 'pointer',
-              }}>{t('save')}</button>
-            </form>
+            <>
+              {/* EN: Backend choice — `ollama` reaches a loopback server;
+                      `embedded` loads a user-provided GGUF via
+                      llama-cpp-python (zero network at all).
+                  FR: Choix du backend — `ollama` joint un serveur
+                      loopback ; `embedded` charge un GGUF fourni par
+                      l'utilisateur via llama-cpp-python (zéro réseau). */}
+              <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+                {['ollama', 'embedded'].map(m => (
+                  <button key={m} onClick={() => {
+                    setSettings(s => ({ ...s, slm_mode: m }))
+                    save('slm_mode', m)
+                  }} style={{
+                    flex: 1, background: (settings?.slm_mode ?? 'ollama') === m ? '#3b82f6' : 'var(--bg)',
+                    border: '1px solid var(--border)', borderRadius: 6,
+                    color: (settings?.slm_mode ?? 'ollama') === m ? '#fff' : 'var(--text-dim)',
+                    padding: '5px 0', fontSize: 10, cursor: 'pointer', fontWeight: 600,
+                  }}>{m === 'ollama' ? t('slm_mode_ollama') : t('slm_mode_embedded')}</button>
+                ))}
+              </div>
+              {(settings?.slm_mode ?? 'ollama') === 'embedded' ? (
+                <form onSubmit={e => {
+                  e.preventDefault()
+                  save('slm_model_path', e.target.elements.slmp.value.trim())
+                }} style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+                  <input
+                    name="slmp"
+                    defaultValue={settings?.slm_model_path ?? ''}
+                    placeholder="/path/to/model.gguf"
+                    aria-label={t('slm_model_path')}
+                    style={{ flex: 1, background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', padding: '6px 10px', fontSize: 11, outline: 'none' }}
+                  />
+                  <button type="submit" style={{
+                    background: 'var(--bg)', border: '1px solid var(--border)',
+                    borderRadius: 6, color: 'var(--text-dim)', padding: '6px 12px',
+                    fontSize: 10, cursor: 'pointer',
+                  }}>{t('save')}</button>
+                </form>
+              ) : (
+                <form onSubmit={e => {
+                  e.preventDefault()
+                  save('slm_endpoint', e.target.elements.slme.value.trim())
+                  save('slm_model', e.target.elements.slmm.value.trim())
+                }} style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+                  <input
+                    name="slme"
+                    defaultValue={settings?.slm_endpoint ?? ''}
+                    placeholder="http://127.0.0.1:11434"
+                    aria-label={t('slm_endpoint')}
+                    style={{ flex: 2, background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', padding: '6px 10px', fontSize: 11, outline: 'none' }}
+                  />
+                  <input
+                    name="slmm"
+                    defaultValue={settings?.slm_model ?? ''}
+                    placeholder="llama3.2"
+                    aria-label={t('slm_model')}
+                    style={{ flex: 1, background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', padding: '6px 10px', fontSize: 11, outline: 'none' }}
+                  />
+                  <button type="submit" style={{
+                    background: 'var(--bg)', border: '1px solid var(--border)',
+                    borderRadius: 6, color: 'var(--text-dim)', padding: '6px 12px',
+                    fontSize: 10, cursor: 'pointer',
+                  }}>{t('save')}</button>
+                </form>
+              )}
+            </>
           )}
           <div style={{ ...hint, marginTop: 4 }}>{t('slm_privacy')}</div>
+        </div>
+
+        {/* Remote pairing / Pairing distant */}
+        <div style={{ ...row, display: 'block' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <div style={label}>{t('pair_title')}</div>
+              <div style={hint}>{t('pair_hint')}</div>
+            </div>
+            <button
+              onClick={() => setPairingOn(!(pairing?.persisted_bind))}
+              role="switch" aria-checked={!!pairing?.persisted_bind}
+              style={{
+                width: 36, height: 20, borderRadius: 10, border: 'none',
+                background: pairing?.persisted_bind ? '#3b82f6' : 'var(--bg)',
+                outline: '1px solid var(--border)', cursor: 'pointer',
+                position: 'relative', flexShrink: 0,
+              }}>
+              <div style={{
+                width: 14, height: 14, borderRadius: '50%', background: 'var(--text)',
+                position: 'absolute', top: 3, left: pairing?.persisted_bind ? 19 : 3,
+                transition: 'left 0.15s',
+              }} />
+            </button>
+          </div>
+          {pairing?.persisted_bind && (
+            <div style={{ ...hint, marginTop: 6 }}>
+              {t('pair_lan_ips', (pairing.lan_ips || []).join(', ') || '—')}
+              {' · '}{t('pair_port', pairing.port)}
+              {pairing.restart_required && (
+                <div style={{ color: '#f59e0b', marginTop: 3 }}>{t('pair_restart')}</div>
+              )}
+            </div>
+          )}
+          <div style={{ ...hint, marginTop: 4 }}>{t('pair_privacy')}</div>
+        </div>
+
+        {/* Sandbox detonation / Détonation en sandbox */}
+        <div style={{ ...row, display: 'block' }}>
+          <div style={label}>{t('sb_title')}</div>
+          <div style={hint}>{t('sb_hint')}</div>
+          <form onSubmit={detonate} style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+            <input value={sbPath} onChange={e => setSbPath(e.target.value)}
+              placeholder="/path/to/binary" aria-label={t('sb_path')}
+              style={{ flex: 1, background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', padding: '6px 10px', fontSize: 11, outline: 'none' }} />
+            <button type="submit" disabled={!sbPath.trim() || sbResult?.running} style={{
+              background: sbPath.trim() ? '#3b82f6' : 'var(--bg)', border: 'none',
+              borderRadius: 6, color: sbPath.trim() ? '#fff' : 'var(--text-faint)',
+              padding: '6px 12px', fontSize: 10, cursor: 'pointer', fontWeight: 600,
+            }}>{sbResult?.running ? '…' : t('sb_run')}</button>
+          </form>
+          {sbResult && !sbResult.running && (
+            <div style={{ ...hint, marginTop: 4, color: sbResult.ok ? '#4ade80' : '#f59e0b' }}>
+              {sbResult.ok
+                ? t('sb_done', sbResult.exit_code ?? '?')
+                : (sbResult.error || t('sb_failed'))}
+              {sbResult.stderr && (
+                <div style={{ fontFamily: 'monospace', marginTop: 2, color: 'var(--text-muted)' }}>
+                  {String(sbResult.stderr).slice(0, 200)}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Updates (Electron only) / Mises à jour (Electron seul) */}

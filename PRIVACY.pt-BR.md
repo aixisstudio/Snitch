@@ -78,3 +78,11 @@ IPs visitados a terceiros em claro.
 Diretório de dados: `data/` em dev/Docker, `%LOCALAPPDATA%\Snitch` no
 Windows, `~/Library/Application Support/Snitch` no macOS,
 `~/.local/share/snitch` no Linux quando instalado.
+
+## Novidades v1.4 (privacidade)
+
+- **Blocklist por URL (opt-in)** — um *arquivo local* é uma leitura puramente local; uma *URL* faz um único fetch HTTPS limitado (≤4 MiB, ≤10 s), confirmado na UI e marcado `remote_fetch`.
+- **Pareamento remoto (opt-in, desativado)** — a API só escuta em 127.0.0.1; ativar persiste `lan_bind` para a próxima inicialização — o token continua obrigatório em cada requisição.
+- **Sandbox sem rede** — `POST /security/sandbox` executa um binário num namespace sem rede (`unshare -n` Linux) ou seatbelt (`sandbox-exec` macOS): egress zero, a saída fica na máquina.
+- **IOC `format=proof`** — folhas SHA-256 com sal + raiz Merkle: pertinência exata sem enumerar indicadores não suspeitos; nada é transmitido automaticamente.
+- **Modelo embutido** — `slm_mode=embedded` carrega seu `.gguf` em processo via `llama-cpp-python` — zero rede; Snitch nunca baixa pesos.

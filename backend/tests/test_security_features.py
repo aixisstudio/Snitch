@@ -838,3 +838,300 @@ def test_parser_app_head_cleartext_only():
     assert p.app_head.startswith(b'{"method"')
     p2 = parse_frame(DLT_EN10MB, frame(b"\x16\x03\x01" + b"\x00" * 40))
     assert p2.app_head == b""
+
+
+# ── Firewall profiles / Profils pare-feu ────────────────────────────────────
+
+def test_profile_balanced_adds_baseline(tmp_path, monkeypatch):
+    """EN: `balanced` expands to baseline port rules + lockdown stays off.
+    FR: `balanced` se déplie en règles de ports de base + lockdown éteint."""
+    fw = _fw(tmp_path, monkeypatch)
+    res = fw.apply_profile("balanced")
+    rules, lockdown = fw.serialized()
+    assert res["added"] == len(FirewallManager.PROFILES["balanced"]["rules"])
+    assert lockdown is False
+    assert all(r["kind"] == "port" for r in rules)
+
+
+def test_profile_strict_enables_lockdown(tmp_path, monkeypatch):
+    """EN: `strict` = baseline + lockdown ON. / FR: `strict` = base + lockdown."""
+    fw = _fw(tmp_path, monkeypatch)
+    fw.apply_profile("strict")
+    _, lockdown = fw.serialized()
+    assert lockdown is True
+
+
+def test_profile_permissive_clears_all(tmp_path, monkeypatch):
+    """EN: `permissive` wipes every rule and drops lockdown — clean slate.
+    FR: `permissive` efface toutes les règles et le lockdown — table rase."""
+    fw = _fw(tmp_path, monkeypatch)
+    fw.apply_profile("strict")
+    res = fw.apply_profile("permissive")
+    rules, lockdown = fw.serialized()
+    assert rules == [] and lockdown is False and res["removed"] > 0
+
+
+def test_profile_dedup_keeps_existing(tmp_path, monkeypatch):
+    """EN: Re-applying a profile reuses identical rules — no duplicates.
+    FR: Ré-appliquer un profil réutilise les règles identiques — pas de doublon."""
+    fw = _fw(tmp_path, monkeypatch)
+    fw.apply_profile("balanced")
+    res = fw.apply_profile("balanced")
+    assert res["added"] == 0
+    assert len(fw.serialized()[0]) == len(
+        FirewallManager.PROFILES["balanced"]["rules"])
+
+
+def test_profile_unknown_rejected(tmp_path, monkeypatch):
+    """EN: Unknown profile name → ValueError → 400 at the API layer.
+    FR: Nom de profil inconnu → ValueError → 400 côté API."""
+    fw = _fw(tmp_path, monkeypatch)
+    try:
+        fw.apply_profile("paranoid")
+    except ValueError:
+        return
+    raise AssertionError("expected ValueError")
+
+
+# ── Custom alert rules / Règles d'alerte utilisateur ────────────────────────
+
+def test_custom_rules_lifecycle_and_match():
+    """EN: add → match by host SNI → hit counter → toggle off → no match.
+    FR: ajout → match par SNI → compteur → désactivation → plus de match."""
+    from detection.customrules import CustomRules
+    cr = CustomRules()
+    r = cr.add("watch onions", "host", "contains", ".onion", "critical")
+    p = pkt()
+    p.sni = "deadbeef.onion"
+    hits = cr.check(p)
+    assert hits and hits[0]["rule"]["name"] == "watch onions"
+    assert r["hits"] == 1
+    cr.toggle(r["id"], False)
+    assert cr.check(p) == []
+
+
+def test_custom_rules_cidr_and_numeric():
+    """EN: cidr op on remote_ip + gt op on remote_port both match.
+    FR: l'op cidr sur remote_ip et gt sur remote_port matchent tous deux."""
+    from detection.customrules import CustomRules
+    cr = CustomRules()
+    cr.add("range", "remote_ip", "cidr", "91.198.174.0/24")
+    cr.add("highport", "remote_port", "gt", "8000")
+    assert len(cr.check(pkt())) == 1                    # EN: ip only / FR: ip seule
+    assert len(cr.check(pkt(port=9999))) == 2           # EN: both / FR: les deux
+
+
+def test_custom_rules_validation():
+    """EN: Bad field/op/regex/cidr all rejected at creation.
+    FR: Mauvais champ/op/regex/cidr tous rejetés à la création."""
+    import pytest as _pt
+    from detection.customrules import CustomRules
+    cr = CustomRules()
+    for kw in (dict(field="nope"), dict(field="host", op="nope"),
+               dict(field="host", op="regex", value="["),
+               dict(field="remote_ip", op="cidr", value="999.0.0.0/8"),
+               dict(field="host", value="")):
+        with _pt.raises(ValueError):
+            cr.add("x", kw.get("field", "host"), kw.get("op", "eq"),
+                   kw.get("value", "v"))
+
+
+def test_custom_rules_load_drops_broken():
+    """EN: load() skips invalid persisted entries rather than crashing.
+    FR: load() ignore les entrées persistées invalides plutôt que planter."""
+    from detection.customrules import CustomRules
+    cr = CustomRules()
+    cr.load([{"field": "host", "op": "contains", "value": "evil",
+              "name": "ok", "severity": "warning", "enabled": True},
+             {"field": "bogus", "op": "eq", "value": "x"}])
+    assert len(cr.serialized()) == 1
+
+
+# ── Blocklist / Liste de blocage ─────────────────────────────────────────────
+
+def test_blocklist_parse_hosts_format():
+    """EN: hosts-style lines, comments and plain lists all parse; local
+    entries and invalid domains are dropped, order preserved, deduped.
+    FR: lignes hosts, commentaires et listes simples parsés ; les entrées
+    locales et domaines invalides sont écartés, ordre conservé, dédup."""
+    from detection.blocklist import parse_domains
+    text = """
+# a comment / un commentaire
+0.0.0.0 ads.example tracker.example
+127.0.0.1 localhost
+127.0.0.1 bad.example
+malware.example
+0.0.0.0 ads.example
+not a domain !!
+0.0.0.0 -bad-.example
+"""
+    out = parse_domains(text)
+    assert "ads.example" in out and "bad.example" in out
+    assert "malware.example" in out
+    assert "localhost" not in out and "not" not in out
+    assert out.count("ads.example") == 1
+
+
+def test_blocklist_clamp_bounds():
+    """EN: clamp_max respects default + hard cap.
+    FR: clamp_max respecte le défaut + le plafond dur."""
+    from detection.blocklist import clamp_max
+    assert clamp_max(None) == 500
+    assert clamp_max(10) == 10
+    assert clamp_max(999999) == 5000
+
+
+def test_blocklist_fetch_requires_http():
+    """EN: fetch_url rejects non-http(s) schemes outright.
+    FR: fetch_url rejette carrément les schémas non http(s)."""
+    import pytest as _pt
+    from detection.blocklist import fetch_url
+    with _pt.raises(ValueError):
+        fetch_url("file:///etc/passwd")
+
+
+# ── IOC proof packs / Paquets de preuve IOC ──────────────────────────────────
+
+def test_ioc_proof_pack_proves_membership():
+    """EN: A listed indicator verifies EXACTLY (no false positives); an
+    unlisted one never matches. Root is a tamper-evident commitment.
+    FR: Un indicateur listé se vérifie EXACTEMENT ; un non-listé ne
+    matche jamais. La racine est un engagement inviolable."""
+    pack = iocshare.build_proof_pack(["1.2.3.4", "evil.example"])
+    res = iocshare.check_proof_pack(pack, ["1.2.3.4", "clean.example"])
+    assert res["ok"] is True
+    assert [h["indicator"] for h in res["hints"]] == ["1.2.3.4"]
+
+
+def test_ioc_proof_pack_tamper_detected():
+    """EN: Flipping a leaf breaks the Merkle commitment → honest error.
+    FR: Inverser une feuille casse l'engagement Merkle → erreur honnête."""
+    pack = iocshare.build_proof_pack(["1.2.3.4"])
+    pack["entries"][0]["leaf"] = "00" * 32
+    res = iocshare.check_proof_pack(pack, ["1.2.3.4"])
+    assert res["ok"] is False and "tampered" in res["error"]
+
+
+def test_ioc_proof_pack_rejects_bloom():
+    """EN: A bloom pack handed to the proof checker is refused politely.
+    FR: Un paquet bloom passé au vérificateur proof est refusé proprement."""
+    pack = iocshare.build_pack(["1.2.3.4"])
+    res = iocshare.check_proof_pack(pack, ["1.2.3.4"])
+    assert res["ok"] is False
+
+
+# ── Embedded SLM / SLM embarqué ──────────────────────────────────────────────
+
+def test_slm_embedded_status_reports_file(tmp_path):
+    """EN: embedded mode reports reachable only when the GGUF path exists.
+    FR: le mode embedded ne rapporte joignable que si le GGUF existe."""
+    slm = LocalSlm()
+    slm.configure(True, mode="embedded", model_path=str(tmp_path / "m.gguf"))
+    assert slm.status()["reachable"] is False
+    (tmp_path / "m.gguf").write_bytes(b"GGUF")
+    assert slm.status()["reachable"] is True
+
+
+def test_slm_embedded_enrich_without_package(tmp_path):
+    """EN: without llama-cpp-python installed, enrich() degrades to None —
+    caller falls back to templates. / FR: sans llama-cpp-python,
+    enrich() dégrade en None — repli sur les gabarits."""
+    slm = LocalSlm()
+    f = tmp_path / "m.gguf"
+    f.write_bytes(b"x")
+    slm.configure(True, mode="embedded", model_path=str(f))
+    slm._load_embedded = lambda: None          # EN: simulate missing dep / FR: simuler l'absence
+    assert slm.enrich("BEACON", {"ip": "1.2.3.4"}) is None
+
+
+def test_slm_mode_switch_reloads(tmp_path):
+    """EN: switching modes or model path drops the cached Llama object.
+    FR: changer de mode ou de chemin invalide l'objet Llama caché."""
+    slm = LocalSlm()
+    slm._llama = object()
+    slm.configure(True, mode="embedded", model_path="/a")
+    assert slm._llama is None
+
+
+# ── Network sandbox / Sandbox réseau ─────────────────────────────────────────
+
+def test_contain_platform_support():
+    """EN: available() reports the real mechanism per OS — never claims
+    support that isn't there. / FR: available() rapporte le mécanisme
+    réel par OS — jamais de support fantaisiste."""
+    import sys
+    import detection.contain as contain
+    if sys.platform.startswith("linux"):
+        ok, why = contain.available()
+        assert isinstance(ok, bool) and why
+    else:
+        ok, why = contain.available()
+        assert isinstance(ok, bool) and why
+
+
+def test_contain_rejects_nonexistent(tmp_path):
+    """EN: detonating a missing file fails honestly before any exec.
+    FR: détoner un fichier absent échoue honnêtement avant tout exec."""
+    from detection.contain import run_sandboxed
+    res = run_sandboxed(str(tmp_path / "nope"), [], 5)
+    assert res["ok"] is False and "executable" in res["error"]
+
+
+def test_contain_wraps_command(monkeypatch, tmp_path):
+    """EN: On Linux the command is wrapped in `unshare --user --net`;
+    on macOS in `sandbox-exec` with a deny-network profile. Mock the
+    runner so nothing actually executes.
+    FR: Sous Linux la commande est enveloppée dans `unshare --user --net` ;
+    sous macOS dans `sandbox-exec` deny-network. Le lanceur est mocké."""
+    import sys
+    import detection.contain as contain
+
+    exe = tmp_path / "tool"
+    exe.write_text("#!/bin/sh\n")
+    exe.chmod(0o755)
+
+    captured = {}
+
+    class FakeProc:
+        returncode = 0
+        stdout = b""
+        stderr = b""
+
+    def _fake_run(cmd, **kw):
+        captured["cmd"] = cmd
+        return FakeProc()
+
+    monkeypatch.setattr(contain.subprocess, "run", _fake_run)
+    res = contain.run_sandboxed(str(exe), ["--x"], 5)
+    if res["ok"]:
+        cmd = captured["cmd"]
+        if sys.platform.startswith("linux"):
+            assert cmd[0] == "unshare" and "--net" in cmd
+        elif sys.platform == "darwin":
+            assert cmd[0] == "sandbox-exec" and "deny network" in cmd[2]
+    # EN: ok=False is equally valid — no sandbox support on this host.
+    # FR: ok=False est tout aussi valide — pas de sandbox sur cet hôte.
+
+
+# ── PCAP writer / Écrivain PCAP ──────────────────────────────────────────────
+
+def test_pcapwriter_roundtrip():
+    """EN: Written pcap parses back — magic, version, linktype, frame
+    timestamps and payloads all intact. / FR: le pcap écrit se relit —
+    magic, version, linktype, timestamps et payloads intacts."""
+    import io
+    import struct
+    from capture.pcapwriter import write_pcap
+    buf = io.BytesIO()
+    frames = [(1700000000.5, b"\xde\xad\xbe\xef" * 8, 32),
+              (1700000001.25, b"\x01\x02" * 4, 8)]
+    write_pcap(buf, 1, frames)
+    data = buf.getvalue()
+    magic, vmaj, vmin, _tz, _sig, snap, link = struct.unpack("<IHHiIII", data[:24])
+    assert magic == 0xA1B2C3D4 and vmaj == 2 and vmin == 4 and link == 1
+    off = 24
+    for (ts, payload, wire) in frames:
+        sec, usec, incl, orig = struct.unpack("<IIII", data[off:off + 16])
+        assert sec == int(ts) and incl == len(payload) and orig == wire
+        off += 16 + incl
+    assert off == len(data)

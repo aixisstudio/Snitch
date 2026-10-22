@@ -20,7 +20,7 @@ import {
   Globe, WifiOff, Wifi, ScanLine,
   Activity, Unlock, TrendingUp, Camera, ShieldAlert,
   FileWarning, Fingerprint, Cpu, HelpCircle,
-  Pickaxe, Magnet, Syringe, Package,
+  Pickaxe, Magnet, Syringe, Package, ListFilter,
 } from 'lucide-react'
 import { useT } from '../i18n'
 import { apiBase, authHeaders } from '../api'
@@ -60,6 +60,7 @@ const TYPE_ICONS = {
   MINING_SUSPECT:     Pickaxe,
   SINKHOLE_HIT:       Magnet,
   INJECT_SUSPECT:     Syringe,
+  CUSTOM_RULE:        ListFilter,
 }
 
 /**

@@ -76,3 +76,11 @@ GeoLite2 の `.mmdb` が `<data_dir>/geo/` にあれば、ルックアップは�
 データディレクトリ: dev/Docker は `data/`、Windows は
 `%LOCALAPPDATA%\Snitch`、macOS は `~/Library/Application Support/Snitch`、
 Linux はインストール時 `~/.local/share/snitch`。
+
+## v1.4 の新機能（プライバシー）
+
+- **URL からのブロックリスト（オプトイン）** — *ローカルファイル*は純粋にローカル読み取り；*URL* は 1 回の制限付き HTTPS 取得（≤4 MiB、≤10 秒）で、UI で確認され `remote_fetch` と明記されます。
+- **リモートペアリング（オプトイン、デフォルト無効）** — API は 127.0.0.1 のみリッスン；有効化すると `lan_bind` が次回起動時に適用 — トークンは全リクエストで必須のままです。
+- **ネットワーク遮断サンドボックス** — `POST /security/sandbox` がバイナリをネットワークなしの名前空間（Linux `unshare -n`）または seatbelt（macOS `sandbox-exec`）で実行：送信ゼロ、出力はマシン内に留まります。
+- **IOC `format=proof`** — ソルト付き SHA-256 リーフ＋Merkle ルート：疑っていない指標を列挙させずに厳密な所属証明；自動送信は一切なし。
+- **埋め込みモデル** — `slm_mode=embedded` がユーザーの `.gguf` を `llama-cpp-python` でプロセス内に読み込み — ネットワーク完全ゼロ；Snitch が重みをダウンロードすることはありません。

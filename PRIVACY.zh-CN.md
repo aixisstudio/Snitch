@@ -65,3 +65,11 @@ IP 只是不显示位置。不存在任何 HTTP 地理定位服务——ip-api.c
 数据目录：开发/Docker 为 `data/`；Windows 为 `%LOCALAPPDATA%\Snitch`；
 macOS 为 `~/Library/Application Support/Snitch`；Linux 安装后运行时为
 `~/.local/share/snitch`。
+
+## v1.4 新增（隐私）
+
+- **URL 导入屏蔽列表（可选）** — *本地文件*是纯本地读取；*URL* 仅执行一次受限 HTTPS 抓取（≤4 MiB，≤10 秒），在 UI 中确认并在响应中标记 `remote_fetch`。
+- **远程配对（可选，默认关闭）** — API 仅监听 127.0.0.1；启用后持久化 `lan_bind`，下次启动生效 — 每个请求仍需令牌认证。
+- **无网络沙箱** — `POST /security/sandbox` 在无网络的命名空间（Linux `unshare -n`）或 seatbelt（macOS `sandbox-exec`）中运行二进制：出站为零，输出留在本机。
+- **IOC `format=proof`** — 加盐 SHA-256 叶子 + Merkle 根：精确成员证明且无法枚举未怀疑的指标；绝不自动传输。
+- **内置模型** — `slm_mode=embedded` 通过 `llama-cpp-python` 在进程内加载您的 `.gguf` — 完全零网络；Snitch 从不下载权重。

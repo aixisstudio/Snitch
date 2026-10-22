@@ -123,3 +123,107 @@ def check_pack(pack: dict, candidates: list[str]) -> dict:
             "checked": len(candidates[:2048]),
             "note": "membership is probabilistic (false positives "
                     "expected) — treat as hints, not verdicts"}
+
+
+# ── Commitment packs (cryptographic, selective disclosure) ──────────────────
+# EN: Second pack format — for peers who want EXACT answers instead of
+#     probabilistic ones. Each indicator becomes a salted SHA-256 leaf
+#     `H(salt || indicator)`; the pack publishes every leaf + its salt +
+#     a Merkle root over the sorted leaves as a tamper-evident commitment.
+#
+#     Verifier side: for each candidate x and each entry, recompute
+#     H(salt||x) — a match is a *proof* of membership (no false
+#     positives). Unlisted indicators stay hidden unless the attacker
+#     already guesses them (the salt only blocks precomputed tables —
+#     dictionary guessing is inherent to any selective-disclosure scheme).
+#
+#     Honest wording: a cryptographic commitment + membership proof, NOT
+#     an interactive zero-knowledge protocol.
+# FR: Second format — pour des pairs qui veulent des réponses EXACTES.
+#     Chaque indicateur devient une feuille salée `H(salt || indicateur)` ;
+#     le paquet publie feuilles + sels + racine Merkle sur les feuilles
+#     triées (engagement inviolable). Une correspondance *prouve*
+#     l'appartenance — zéro faux-positif. Schéma d'engagement, PAS un
+#     protocole ZK interactif.
+
+_PROOF_FORMAT = "snitch-ioc-proof/1"
+
+
+def _leaf(salt: bytes, indicator: str) -> bytes:
+    """EN: Salted leaf hash — hides the raw indicator behind a per-entry
+    secret. / FR: Hash de feuille salé — cache l'indicateur brut derrière
+    un secret par entrée."""
+    return hashlib.sha256(salt + indicator.strip().lower().encode()).digest()
+
+
+def _merkle(leaves: list[bytes]) -> str:
+    """EN: Root over the sorted leaves — one commitment that pins down the
+    whole set (any edit to any leaf changes the root).
+    FR: Racine sur les feuilles triées — un engagement unique qui fixe
+    tout l'ensemble (toute modification de feuille change la racine)."""
+    if not leaves:
+        return hashlib.sha256(b"empty").hexdigest()
+    lvl = sorted(leaves)
+    while len(lvl) > 1:
+        if len(lvl) % 2:
+            lvl.append(lvl[-1])
+        lvl = [hashlib.sha256(lvl[i] + lvl[i + 1]).digest()
+               for i in range(0, len(lvl), 2)]
+    return lvl[0].hex()
+
+
+def build_proof_pack(indicators: list[str]) -> dict:
+    """EN: Commitment pack — exact-membership sharing. The sharer's salts
+    are disclosed inside the pack, so a verifier can *prove* their
+    candidates are present while unsuspected indicators can't be
+    enumerated (each needs its own salt + candidate guess).
+    FR: Paquet d'engagement — partage à appartenance exacte. Les sels sont
+    publiés dans le paquet : un vérificateur *prouve* ses candidats, les
+    indicateurs insoupçonnés restent inénumérables."""
+    import secrets
+    entries = []
+    for ind in indicators[:4096]:
+        salt = secrets.token_bytes(16)
+        entries.append({"leaf": _leaf(salt, ind).hex(), "salt": salt.hex()})
+    return {
+        "format": _PROOF_FORMAT,
+        "created": int(time.time()),
+        "count": len(entries),
+        "root": _merkle([bytes.fromhex(e["leaf"]) for e in entries]),
+        "entries": entries,
+    }
+
+
+def check_proof_pack(pack: dict, candidates: list[str]) -> dict:
+    """EN: Exact membership check — returns hits with a verifiable leaf,
+    plus the root so the caller can re-commit the pack they received.
+    FR: Vérification d'appartenance exacte — renvoie les hits avec la
+    feuille vérifiable + la racine pour re-valider le paquet reçu."""
+    if pack.get("format") != _PROOF_FORMAT:
+        return {"ok": False, "hints": [], "error": "unsupported pack format"}
+    entries = pack.get("entries")
+    if not isinstance(entries, list) or len(entries) > 4096:
+        return {"ok": False, "hints": [], "error": "bad entries"}
+    # EN: Re-commit — the published root must match the leaves shipped.
+    # FR: Re-engagement — la racine publiée doit correspondre aux feuilles.
+    try:
+        leaves = [bytes.fromhex(e["leaf"]) for e in entries]
+        salts = [bytes.fromhex(e["salt"]) for e in entries]
+    except (KeyError, ValueError):
+        return {"ok": False, "hints": [], "error": "corrupt entries"}
+    if _merkle(leaves) != pack.get("root"):
+        return {"ok": False, "hints": [], "error": "root mismatch — "
+                                                 "pack was tampered"}
+    hits = []
+    for item in candidates[:2048]:
+        low = item.strip().lower()
+        for salt, leaf in zip(salts, leaves):
+            if hashlib.sha256(salt + low.encode()).digest() == leaf:
+                hits.append({"indicator": item,
+                             "confidence": "proven — salted leaf + "
+                                           "merkle commitment"})
+                break
+    return {"ok": True, "hints": hits,
+            "checked": len(candidates[:2048]),
+            "note": "membership is cryptographically exact — "
+                    "a hit proves the sharer listed that indicator"}

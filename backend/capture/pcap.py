@@ -330,18 +330,24 @@ class PcapSession:
         raw = self._lib.pcap_geterr(self._handle)
         return raw.decode(errors="replace") if raw else "unknown error"
 
-    def next_packet(self) -> Optional[tuple[bytes, int]]:
+    def next_packet(self) -> Optional[tuple[bytes, int, float]]:
         """
-        EN: Next packet — (payload, wire_length) or None on timeout. Raises
+        EN: Next packet — (payload, wire_length, wire_ts) or None on
+            timeout. `wire_ts` is libpcap's own timestamp (seconds, float)
+            — more accurate than time.time() for forensic exports. Raises
             PcapError on capture failure or EOF.
-        FR: Paquet suivant — (charge utile, longueur fil) ou None au timeout.
-            Lève PcapError en cas d'échec de capture ou de fin de fichier.
+        FR: Paquet suivant — (charge utile, longueur fil, ts fil) ou None
+            au timeout. `wire_ts` est le timestamp propre de libpcap —
+            plus précis que time.time() pour les exports forensiques.
+            Lève PcapError en cas d'échec ou de fin de fichier.
         """
         hdr = ctypes.POINTER(PcapPkthdr)()
         data = ctypes.POINTER(ctypes.c_ubyte)()
         rc = self._lib.pcap_next_ex(self._handle, ctypes.byref(hdr), ctypes.byref(data))
         if rc == 1:
-            return ctypes.string_at(data, hdr.contents.caplen), hdr.contents.len
+            h = hdr.contents
+            ts = h.ts.tv_sec + h.ts.tv_usec / 1_000_000.0
+            return (ctypes.string_at(data, h.caplen), h.len, ts)
         if rc == 0:
             return None                    # EN: timeout / FR: timeout
         if rc == -2:

@@ -303,6 +303,14 @@ def resolve_geo(ip: str) -> dict:
         try:
             rec = asn.get(ip) or {}
             geo["org"] = rec.get("autonomous_system_organization")
+            # EN: AS number too — "AS15169 Google" is a stronger signal
+            #     than the org string alone (and survives renames).
+            # FR: Le numéro d'AS aussi — « AS15169 Google » est un signal
+            #     plus fort que la seule chaîne d'org (et survit aux
+            #     renommages).
+            num = rec.get("autonomous_system_number")
+            if num:
+                geo["asn"] = int(num)
         except Exception as exc:
             logger.debug("asn lookup failed for %s: %s", ip, exc)
 

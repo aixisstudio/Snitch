@@ -519,6 +519,24 @@ EXPLANATIONS: dict[str, dict] = {
      "Watch the destination before blocking"],
     ["Lancer une vérif de réputation locale sur l'indicateur",
      "Surveiller la destination avant de bloquer"]),
+
+"CUSTOM_RULE": _e(
+    "Your rule matched",
+    "Votre règle a correspondu",
+    "A packet matched a condition YOU defined in the alert-rules panel "
+    "(field + operator + value). This is your own detection firing — "
+    "not a built-in heuristic.",
+    "Un paquet a correspondu à une condition que VOUS avez définie dans "
+    "le panneau de règles (champ + opérateur + valeur). C'est votre propre "
+    "détection qui se déclenche — pas une heuristique intégrée.",
+    "The rule only alerts; it never blocks. Tune the field/op/value if it "
+    "fires too often, or disable it from the rules list.",
+    "La règle ne fait qu'alerter ; elle ne bloque jamais. Ajustez "
+    "champ/op/valeur si elle se déclenche trop, ou désactivez-la.",
+    ["Check which process triggered it",
+     "Tighten the matcher if noisy"],
+    ["Vérifier quel processus l'a déclenchée",
+     "Resserrer le filtre si trop bavarde"]),
 }
 
 

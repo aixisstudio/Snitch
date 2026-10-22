@@ -89,10 +89,12 @@ from resolver.dns_geo import (enrich_ip, is_private, learn_dns_answers,
 from scanner.arp_scanner import ARPScanner, Device, default_gateway as _default_gateway
 from scanner.arp_scanner import READ_STATS as _arp_stats
 from detection.anomaly import AnomalyDetector, Alert
+from detection.customrules import CustomRules
 from capture.ebpf_probe import EbpfProbe
 from detection.deepinspect import DeepInspector, suspicious_module_paths
 from detection.firewall import FirewallManager
 from detection.integrity import IntegrityWatcher
+from detection import blocklist
 from detection import explain as alert_explain
 from detection import iocshare
 from detection.llm_local import LocalSlm
@@ -140,6 +142,7 @@ deep = DeepInspector()            # EN: Frida module-origin attribution / FR: at
 sink = SinkholeResponder()        # EN: loopback :80/:443 sinkhole listener / FR: écouteur sinkhole
 miner = MinerDetector()           # EN: stratum/pool/CPU mining signals / FR: signaux de minage
 slm = LocalSlm()                  # EN: optional localhost LLM enrichment / FR: enrichissement LLM local
+custom_rules = CustomRules()      # EN: user-defined alert rules / FR: règles d'alerte utilisateur
 _loop: asyncio.AbstractEventLoop | None = None
 _sniffer: PacketSniffer | None = None
 _scanner: ARPScanner | None = None
@@ -255,9 +258,69 @@ class IocImportBody(BaseModel):
     pack: dict = Field(default_factory=dict)
 
 
+class PairingBody(BaseModel):
+    """EN: /remote/pairing payload — opt-in LAN exposure. `enabled`
+    persists a bind address applied at the NEXT backend start (uvicorn
+    cannot rebind a running socket). `bind` accepts "0.0.0.0" or one of
+    the machine's own LAN addresses. Token auth remains mandatory —
+    pairing never weakens authentication, it only changes the listen
+    address.
+    FR: Charge utile /remote/pairing — exposition LAN opt-in. `enabled`
+    persiste une adresse d'écoute appliquée au PROCHAIN démarrage
+    (uvicorn ne peut pas re-binder un socket actif). `bind` accepte
+    « 0.0.0.0 » ou une adresse LAN de la machine. Le jeton reste
+    obligatoire — le pairing ne change que l'adresse d'écoute."""
+    enabled: bool
+    bind: str = ""
+
+
+class SandboxBody(BaseModel):
+    """EN: /security/sandbox payload — an executable to detonate inside
+    the network-denial sandbox. Path must be absolute; `args` bounded.
+    FR: Charge utile /security/sandbox — un exécutable à détoner dans la
+    sandbox sans réseau. Chemin absolu exigé ; `args` bornés."""
+    path: str
+    args: list[str] = Field(default_factory=list)
+    seconds: int = 10
+
+
 class FirewallToggleBody(BaseModel):
     """EN: Enable/disable a single rule. / FR: Activer/désactiver une règle."""
     enabled: bool = True
+
+
+class BlocklistBody(BaseModel):
+    """EN: /firewall/blocklist payload — exactly ONE source: `path`
+    (local hosts/domain file) or `url` (OPT-IN outbound fetch — one of
+    the few places Snitch can emit network traffic). `action` is the
+    firewall action applied to every imported domain.
+    FR: Charge utile /firewall/blocklist — exactement UNE source : `path`
+    (fichier local) ou `url` (fetch sortant OPT-IN — un des rares
+    endroits où Snitch peut émettre du trafic). `action` = l'action
+    pare-feu appliquée à chaque domaine importé."""
+    path: str = ""
+    url: str = ""
+    action: str = "block"
+    max_entries: int = 500
+
+
+class CustomRuleBody(BaseModel):
+    """EN: /alerts/rules payload — one field, one operator, one value.
+    FR: Charge utile /alerts/rules — un champ, un opérateur, une valeur."""
+    name: str = ""
+    field: str
+    op: str
+    value: str
+    severity: str = "warning"
+
+
+class ProfileBody(BaseModel):
+    """EN: /firewall/profile payload — a named rule bundle:
+    permissive (clean slate), balanced (egress baseline), strict
+    (baseline + lockdown). / FR: Charge utile /firewall/profile — un lot
+    nommé de règles : permissive (table rase), balanced (base sortante),
+    strict (base + lockdown)."""
+    name: str
 
 
 class LockdownBody(BaseModel):
@@ -647,6 +710,7 @@ def _request_enrichment(ip: str) -> None:
                     "lat": geo.get("lat"),
                     "lon": geo.get("lon"),
                     "org": geo.get("org"),
+                    "asn": geo.get("asn"),
                 })
                 await broadcast({"type": "node_update", "node": node})
         except Exception as exc:
@@ -836,6 +900,7 @@ def _process_batch(packets: list[Packet]) -> None:
                 "lat": geo.get("lat"),
                 "lon": geo.get("lon"),
                 "org": geo.get("org"),
+                "asn": geo.get("asn"),
                 "category": category.category,
                 "color": category.color,
                 "bytes": 0, "packets": 0, "alerted": False,
@@ -932,6 +997,27 @@ def _process_batch(packets: list[Packet]) -> None:
         #     pool-port marking for later CPU corroboration (drain loop).
         # FR: Signaux de minage — stratum en clair dans la tête du payload
         #     et marquage port-pool pour corroboration CPU (boucle drain).
+        # EN: User-defined alert rules — first match per packet raises
+        #     CUSTOM_RULE carrying the rule name (alert-only, never blocks).
+        # FR: Règles d'alerte utilisateur — le premier match lève
+        #     CUSTOM_RULE portant le nom de la règle (alerte, jamais de blocage).
+        for m in custom_rules.check(pkt)[:1]:
+            r = m["rule"]
+            a = Alert(
+                type="CUSTOM_RULE", severity=r["severity"],
+                message=f"Custom rule matched: {r['name']} "
+                        f"({r['field']} {r['op']} {r['value']}) — hit #{m['count']}"
+                        + (" by " + pkt.process_name if pkt.process_name else ""),
+                node_id=remote_ip,
+                details={"rule": r, "process": pkt.process_name,
+                         "direction": pkt.direction},
+            )
+            _flag_alert(a, nodes)
+            ad = a.to_dict()
+            db.log_alert(ad)
+            out_alerts.append(ad)
+            asyncio.get_running_loop().create_task(_notify(ad))
+
         for f in miner.analyze_packet(pkt):
             a = Alert(
                 type=f["type"], severity=f["severity"],
@@ -1410,6 +1496,7 @@ def _load_settings() -> None:
     #     baselines de processus apprises et webhook externe.
     fw.load(db.get_setting("firewall_rules", []) or [],
             bool(db.get_setting("firewall_lockdown", False)))
+    custom_rules.load(db.get_setting("custom_rules", []) or [])
     ti.configure(db.get_setting("ti_provider", "none") or "none",
                  db.get_setting("ti_api_key", "") or "")
     detector.load_baselines(db.get_setting("app_baselines", {}) or {})
@@ -1426,7 +1513,9 @@ def _load_settings() -> None:
     # FR: Enrichissement SLM local — loopback par construction, opt-in.
     slm.configure(bool(db.get_setting("slm_enabled", False)),
                   db.get_setting("slm_endpoint", "") or "",
-                  db.get_setting("slm_model", "") or "")
+                  db.get_setting("slm_model", "") or "",
+                  db.get_setting("slm_mode", "") or "",
+                  db.get_setting("slm_model_path", "") or "")
     if _port_filter:
         logger.info("restored port filter: %s", _port_filter)
 
@@ -1615,11 +1704,95 @@ async def post_settings(body: SettingsBody) -> dict:
                     _sniffer.set_attribution_probe(ebpf)
             else:
                 ebpf.stop()
-        if key in ("slm_enabled", "slm_endpoint", "slm_model"):
+        if key in ("slm_enabled", "slm_endpoint", "slm_model",
+                   "slm_mode", "slm_model_path"):
             slm.configure(bool(db.get_setting("slm_enabled", False)),
                           db.get_setting("slm_endpoint", "") or "",
-                          db.get_setting("slm_model", "") or "")
+                          db.get_setting("slm_model", "") or "",
+                          db.get_setting("slm_mode", "") or "",
+                          db.get_setting("slm_model_path", "") or "")
     return {"ok": True}
+
+
+def _lan_addresses() -> list[str]:
+    """EN: This machine's non-loopback IPv4 addresses — the addresses a
+    remote device could reach Snitch on. / FR: Adresses IPv4 non-loopback
+    de la machine — celles par lesquelles un appareil distant peut
+    joindre Snitch."""
+    out = []
+    try:
+        import psutil
+        for addrs in psutil.net_if_addrs().values():
+            for a in addrs:
+                if a.family.name == "AF_INET":
+                    ip = ipaddress.ip_address(a.address)
+                    if not ip.is_loopback and not ip.is_link_local:
+                        out.append(a.address)
+    except Exception:                                # noqa: BLE001
+        pass
+    return sorted(set(out))
+
+
+def _current_bind() -> tuple[str, str]:
+    """EN: Effective bind address + its source (env > argv > setting >
+    default) — mirrors run_backend.py's precedence.
+    FR: Adresse d'écoute effective + sa source (env > argv > réglage >
+    défaut) — reflète la priorité de run_backend.py."""
+    if os.environ.get("SNITCH_BIND"):
+        return os.environ["SNITCH_BIND"], "env"
+    args = sys.argv[1:]
+    for i, a in enumerate(args):
+        if a == "--bind" and i + 1 < len(args):
+            return args[i + 1], "argv"
+    persisted = db.get_setting("lan_bind", "") or ""
+    if persisted:
+        return persisted, "setting"
+    return "127.0.0.1", "default"
+
+
+@app.get("/remote/pairing", dependencies=_AUTH)
+async def remote_pairing_status() -> dict:
+    """EN: Remote-pairing state — where the API listens, which LAN
+    addresses clients could use, and whether a persisted opt-in is
+    pending for next start. Token auth is ALWAYS required; pairing only
+    widens the listen address.
+    FR: État du pairing distant — où l'API écoute, quelles adresses LAN
+    les clients peuvent utiliser, et si un opt-in persisté attend le
+    prochain démarrage. Le jeton reste TOUJOURS exigé ; le pairing
+    n'élargit que l'adresse d'écoute."""
+    bind, source = _current_bind()
+    persisted = db.get_setting("lan_bind", "") or ""
+    port = int(os.environ.get("SNITCH_PORT") or "8000")
+    return {
+        "active": not bind.startswith("127.") and bind not in ("::1", "localhost"),
+        "bind": bind, "bind_source": source, "port": port,
+        "lan_ips": _lan_addresses(),
+        "persisted_bind": persisted,
+        "token_required": True,
+        "restart_required": bool(persisted) and persisted != bind,
+    }
+
+
+@app.post("/remote/pairing", dependencies=_AUTH)
+async def remote_pairing_set(body: PairingBody) -> dict:
+    """EN: Opt-in LAN exposure — persist (or clear) a bind address for
+        the next backend start. Only "0.0.0.0" or an address the machine
+        actually owns is accepted. Returns `restart_required: true`
+        because uvicorn cannot rebind a live socket — the UI must say
+        this honestly.
+    FR: Exposition LAN opt-in — persister (ou effacer) une adresse
+        d'écoute pour le prochain démarrage. Seuls « 0.0.0.0 » ou une
+        adresse réelle de la machine sont acceptés. `restart_required:
+        true` car uvicorn ne peut pas re-binder un socket actif."""
+    if not body.enabled:
+        db.set_setting("lan_bind", "")
+        return {"ok": True, "lan_bind": "", "restart_required": True}
+    bind = (body.bind or "0.0.0.0").strip()
+    if bind != "0.0.0.0" and bind not in _lan_addresses():
+        raise HTTPException(400, "bind must be 0.0.0.0 or a local LAN address")
+    db.set_setting("lan_bind", bind)
+    return {"ok": True, "lan_bind": bind, "restart_required": True}
+
 
 @app.get("/capture/status", dependencies=_AUTH)
 async def get_capture_status() -> dict:
@@ -2190,6 +2363,138 @@ async def firewall_lockdown(body: LockdownBody) -> dict:
     return res
 
 
+@app.get("/firewall/profiles", dependencies=_AUTH)
+async def firewall_profiles() -> dict:
+    """EN: Available named profiles (labels resolved by the UI).
+    FR: Profils nommés disponibles (libellés résolus par l'UI)."""
+    return {"profiles": sorted(fw.PROFILES)}
+
+
+@app.post("/firewall/profile", dependencies=_AUTH)
+async def firewall_profile(body: ProfileBody) -> dict:
+    """EN: Apply a named profile — expands into ordinary rules + lockdown
+        state through the normal machinery, persists the result, and
+        broadcasts the new policy to every connected client.
+    FR: Appliquer un profil nommé — déplié en règles ordinaires + état
+        lockdown par la machinerie normale, résultat persisté et politique
+        diffusée à tous les clients connectés."""
+    loop = asyncio.get_running_loop()
+    try:
+        res = await loop.run_in_executor(None, fw.apply_profile, body.name)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    rules, lockdown = fw.serialized()
+    db.set_setting("firewall_rules", rules)
+    db.set_setting("firewall_lockdown", lockdown)
+    await broadcast({"type": "firewall", "rules": rules, "lockdown": lockdown})
+    return {"ok": True, "rules": rules, "lockdown": lockdown, **res}
+
+
+@app.post("/firewall/blocklist", dependencies=_AUTH)
+async def firewall_blocklist(body: BlocklistBody) -> dict:
+    """EN: Import a blocklist into `domain` rules. `path` reads a local
+        file (purely local); `url` performs an OPT-IN outbound HTTPS
+        fetch — surfaced as `remote_fetch: true` in the response so the
+        UI can show that Snitch emitted traffic. Entries deduplicated
+        against existing rules and capped at `max_entries` (<= 5000).
+    FR: Importer une blocklist en règles `domain`. `path` lit un fichier
+        local ; `url` effectue un fetch HTTPS sortant OPT-IN — signalé
+        par `remote_fetch: true` dans la réponse pour que l'UI montre
+        que Snitch a émis du trafic. Entrées dédupliquées et plafonnées
+        à `max_entries` (<= 5000)."""
+    if bool(body.path) == bool(body.url):
+        raise HTTPException(400, "provide exactly one of path or url")
+    if body.action not in ("block", "sinkhole"):
+        raise HTTPException(400, "action must be block or sinkhole")
+    remote = bool(body.url)
+
+    def _load_text() -> str:
+        if remote:
+            return blocklist.fetch_url(body.url)
+        p = Path(body.path).expanduser()
+        if not p.is_file():
+            raise ValueError("file not found")
+        if p.stat().st_size > 4 * 1024 * 1024:
+            raise ValueError("blocklist too large (>4 MiB)")
+        return p.read_text(errors="replace")
+
+    loop = asyncio.get_running_loop()
+    try:
+        text = await loop.run_in_executor(None, _load_text)
+    except (ValueError, OSError) as exc:
+        raise HTTPException(400, str(exc))
+    domains = blocklist.parse_domains(text)
+    cap = blocklist.clamp_max(body.max_entries)
+    truncated = len(domains) > cap
+    domains = domains[:cap]
+
+    def _apply() -> tuple[int, int]:
+        added = skipped = 0
+        for d in domains:
+            if fw._find_rule("domain", d, body.action):
+                skipped += 1
+                continue
+            fw.add_rule("domain", d, body.action)
+            added += 1
+        return added, skipped
+
+    added, skipped = await loop.run_in_executor(None, _apply)
+    rules, lockdown = fw.serialized()
+    db.set_setting("firewall_rules", rules)
+    await broadcast({"type": "firewall", "rules": rules, "lockdown": lockdown})
+    return {"ok": True, "remote_fetch": remote, "parsed": len(domains),
+            "added": added, "skipped": skipped, "truncated": truncated}
+
+
+# ── Custom alert rules / Règles d'alerte utilisateur ─────────────────────────
+
+@app.get("/alerts/rules", dependencies=_AUTH)
+async def alert_rules() -> dict:
+    """EN: All user-defined alert rules + the matcher vocabulary.
+    FR: Toutes les règles utilisateur + le vocabulaire du moteur."""
+    return {"rules": custom_rules.serialized(),
+            "fields": ["remote_ip", "host", "process_name", "remote_port",
+                       "protocol", "direction", "size"],
+            "ops": ["eq", "ne", "contains", "regex", "gt", "lt", "cidr"]}
+
+
+@app.post("/alerts/rules", dependencies=_AUTH)
+async def alert_rules_add(body: CustomRuleBody) -> dict:
+    """EN: Create a user alert rule — validated up front (field/op/severity,
+    regex compiles, cidr parses). Alert-only: matching packets raise
+    CUSTOM_RULE alerts, nothing is blocked.
+    FR: Créer une règle d'alerte — validée d'emblée (champ/op/sévérité,
+    regex compilable, cidr analysable). Alerte seule : les paquets
+    correspondants lèvent CUSTOM_RULE, rien n'est bloqué."""
+    try:
+        rule = custom_rules.add(body.name, body.field, body.op,
+                                body.value, body.severity)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    db.set_setting("custom_rules", custom_rules.serialized())
+    return {"ok": True, "rule": rule}
+
+
+@app.delete("/alerts/rules/{rule_id}", dependencies=_AUTH)
+async def alert_rules_delete(rule_id: str) -> dict:
+    """EN: Remove a user alert rule. / FR: Supprimer une règle utilisateur."""
+    if not custom_rules.remove(rule_id):
+        raise HTTPException(404, "rule not found")
+    db.set_setting("custom_rules", custom_rules.serialized())
+    return {"ok": True}
+
+
+@app.post("/alerts/rules/{rule_id}/toggle", dependencies=_AUTH)
+async def alert_rules_toggle(rule_id: str, body: FirewallToggleBody) -> dict:
+    """EN: Enable/disable a rule without deleting it.
+    FR: Activer/désactiver une règle sans la supprimer."""
+    rule = custom_rules.toggle(rule_id, body.enabled)
+    if rule is None:
+        raise HTTPException(404, "rule not found")
+    db.set_setting("custom_rules", custom_rules.serialized())
+    return {"ok": True, "rule": rule}
+
+
 @app.post("/processes/kill", dependencies=_AUTH)
 async def kill_process(body: PidBody) -> dict:
     """EN: Kill a process by PID — incident-response action. Refuses to kill
@@ -2319,7 +2624,8 @@ async def deep_inspect(body: PidSecondsBody) -> dict:
     loop = asyncio.get_running_loop()
     res = await loop.run_in_executor(
         None, deep.inspect, body.pid, min(body.seconds, 60))
-    res["suspicious_paths"] = suspicious_module_paths(res.get("events", []))
+    res["suspicious_paths"] = suspicious_module_paths(
+        res.get("events", []) + res.get("flows", []))
     if res["suspicious_paths"]:
         a = Alert(type="INJECT_SUSPECT", severity="critical",
                   message=f"Injected-module suspicion in pid {body.pid} — "
@@ -2331,6 +2637,27 @@ async def deep_inspect(body: PidSecondsBody) -> dict:
         await broadcast({"type": "alert", "alert": d})
         await _notify(d)
     return res
+
+
+@app.post("/security/sandbox", dependencies=_AUTH)
+async def sandbox_run(body: SandboxBody) -> dict:
+    """EN: Detonate an executable inside the network-denial sandbox —
+        Linux `unshare -U -n` (unprivileged userns) or macOS
+        `sandbox-exec` deny-network. Bounded runtime + output; the binary
+        runs unprivileged with zero egress. Explicit user action only —
+        Snitch never detonates on its own.
+    FR: Détoner un exécutable dans la sandbox sans réseau — `unshare -U -n`
+        Linux ou `sandbox-exec` deny-network macOS. Durée + sortie bornées ;
+        le binaire tourne non privilégié, égress zéro. Action utilisateur
+        explicite uniquement — Snitch ne détone jamais seul."""
+    import os
+    from detection.contain import run_sandboxed
+    if not os.path.isabs(body.path):
+        raise HTTPException(400, "path must be absolute")
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(
+        None, run_sandboxed, body.path,
+        [a[:256] for a in body.args[:8]], body.seconds)
 
 
 @app.get("/security/sinkhole", dependencies=_AUTH)
@@ -2368,27 +2695,38 @@ async def slm_status() -> dict:
 
 
 @app.get("/security/iocpack", dependencies=_AUTH)
-async def iocpack_export() -> dict:
-    """EN: Export a privacy-preserving IOC pack (Bloom + randomized
-        response) built from this machine's firewall rules + alert
-        indicators. The user shares the JSON themselves — nothing is sent.
-    FR: Exporter un paquet d'IOC préservant la vie privée (Bloom +
-        randomized response) construit depuis les règles pare-feu +
-        indicateurs d'alertes de cette machine. L'utilisateur partage le
-        JSON lui-même — rien n'est envoyé."""
+async def iocpack_export(format: str = "bloom") -> dict:
+    """EN: Export a privacy-preserving IOC pack built from this machine's
+        firewall rules + alert indicators — `format=bloom` (default)
+        produces a deniable Bloom+randomized-response pack; `format=proof`
+        produces a salted Merkle commitment pack (exact membership,
+        selective disclosure). The user shares the JSON themselves —
+        nothing is sent.
+    FR: Exporter un paquet d'IOC depuis les règles pare-feu + indicateurs
+        d'alertes — `format=bloom` (défaut) produit un paquet déni plausible
+        ; `format=proof` un paquet d'engagement Merkle salé (appartenance
+        exacte, divulgation sélective). L'utilisateur partage le JSON
+        lui-même — rien n'est envoyé."""
     loop = asyncio.get_running_loop()
     indicators = await loop.run_in_executor(None, _collect_indicators)
+    if format == "proof":
+        return iocshare.build_proof_pack(indicators)
     return iocshare.build_pack(indicators)
 
 
 @app.post("/security/iocpack/import", dependencies=_AUTH)
 async def iocpack_import(body: IocImportBody) -> dict:
     """EN: Check this machine's observed destinations against a received
-        community pack — returns probabilistic hints, never auto-blocks.
+        community pack — Bloom packs return probabilistic hints, proof
+        packs exact matches; never auto-blocks either way.
     FR: Confronter les destinations observées à un paquet communautaire
-        reçu — renvoie des indices probabilistes, ne bloque jamais seul."""
+        reçu — indices probabilistes pour Bloom, correspondances exactes
+        pour proof ; jamais de blocage automatique."""
     candidates = [ip for ip in nodes if ip != "local"]
     loop = asyncio.get_running_loop()
+    if isinstance(body.pack, dict) and body.pack.get("format") == "snitch-ioc-proof/1":
+        return await loop.run_in_executor(
+            None, iocshare.check_proof_pack, body.pack, candidates)
     return await loop.run_in_executor(
         None, iocshare.check_pack, body.pack, candidates)
 
@@ -2768,6 +3106,38 @@ def _forensics_stix(bundle: dict, ip: Optional[str] = None) -> dict:
         "id": f"bundle--{_uid('bundle/' + ts)}",
         "objects": objects,
     }
+
+
+@app.get("/forensics/pcap", dependencies=_AUTH)
+async def forensics_pcap(ip: Optional[str] = None,
+                         process: Optional[str] = None,
+                         seconds: int = 300):
+    """EN: Export the forensic ring as a real .pcap — wireshark/tcpdump
+        open it directly. Filters: remote `ip`, attributed `process`
+        (substring), `seconds` of look-back (cap 3600, the ring itself
+        holds ~4 MB of recent frames). Empty in demo mode — the demo
+        synthesizes packets, it has no wire frames.
+    FR: Exporter l'anneau forensique en vrai .pcap — lisible par
+        wireshark/tcpdump. Filtres : `ip` distante, `process` attribué
+        (sous-chaîne), `seconds` de recul (plafond 3600, l'anneau garde
+        ~4 Mo de trames récentes). Vide en mode démo — la démo synthétise
+        des paquets, elle n'a pas de trames fil."""
+    from fastapi.responses import Response
+    from capture.pcapwriter import pcap_bytes
+    if _sniffer is None or not hasattr(_sniffer, "pcap_frames"):
+        return Response(status_code=204)
+    loop = asyncio.get_running_loop()
+    linktype, frames = await loop.run_in_executor(
+        None, _sniffer.pcap_frames, ip, process,
+        max(1, min(int(seconds or 300), 3600)))
+    if not frames:
+        return Response(status_code=204)
+    body = await loop.run_in_executor(None, pcap_bytes, linktype, frames)
+    return Response(
+        content=body, media_type="application/vnd.tcpdump.pcap",
+        headers={"Content-Disposition":
+                 'attachment; filename="snitch-forensics.pcap"',
+                 "X-Snitch-Frames": str(len(frames))})
 
 
 # ── WebSocket ────────────────────────────────────────────────────────────────

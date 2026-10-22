@@ -84,9 +84,86 @@ function hook(api, lib) {
 ['connect', 'sendto', 'sendmsg'].forEach(function (a) {
     hook(a, null); hook(a, 'libc.so'); hook(a, 'libSystem.B.dylib');
 });
-['WSAConnect', 'connect', 'WSASend', 'send'].forEach(function (a) {
+['WSAConnect', 'connect'].forEach(function (a) {
     hook(a, 'ws2_32.dll');
 });
+
+// ── Payload tracing / Traçage de payload ────────────────────────────────
+// EN: Data-flow evidence (the honest user-mode DTA slice): hook the send
+//     boundary itself, record which module emitted the bytes plus a 16-byte
+//     head + declared length — enough to prove "this DLL sent these bytes"
+//     without storing payloads. Bounded by the global event budget.
+// FR: Preuve de flux de données (la tranche DTA user-mode honnête) : hooker
+//     la frontière send elle-même, noter quel module a émis les octets plus
+//     une tête de 16 octets + longueur déclarée — suffit pour prouver
+//     « cette DLL a envoyé ces octets » sans stocker les payloads. Borné
+//     par le budget global d'événements.
+var _sendCount = 0, _SEND_MAX = 200;
+function hookSend(api, lib, bufIdx, lenIdx) {
+    var addr = null;
+    try { addr = lib ? Module.getExportByName(lib, api)
+                     : Module.findExportByName(null, api); }
+    catch (e) { addr = null; }
+    if (!addr) return;
+    Interceptor.attach(addr, {
+        onEnter: function (args) {
+            if (++_sendCount > _SEND_MAX) return;
+            var n = args[lenIdx].toInt32();
+            if (n <= 0) return;
+            var head = '';
+            try { head = args[bufIdx].readByteArray(Math.min(n, 16)); }
+            catch (e) { return; }
+            var mod = null;
+            try { mod = Process.findModuleByAddress(this.returnAddress); }
+            catch (e) {}
+            var hex = [];
+            var bytes = new Uint8Array(head);
+            for (var i = 0; i < bytes.length; i++)
+                hex.push(('0' + bytes[i].toString(16)).slice(-2));
+            send({api: api, kind: 'send', n: n, head: hex.join(''),
+                  module: mod ? mod.name : '?',
+                  path: mod ? mod.path : ''});
+        }
+    });
+}
+// EN: POSIX send(fd,buf,len,flags) — send() on a connected socket carries
+//     no sockaddr; sendto(fd,buf,len,flags,sa,salen) has buf/len at 1/2.
+// FR: send POSIX (fd,buf,len,flags) — pas de sockaddr sur socket connectée ;
+//     sendto a buf/len en positions 1/2.
+hookSend('send', null, 1, 2); hookSend('send', 'libc.so', 1, 2);
+hookSend('send', 'libSystem.B.dylib', 1, 2);
+hookSend('sendto', null, 1, 2); hookSend('sendto', 'libc.so', 1, 2);
+hookSend('send', 'ws2_32.dll', 1, 2);
+// EN: WSASend(s, lpBuffers, count, ...) — lpBuffers points at a WSABUF
+//     array {u32 len; pad; char* buf} on x64.
+// FR: WSASend(s, lpBuffers, count, ...) — tableau de WSABUF
+//     {u32 len ; pad ; char* buf} en x64.
+(function hookWSASend() {
+    var addr = null;
+    try { addr = Module.getExportByName('ws2_32.dll', 'WSASend'); }
+    catch (e) { return; }
+    Interceptor.attach(addr, {
+        onEnter: function (args) {
+            if (++_sendCount > _SEND_MAX) return;
+            try {
+                var wsa = ptr(args[1]);
+                var n = wsa.readU32();
+                var buf = wsa.add(Process.pointerSize).readPointer();
+                if (n <= 0 || buf.isNull()) return;
+                var head = buf.readByteArray(Math.min(n, 16));
+                var mod = null;
+                try { mod = Process.findModuleByAddress(this.returnAddress); }
+                catch (e) {}
+                var bytes = new Uint8Array(head), hex = [];
+                for (var i = 0; i < bytes.length; i++)
+                    hex.push(('0' + bytes[i].toString(16)).slice(-2));
+                send({api: 'WSASend', kind: 'send', n: n, head: hex.join(''),
+                      module: mod ? mod.name : '?',
+                      path: mod ? mod.path : ''});
+            } catch (e) {}
+        }
+    });
+})();
 """
 
 
@@ -116,12 +193,14 @@ class DeepInspector:
         explique les échecs d'attache."""
         ok, why = self.available()
         if not ok:
-            return {"ok": False, "error": why, "events": [], "modules": {}}
+            return {"ok": False, "error": why, "events": [], "flows": [],
+                    "modules": {}}
         if not self._busy.acquire(blocking=False):
             return {"ok": False, "error": "another inspection is running",
-                    "events": [], "modules": {}}
+                    "events": [], "flows": [], "modules": {}}
         seconds = max(3, min(int(seconds), _MAX_SECONDS))
         events: list[dict] = []
+        flows: list[dict] = []
         try:
             import frida
             try:
@@ -129,10 +208,11 @@ class DeepInspector:
             except Exception as e:                   # noqa: BLE001
                 return {"ok": False,
                         "error": f"attach failed: {str(e)[:160]}",
-                        "events": [], "modules": {}}
+                        "events": [], "flows": [], "modules": {}}
             try:
                 script = session.create_script(_JS)
-                script.on("message", lambda m, d: self._on_msg(m, events))
+                script.on("message",
+                          lambda m, d: self._on_msg(m, events, flows))
                 script.load()
                 time.sleep(seconds)
             finally:
@@ -143,17 +223,36 @@ class DeepInspector:
         finally:
             self._busy.release()
         modules: dict[str, int] = {}
-        for e in events:
+        for e in events + flows:
             modules[e["module"]] = modules.get(e["module"], 0) + 1
+        # EN: Flow evidence — sha256 of the captured head makes "these
+        #     bytes" tamper-evident without storing the payload itself.
+        # FR: Preuve de flux — sha256 de la tête capturée rend « ces
+        #     octets » infalsifiables sans stocker le payload.
+        import hashlib
+        for f in flows:
+            head = f.pop("head", "")
+            try:
+                f["sha256_head"] = hashlib.sha256(
+                    bytes.fromhex(head)).hexdigest()
+            except ValueError:
+                f["sha256_head"] = ""
         return {"ok": True, "pid": pid, "seconds": seconds,
-                "events": events[:_MAX_EVENTS], "modules": modules}
+                "events": events[:_MAX_EVENTS],
+                "flows": flows[:_MAX_EVENTS],
+                "modules": modules}
 
     @staticmethod
-    def _on_msg(message: dict, out: list) -> None:
-        if message.get("type") == "send" and len(out) < _MAX_EVENTS:
-            p = message.get("payload") or {}
-            if isinstance(p, dict) and p.get("ip"):
-                out.append(p)
+    def _on_msg(message: dict, out: list, flows: list) -> None:
+        if message.get("type") != "send":
+            return
+        p = message.get("payload") or {}
+        if not isinstance(p, dict):
+            return
+        if p.get("ip") and len(out) < _MAX_EVENTS:
+            out.append(p)
+        elif p.get("kind") == "send" and len(flows) < _MAX_EVENTS:
+            flows.append(p)
 
 
 def suspicious_module_paths(events: list[dict]) -> list[str]:

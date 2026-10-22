@@ -103,3 +103,15 @@ endpoint'ы получают `{alert, source, text}`. Сбои пишутся в
 - **Аппаратные счётчики** — `POST /security/perf` сэмплирует циклы/инструкции через `perf_event_open` (Linux).
 - **Локальный LLM** — opt-in (`slm_enabled`): `/security/explain` вызывает Ollama-эндпоинт **только loopback** — удалённые отклоняются.
 - **Пакеты IOC** — `GET /security/iocpack` экспортирует Bloom + randomized response (не в открытом виде); `POST /security/iocpack/import` проверяет цели вероятностно.
+
+### Новинки политики и реагирования (v1.4)
+
+- **Именные профили** — `POST /firewall/profile`: `permissive` (чистый лист), `balanced` (осторожная база исходящих) или `strict` (база + lockdown); разворачиваются в обычные правила с дедупликацией.
+- **Свои правила алертов** — `GET/POST/DELETE /alerts/rules`: поле + оператор + значение → алерты `CUSTOM_RULE` (только алерт, никогда не блокируют).
+- **Импорт блоклистов** — `POST /firewall/blocklist`: локальный файл (чисто локально) или opt-in URL (HTTPS-запрос ≤4 МиБ, помечен `remote_fetch`) → правила `domain`, дедупликация, лимит 500–5000.
+- **Экспорт PCAP** — `GET /forensics/pcap` (фильтры `ip`/`process`): кольцевой буфер ~4 МиБ в `.pcap` для Wireshark.
+- **Удалённое сопряжение** — `POST /remote/pairing` сохраняет `lan_bind` до следующего запуска; токен обязателен. `GET /remote/pairing` сообщает bind + LAN-адреса.
+- **Песочница без сети** — `POST /security/sandbox` запускает бинарник с нулевым egress (`unshare -n` Linux, `sandbox-exec` macOS; `contrib/snitch-contain` вручную).
+- **Встроенная модель** — `slm_mode=embedded` загружает `.gguf` пользователя через `llama-cpp-python` — ноль сети.
+- **Нативные скелеты** — `contrib/wfp-callout/` (WFP callout на C + подпись) и `contrib/macos-filter/` (`NEFilterDataProvider` Swift + entitlements): исследовательский каркас, не поставляется.
+- **ASN** — с `GeoLite2-ASN.mmdb`/`dbip-asn-lite.mmdb` узлы несут `asn` в дополнение к `org`.

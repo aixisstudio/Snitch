@@ -31,6 +31,7 @@ import os
 import socket
 import threading
 import time
+from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Callable, Optional
@@ -218,6 +219,16 @@ class PacketSniffer:
         self._attribution_probe = None
         self._running = False
         self._thread: Optional[threading.Thread] = None
+        # EN: Forensic ring — the last ~4 MB of "for us" frames with wire
+        #     timestamp + process attribution, kept for /forensics/pcap
+        #     exports. Byte-accounted: evict oldest until under budget.
+        # FR: Anneau forensique — les ~4 derniers Mo de trames « pour nous »
+        #     avec timestamp fil + attribution processus, gardés pour les
+        #     exports /forensics/pcap. Compté en octets : éviction des plus
+        #     anciennes.
+        self._ring: deque[tuple] = deque()
+        self._ring_bytes = 0
+        self._ring_lock = threading.Lock()
         # EN: Drop accounting — every discarded frame is counted with its
         #     reason and surfaced in /diagnostics. Security rule: no silent
         #     skips — an unparsed frame could be the one that mattered.
@@ -306,7 +317,9 @@ class PacketSniffer:
         port_expr = " or ".join(f"port {p}" for p in self.ports)
         return f"(ip or ip6) and ({port_expr})"
 
-    def _handle_frame(self, buf: bytes, wire_len: int) -> None:
+    _RING_BUDGET = 4 * 1024 * 1024   # EN: forensic ring cap / FR: plafond de l'anneau
+
+    def _handle_frame(self, buf: bytes, wire_len: int, ts: float) -> None:
         """
         EN: Decode + normalize one frame. Drops non-IP traffic and packets
             that do not involve this host.
@@ -374,7 +387,47 @@ class PacketSniffer:
             dhcp=parsed.dhcp,
             app_head=parsed.app_head,
         ))
+        # EN: Forensic ring entry — raw frame + wire ts + attribution, so
+        #     /forensics/pcap can export exactly what was on the wire.
+        # FR: Entrée d'anneau forensique — trame brute + ts fil +
+        #     attribution, pour que /forensics/pcap exporte exactement ce
+        #     qui était sur le fil.
+        remote = dst if direction == "out" else src
+        with self._ring_lock:
+            self._ring.append((ts, buf, wire_len, remote, pid, process_name))
+            self._ring_bytes += len(buf)
+            while self._ring_bytes > self._RING_BUDGET and self._ring:
+                old = self._ring.popleft()
+                self._ring_bytes -= len(old[1])
         self.stats["delivered"] += 1
+
+    def pcap_frames(self, remote_ip: str | None = None,
+                    process: str | None = None,
+                    seconds: float | None = None) -> tuple[int, list]:
+        """
+        EN: Drain a filtered copy of the forensic ring for pcap export —
+            returns (linktype, [(ts, buf, wire_len)]). Filters by remote
+            IP, attributed process name (case-insensitive substring) and
+            age in seconds. Read-only: the ring keeps rolling.
+        FR: Extraire une copie filtrée de l'anneau pour l'export pcap —
+            renvoie (linktype, [(ts, buf, wire_len)]). Filtres : IP
+            distante, nom de processus attribué (sous-chaîne insensible à
+            la casse), âge en secondes. Lecture seule : l'anneau continue.
+        """
+        linktype = self._session.linktype if self._session else 1
+        cutoff = (time.time() - seconds) if seconds else 0.0
+        proc = process.lower() if process else None
+        out: list[tuple] = []
+        with self._ring_lock:
+            for ts, buf, wire_len, remote, _pid, pname in self._ring:
+                if ts < cutoff:
+                    continue
+                if remote_ip and remote != remote_ip:
+                    continue
+                if proc and proc not in (pname or "").lower():
+                    continue
+                out.append((ts, buf, wire_len))
+        return linktype, out
 
     def start(self) -> None:
         """EN: Launch the capture thread. / FR: Lancer le thread de capture."""

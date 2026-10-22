@@ -102,3 +102,15 @@ OS ネイティブファイアウォールへ best-effort で適用されます:
 - **ハードウェアカウンタ** — `POST /security/perf` が `perf_event_open` でサイクル/命令数をサンプル (Linux)。
 - **ローカル LLM** — opt-in（`slm_enabled`）：`/security/explain` は Ollama 互換エンドポイントを **loopback のみ** 呼び出し — リモートは拒否。
 - **IOC パック** — `GET /security/iocpack` が Bloom + randomized response でエクスポート（平文なし）；`POST /security/iocpack/import` が宛先を確率的に照合。
+
+### ポリシー＆レスポンスの追加 (v1.4)
+
+- **名前付きプロファイル** — `POST /firewall/profile`: `permissive`（初期化）、`balanced`（控えめな送信ベースライン）、`strict`（ベースライン＋ロックダウン）。通常ルールに展開・重複排除。
+- **カスタムアラートルール** — `GET/POST/DELETE /alerts/rules`: フィールド＋演算子＋値 → `CUSTOM_RULE` アラート（通知のみ、ブロックなし）。
+- **ブロックリストのインポート** — `POST /firewall/blocklist`: ローカルファイル（完全ローカル）またはオプトイン URL（≤4 MiB HTTPS、`remote_fetch` と明記）→ `domain` ルール。重複排除・上限 500–5000。
+- **PCAP エクスポート** — `GET /forensics/pcap`（`ip`/`process` フィルタ）: ~4 MiB リングバッファを Wireshark 用 `.pcap` で。
+- **リモートペアリング** — `POST /remote/pairing` が `lan_bind` を永続化（次回起動時適用）；トークンは引き続き必須。`GET /remote/pairing` が bind と LAN IP を報告。
+- **ネットワーク遮断サンドボックス** — `POST /security/sandbox` がバイナリを送信ゼロで実行（Linux `unshare -n`、macOS `sandbox-exec`；手動版 `contrib/snitch-contain`）。
+- **埋め込みモデル** — `slm_mode=embedded` がユーザーの `.gguf` を `llama-cpp-python` で読込 — ネットワーク一切なし。
+- **ネイティブスケルトン** — `contrib/wfp-callout/`（C の WFP callout＋署名メモ）と `contrib/macos-filter/`（`NEFilterDataProvider` Swift＋entitlement メモ）：研究用スキャフォールド、出荷なし。
+- **ASN** — `GeoLite2-ASN.mmdb`/`dbip-asn-lite.mmdb` がある場合、ノードに `org` に加え `asn` を付与。

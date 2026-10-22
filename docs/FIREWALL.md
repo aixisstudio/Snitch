@@ -168,7 +168,52 @@ never ship data off the machine:
 - **IOC packs** — `GET /security/iocpack` exports indicators as a Bloom
   filter + randomized response (ε≈4.6 — deniable, never raw);
   `POST /security/iocpack/import` checks observed destinations against a
-  received pack, probabilistically, and never auto-blocks.
+  received pack, probabilistically, and never auto-blocks. A second
+  `format=proof` pack carries salted SHA-256 leaves + a Merkle
+  commitment: membership is cryptographically exact and tampering is
+  detected. Not an interactive ZK protocol — a commitment scheme.
+
+### Policy & response additions (v1.4)
+
+- **Named profiles** — `POST /firewall/profile` applies `permissive`
+  (clean slate), `balanced` (conservative egress baseline: outbound
+  SMTP + common stratum pool ports) or `strict` (baseline + lockdown).
+  Profiles expand into ordinary rules via the same machinery the UI
+  uses — no hidden code path — and dedup against identical rules.
+- **Custom alert rules** — `GET/POST/DELETE /alerts/rules` plus a
+  per-rule toggle. One field (`remote_ip`, `host`, `process_name`,
+  `remote_port`, `protocol`, `direction`, `size`), one operator
+  (`eq`, `ne`, `contains`, `regex`, `gt`, `lt`, `cidr`), one value →
+  `CUSTOM_RULE` alerts with hit counters. Validated at creation,
+  bounded regex cache, **alert-only** — blocking stays the firewall's.
+- **Blocklist import** — `POST /firewall/blocklist` turns a local
+  hosts/domain file (a pure local read) or an opt-in URL (bounded
+  4 MiB HTTPS fetch — one of the few outbound requests Snitch can ever
+  emit, flagged `remote_fetch` in the response) into `domain` rules.
+  Deduplicated, capped 500–5000 entries.
+- **PCAP export** — `GET /forensics/pcap` (optional `ip=`/`process=`
+  filters) serves the bounded ~4 MiB raw-frame ring as a
+  Wireshark-ready `.pcap` with real capture timestamps.
+- **Remote pairing** — `POST /remote/pairing` persists `lan_bind`
+  (`0.0.0.0` or a local LAN address) applied at the *next* backend
+  start — uvicorn cannot rebind a live socket, and the API says so.
+  Token auth remains mandatory; pairing only widens the listen
+  address. `GET /remote/pairing` reports effective bind + LAN IPs.
+- **Network-denial sandbox** — `POST /security/sandbox {path,seconds}`
+  runs a chosen executable with **zero egress**: unprivileged
+  `unshare --user --net` on Linux, `sandbox-exec` deny-network on
+  macOS. Bounded runtime + output; honest unsupported-error elsewhere.
+  `contrib/snitch-contain` is the manual equivalent.
+- **Embedded model** — `slm_mode=embedded` loads a user-provided
+  `.gguf` via optional `llama-cpp-python` — explanations fully
+  in-process, zero network. Snitch never downloads weights.
+- **Native filter skeletons** — `contrib/wfp-callout/` (C WFP kernel
+  callout + signing notes) and `contrib/macos-filter/` (Swift
+  `NEFilterDataProvider` + entitlements notes). Research scaffolding
+  for anyone who wants to build the signed/platform components;
+  not shipped, not loaded by Snitch.
+- **ASN attribution** — when `GeoLite2-ASN.mmdb`/`dbip-asn-lite.mmdb`
+  is present, nodes carry `asn` (AS number) alongside `org`.
 
 ---
 
@@ -346,3 +391,49 @@ honnêtement et n'envoient jamais de données hors de la machine :
   filtre de Bloom + randomized response (ε≈4,6 — déni plausible, jamais
   en clair) ; `POST /security/iocpack/import` confronte les destinations
   observées à un paquet reçu, en probabiliste, sans blocage automatique.
+  Un second format `format=proof` porte des feuilles SHA-256 salées +
+  un engagement Merkle : appartenance cryptographiquement exacte et
+  falsification détectée. Pas un protocole ZK — un schéma d'engagement.
+
+### Ajouts politique & réponse (v1.4)
+
+- **Profils nommés** — `POST /firewall/profile` applique `permissive`
+  (table rase), `balanced` (base sortante prudente : SMTP sortant +
+  ports de pools stratum courants) ou `strict` (base + lockdown). Les
+  profils se déplient en règles ordinaires par la même machinerie que
+  l'UI — aucun chemin caché — avec dédup des règles identiques.
+- **Règles d'alerte personnalisées** — `GET/POST/DELETE /alerts/rules`
+  + bascule par règle. Un champ (`remote_ip`, `host`, `process_name`,
+  `remote_port`, `protocol`, `direction`, `size`), un opérateur
+  (`eq`, `ne`, `contains`, `regex`, `gt`, `lt`, `cidr`), une valeur →
+  alertes `CUSTOM_RULE` avec compteurs. Validées à la création, cache
+  regex borné, **alerte seule** — le blocage reste au pare-feu.
+- **Import de blocklist** — `POST /firewall/blocklist` convertit un
+  fichier hosts/domaines local (lecture purement locale) ou une URL
+  opt-in (fetch HTTPS borné à 4 Mio — l'une des rares requêtes sortantes
+  que Snitch puisse émettre, signalée `remote_fetch`) en règles
+  `domain`. Dédupliquées, plafonnées à 500–5000 entrées.
+- **Export PCAP** — `GET /forensics/pcap` (filtres `ip=`/`process=`
+  optionnels) sert l'anneau de trames brutes ~4 Mio en `.pcap` prêt
+  pour Wireshark avec les timestamps réels de capture.
+- **Pairing distant** — `POST /remote/pairing` persiste `lan_bind`
+  (`0.0.0.0` ou une adresse LAN locale) appliqué au *prochain*
+  démarrage du backend — uvicorn ne peut re-binder un socket actif, et
+  l'API le dit. Le jeton reste obligatoire ; le pairing n'élargit que
+  l'adresse d'écoute. `GET /remote/pairing` rapporte bind + IP LAN.
+- **Sandbox sans réseau** — `POST /security/sandbox {path,seconds}`
+  exécute un binaire choisi avec **zéro égress** : `unshare
+  --user --net` non privilégié sous Linux, `sandbox-exec` deny-network
+  sous macOS. Durée + sortie bornées ; erreur honnête ailleurs.
+  `contrib/snitch-contain` est l'équivalent manuel.
+- **Modèle embarqué** — `slm_mode=embedded` charge un `.gguf` fourni
+  par l'utilisateur via `llama-cpp-python` optionnel — explications
+  entièrement en processus, zéro réseau. Snitch ne télécharge jamais
+  de poids.
+- **Squelettes de filtres natifs** — `contrib/wfp-callout/` (callout
+  WFP noyau en C + notes de signature) et `contrib/macos-filter/`
+  (`NEFilterDataProvider` Swift + notes entitlements). Échafaudage de
+  recherche pour qui veut construire les composants signés ;
+  non livrés, non chargés par Snitch.
+- **Attribution ASN** — quand `GeoLite2-ASN.mmdb`/`dbip-asn-lite.mmdb`
+  est présente, les nœuds portent `asn` (numéro d'AS) en plus de `org`.

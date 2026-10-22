@@ -104,3 +104,15 @@ Alle sind **standardmäßig aus oder selbstlimitierend**, degradieren ehrlich un
 - **Hardware-Zähler** — `POST /security/perf` sampelt Zyklen/Instruktionen via `perf_event_open` (Linux).
 - **Lokales LLM** — opt-in (`slm_enabled`): `/security/explain` ruft einen Ollama-Endpunkt **nur Loopback** — Remote-Endpunkte abgelehnt.
 - **IOC-Pakete** — `GET /security/iocpack` exportiert Bloom + randomized response (nie Klartext); `POST /security/iocpack/import` prüft Ziele probabilistisch.
+
+### Policy- & Reaktions-Neuerungen (v1.4)
+
+- **Benannte Profile** — `POST /firewall/profile`: `permissive` (sauberer Tisch), `balanced` (vorsichtige Egress-Basis) oder `strict` (Basis + Lockdown); werden mit Dedup in gewöhnliche Regeln ausgerollt.
+- **Eigene Alarmregeln** — `GET/POST/DELETE /alerts/rules`: Feld + Operator + Wert → `CUSTOM_RULE`-Alarme (nur Alarm, nie Blockierung).
+- **Blocklisten-Import** — `POST /firewall/blocklist`: lokale Datei (rein lokal) oder opt-in URL (HTTPS-Fetch ≤4 MiB, als `remote_fetch` markiert) → `domain`-Regeln, dedupliziert, Limit 500–5000.
+- **PCAP-Export** — `GET /forensics/pcap` (Filter `ip`/`process`): ~4-MiB-Ringpuffer als Wireshark-`.pcap`.
+- **Fernkopplung** — `POST /remote/pairing` persistiert `lan_bind` für den nächsten Start; Token bleibt Pflicht. `GET /remote/pairing` meldet Bind + LAN-IPs.
+- **Sandbox ohne Netzwerk** — `POST /security/sandbox` führt Binärdateien mit null Egress aus (`unshare -n` Linux, `sandbox-exec` macOS; `contrib/snitch-contain` manuell).
+- **Eingebettetes Modell** — `slm_mode=embedded` lädt ein Nutzer-`.gguf` via `llama-cpp-python` — null Netzwerk.
+- **Native Skelette** — `contrib/wfp-callout/` (WFP-Callout in C + Signierung) und `contrib/macos-filter/` (`NEFilterDataProvider` Swift + Entitlements): Forschungs-Scaffolding, nicht ausgeliefert.
+- **ASN** — mit `GeoLite2-ASN.mmdb`/`dbip-asn-lite.mmdb` tragen Knoten `asn` neben `org`.

@@ -95,3 +95,15 @@ Snitch **不**在用户态过滤数据包。规则会被尽力下发到操作系
 - **硬件计数器** — `POST /security/perf` 通过 `perf_event_open` 采样周期/指令数 (Linux)。
 - **本地 LLM** — 可选（`slm_enabled`）：`/security/explain` 调用 Ollama 兼容端点，**仅限 loopback** — 远程端点被拒绝。
 - **IOC 包** — `GET /security/iocpack` 以 Bloom + randomized response 导出（绝不明文）；`POST /security/iocpack/import` 概率性地检查目标。
+
+### 策略与响应新增 (v1.4)
+
+- **命名配置文件** — `POST /firewall/profile`：`permissive`（清空）、`balanced`（保守出站基线）或 `strict`（基线＋锁定）；展开为普通规则并去重。
+- **自定义告警规则** — `GET/POST/DELETE /alerts/rules`：字段＋运算符＋值 → `CUSTOM_RULE` 告警（仅告警，绝不阻断）。
+- **导入屏蔽列表** — `POST /firewall/blocklist`：本地文件（纯本地）或可选 URL（≤4 MiB HTTPS 抓取，响应标记 `remote_fetch`）→ `domain` 规则，去重，上限 500–5000。
+- **PCAP 导出** — `GET /forensics/pcap`（`ip`/`process` 过滤）：~4 MiB 环形缓冲区输出为 Wireshark 可用的 `.pcap`。
+- **远程配对** — `POST /remote/pairing` 持久化 `lan_bind`（下次启动生效）；令牌仍然必需。`GET /remote/pairing` 报告绑定地址与 LAN IP。
+- **无网络沙箱** — `POST /security/sandbox` 以零出站运行二进制（Linux `unshare -n`、macOS `sandbox-exec`；手动版 `contrib/snitch-contain`）。
+- **内置模型** — `slm_mode=embedded` 通过 `llama-cpp-python` 加载用户 `.gguf` — 完全零网络。
+- **原生骨架** — `contrib/wfp-callout/`（C 版 WFP callout＋签名说明）与 `contrib/macos-filter/`（Swift `NEFilterDataProvider`＋entitlement 说明）：研究用脚手架，不随产品分发。
+- **ASN** — 存在 `GeoLite2-ASN.mmdb`/`dbip-asn-lite.mmdb` 时，节点除 `org` 外还带 `asn`。

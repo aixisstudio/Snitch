@@ -1,0 +1,45 @@
+#!/bin/sh
+# Snitch — network-denial detonation wrapper / exécution sans réseau.
+#
+# EN: Run a suspect binary with ZERO network egress so you can observe
+#     what it does (files it touches, domains it tries — they all fail)
+#     without letting anything out. This is the manual twin of
+#     POST /security/sandbox.
+#
+#     Linux : unprivileged user+network namespace (unshare -U -n) — the
+#             child sees only loopback. Needs a kernel with unprivileged
+#             userns enabled (default on most distros; Debian disables it,
+#             see kernel.unprivileged_userns_clone).
+#     macOS : sandbox-exec seatbelt profile (deny network*) — deprecated
+#             by Apple but still enforced on current releases.
+#
+#     Usage: ./snitch-contain /path/to/binary [args...]
+#
+# FR: Exécuter un binaire suspect avec ZERO égress réseau pour observer
+#     son comportement sans rien laisser sortir — le pendant manuel de
+#     POST /security/sandbox. Linux : namespace utilisateur+réseau non
+#     privilégié (l'enfant ne voit que loopback). macOS : profil seatbelt
+#     deny-network. Usage : ./snitch-contain /chemin/binaire [args...]
+
+set -eu
+
+if [ $# -lt 1 ]; then
+    echo "usage: $0 /path/to/binary [args...]" >&2
+    exit 64
+fi
+BIN="$1"; shift
+
+case "$(uname -s)" in
+    Linux)
+        exec unshare --user --net --map-root-user --fork "$BIN" "$@"
+        ;;
+    Darwin)
+        exec sandbox-exec -p \
+            "(version 1)(allow default)(deny network*)(deny network-bind)(deny network-outbound)(deny network-inbound)" \
+            "$BIN" "$@"
+        ;;
+    *)
+        echo "snitch-contain: no user-mode network sandbox on $(uname -s)" >&2
+        exit 65
+        ;;
+esac

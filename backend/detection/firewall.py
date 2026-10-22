@@ -219,6 +219,98 @@ class FirewallManager:
                 self._lockdown = on
         return {"ok": ok, "lockdown": self._lockdown, "error": err}
 
+    # ── Named profiles / Profils nommés ──────────────────────────────────────
+    #
+    # EN: A profile is a named bundle of ordinary rules + a lockdown state,
+    #     expanded through the same add/remove machinery the UI uses — no
+    #     hidden code path. `permissive` empties the policy, `balanced`
+    #     adds a conservative egress baseline (spam-bot SMTP, common
+    #     stratum mining-pool ports), `strict` is balanced + lockdown.
+    #     Applying a profile never removes rules it did not create (except
+    #     `permissive`, whose whole point is a clean slate).
+    # FR: Un profil est un lot nommé de règles ordinaires + un état de
+    #     lockdown, appliqué par la même machinerie add/remove que l'UI —
+    #     aucun chemin de code caché. `permissive` vide la politique,
+    #     `balanced` ajoute une base sortante prudente (SMTP des botnets
+    #     de spam, ports stratum de pools de minage courants), `strict`
+    #     = balanced + lockdown. Appliquer un profil ne retire jamais les
+    #     règles qu'il n'a pas créées (sauf `permissive`, dont c'est le
+    #     but).
+
+    PROFILES: dict[str, dict] = {
+        "permissive": {
+            "lockdown": False,
+            "replace": True,
+            "rules": [],
+        },
+        "balanced": {
+            "lockdown": False,
+            "replace": False,
+            "rules": [
+                # EN: Outbound SMTP — classic spam-botnet egress.
+                # FR: SMTP sortant — égress classique des botnets de spam.
+                {"kind": "port", "value": "25", "action": "block"},
+                # EN: Common stratum mining-pool ports.
+                # FR: Ports stratum de pools de minage courants.
+                {"kind": "port", "value": "3333", "action": "block"},
+                {"kind": "port", "value": "5555", "action": "block"},
+                {"kind": "port", "value": "7777", "action": "block"},
+                {"kind": "port", "value": "14444", "action": "block"},
+            ],
+        },
+        "strict": {
+            "lockdown": True,
+            "replace": False,
+            "rules": [
+                {"kind": "port", "value": "25", "action": "block"},
+                {"kind": "port", "value": "3333", "action": "block"},
+                {"kind": "port", "value": "5555", "action": "block"},
+                {"kind": "port", "value": "7777", "action": "block"},
+                {"kind": "port", "value": "14444", "action": "block"},
+            ],
+        },
+    }
+
+    def apply_profile(self, name: str) -> dict:
+        """EN: Expand a named profile into real rules + lockdown state.
+        Existing identical rules are reused (dedup on kind/value/action);
+        `permissive` removes every rule first. Returns a summary.
+        FR: Déplier un profil nommé en vraies règles + état lockdown. Les
+        règles identiques existantes sont réutilisées ; `permissive`
+        supprime d'abord toutes les règles. Renvoie un résumé."""
+        spec = self.PROFILES.get((name or "").lower().strip())
+        if spec is None:
+            raise ValueError(f"unknown profile: {name}")
+        removed = 0
+        if spec["replace"]:
+            with self._lock:
+                ids = [r["id"] for r in self._rules]
+            for rid in ids:
+                if self.remove_rule(rid):
+                    removed += 1
+        added = 0
+        for tpl in spec["rules"]:
+            if self._find_rule(tpl["kind"], tpl["value"], tpl["action"]):
+                continue                            # EN: already there / FR: déjà présente
+            self.add_rule(tpl["kind"], tpl["value"], tpl["action"])
+            added += 1
+        lockdown_res = None
+        if spec["lockdown"] is not None:
+            lockdown_res = self.set_lockdown(bool(spec["lockdown"]))
+        return {"profile": name, "added": added, "removed": removed,
+                "lockdown": lockdown_res}
+
+    def _find_rule(self, kind: str, value: str, action: str) -> Optional[dict]:
+        """EN: First rule with the same kind/normalized value/action —
+        profile dedup helper. / FR: Première règle de même
+        kind/valeur/action — dédup des profils."""
+        with self._lock:
+            for r in self._rules:
+                if (r["kind"] == kind and r["action"] == action
+                        and str(r["value"]).lower() == str(value).lower()):
+                    return r
+        return None
+
     # ── Packet matching / Correspondance paquets ─────────────────────────────
 
     def check_packet(self, pkt) -> Optional[dict]:

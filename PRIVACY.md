@@ -45,15 +45,35 @@ Nothing is sent while the switch is off.
 set, alert *metadata* (type, process, destination) may be sent to an
 Ollama-compatible model endpoint — **restricted to loopback addresses
 only**: the backend rejects any endpoint that does not resolve to
-127.0.0.1 / ::1, so this can never reach the network. Deterministic
-templates remain the default.
+127.0.0.1 / ::1, so this can never reach the network. With
+`slm_mode=embedded`, a `.gguf` you supply is loaded in-process via
+`llama-cpp-python` — zero network at all; Snitch never downloads
+weights. Deterministic templates remain the default.
 
 **IOC packs are never transmitted by Snitch.** `GET /security/iocpack`
 builds a Bloom filter + randomized-response encoding of your local
 indicators and gives you the file — you decide whether and where to share
 it. The encoding is intentionally lossy (ε≈4.6) so raw IPs/domains can't
-be recovered from a pack. Importing a pack only returns probabilistic
-hints; it never auto-blocks.
+be recovered from a pack. A second `format=proof` pack uses salted
+SHA-256 leaves + a Merkle commitment — membership is exact, but the salt
+still prevents enumerating indicators you don't already suspect.
+Importing either pack never auto-blocks.
+
+**Blocklist URL import (opt-in).** Importing a blocklist from a *local
+file* is a pure local read. Importing from a *URL* performs one bounded
+HTTPS fetch (≤4 MiB, ≤10 s) — one of the few outbound requests Snitch
+can ever emit, explicitly confirmed in the UI and flagged `remote_fetch`
+in the API response.
+
+**Remote pairing (opt-in, off by default).** Snitch's API listens on
+127.0.0.1 only. Enabling remote pairing persists `lan_bind` so the *next*
+backend start listens on your LAN — with the API token still mandatory
+on every request. It widens the listen address, never the trust model.
+
+**The sandbox cannot leak.** `POST /security/sandbox` runs a binary you
+choose inside a network-denying namespace (Linux `unshare -n`) or
+seatbelt profile (macOS `sandbox-exec`): the detonated program gets
+*zero* egress, whatever it tries. Output stays on the machine.
 
 **Inspection probes stay read-only and local.** The eBPF connect probe,
 Frida deep-inspection, `perf_event_open` counters, module/Merkle integrity
@@ -130,7 +150,10 @@ l'interrupteur est éteint.
 destination) peuvent être envoyées à un modèle compatible Ollama —
 **restreint aux adresses loopback uniquement** : le backend rejette tout
 endpoint qui ne résout pas vers 127.0.0.1 / ::1, donc cela ne peut jamais
-atteindre le réseau. Les gabarits déterministes restent le défaut.
+atteindre le réseau. Avec `slm_mode=embedded`, un `.gguf` que vous
+fournissez est chargé en processus via `llama-cpp-python` — zéro réseau ;
+Snitch ne télécharge jamais de poids. Les gabarits déterministes restent
+le défaut.
 
 **Les paquets IOC ne sont jamais transmis par Snitch.**
 `GET /security/iocpack` construit un encodage filtre de Bloom +
@@ -138,7 +161,28 @@ randomized response de vos indicateurs locaux et vous remet le fichier —
 vous décidez si et où le partager. L'encodage est volontairement avec
 pertes (ε≈4,6) : les IP/domaines en clair ne peuvent pas être retrouvés
 depuis un paquet. L'import ne renvoie que des indices probabilistes ;
-jamais de blocage automatique.
+jamais de blocage automatique. Un second format `format=proof` utilise
+des feuilles SHA-256 salées + un engagement Merkle — l'appartenance est
+exacte, mais le sel empêche toujours d'énumérer les indicateurs que vous
+ne soupçonnez pas déjà.
+
+**Import de blocklist par URL (opt-in).** Importer depuis un *fichier
+local* est une lecture purement locale. Importer depuis une *URL*
+effectue un seul fetch HTTPS borné (≤4 Mio, ≤10 s) — l'une des rares
+requêtes sortantes que Snitch puisse émettre, confirmée explicitement
+dans l'UI et signalée `remote_fetch` dans la réponse API.
+
+**Pairing distant (opt-in, désactivé par défaut).** L'API de Snitch
+n'écoute que sur 127.0.0.1. Activer le pairing distant persiste
+`lan_bind` pour que le *prochain* démarrage écoute sur votre LAN — le
+jeton API restant obligatoire sur chaque requête. Cela élargit l'adresse
+d'écoute, jamais le modèle de confiance.
+
+**La sandbox ne peut pas fuiter.** `POST /security/sandbox` exécute un
+binaire de votre choix dans un namespace sans réseau (`unshare -n`
+Linux) ou un profil seatbelt (`sandbox-exec` macOS) : le programme
+détoné obtient *zéro* égress, quoi qu'il tente. La sortie reste sur la
+machine.
 
 **Les sondes d'inspection restent en lecture seule et locales.** La sonde
 eBPF, l'inspection Frida, les compteurs `perf_event_open`, les scans

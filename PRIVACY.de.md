@@ -76,3 +76,11 @@ an Dritte schickte.
 Datenverzeichnis: `data/` in Dev/Docker, `%LOCALAPPDATA%\Snitch` unter
 Windows, `~/Library/Application Support/Snitch` unter macOS,
 `~/.local/share/snitch` unter Linux bei installierter Nutzung.
+
+## Neu in v1.4 (Privatsphäre)
+
+- **Blockliste per URL (opt-in)** — eine *lokale Datei* ist ein rein lokaler Lesevorgang; eine *URL* löst genau einen begrenzten HTTPS-Abruf aus (≤4 MiB, ≤10 s), in der UI bestätigt und als `remote_fetch` markiert.
+- **Fernkopplung (opt-in, aus)** — die API lauscht nur auf 127.0.0.1; Aktivieren persistiert `lan_bind` für den nächsten Start — Token bleibt pro Anfrage Pflicht.
+- **Sandbox ohne Netzwerk** — `POST /security/sandbox` führt eine Binärdatei in einem netzlosen Namespace (`unshare -n` Linux) bzw. Seatbelt-Profil (`sandbox-exec` macOS) aus: null Egress, Ausgabe bleibt lokal.
+- **IOC `format=proof`** — gesalzene SHA-256-Blätter + Merkle-Wurzel: exakte Mitgliedschaft ohne Aufzählung unverdächtiger Indikatoren; nichts wird automatisch übertragen.
+- **Eingebettetes Modell** — `slm_mode=embedded` lädt Ihr `.gguf` im Prozess via `llama-cpp-python` — null Netzwerk; Snitch lädt nie Gewichte herunter.
