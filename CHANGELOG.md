@@ -6,6 +6,26 @@ All notable changes to Snitch. / Toutes les modifications notables de Snitch.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/) — EN/FR.
 
+## [Unreleased] — docs & pipeline sync / synchro docs & pipeline
+
+### Changed / Modifié
+
+- EN: **All project surfaces synced to v1.6.3** — README (Rust agent,
+  enrollment, `ti_feeds`, `.rpm`, `snitchd` formula), ROADMAP (v1.5.x/
+  v1.6.x shipped rows, fleet scale-out items), wiki (API catalog → 76
+  endpoints, new *Fleet & Agent* page, Installation/Roadmap/FAQ/Usage
+  refreshed), GitHub Pages (monitor+firewall positioning, fleet/SIEM
+  cards, brew/deb/rpm install lines), topics (+rust/ebpf/edr/siem/
+  fleet-management), milestone `v1.7.0` + tracking issues #53–#57.
+  FR: **Toutes les surfaces du projet synchronisées en v1.6.3** —
+  README, ROADMAP, wiki (catalogue API complet, nouvelle page *Flotte
+  & agent*), GitHub Pages, topics, milestone `v1.7.0` + tickets #53–#57.
+- EN: release workflow — `workflow_dispatch` enabled for manual
+  re-publish; winget asset gate no longer fails red when the count is
+  non-zero (`if` instead of `&&`, bash forced on Windows runner).
+  FR: workflow release — `workflow_dispatch` pour republication
+  manuelle ; le garde winget n'échoue plus quand le compte est non nul.
+
 ## [1.6.3] — 2026-10-22 — hygiene & hardening / hygiène & durcissement
 
 ### Fixed / Corrigé

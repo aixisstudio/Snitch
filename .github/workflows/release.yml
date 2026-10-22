@@ -14,6 +14,11 @@ name: release
 on:
   push:
     tags: ["v*"]
+  # EN: manual re-run against an existing tag — pick the tag as the ref
+  #     so ${GITHUB_REF_NAME} resolves and jobs re-publish idempotently.
+  # FR: relance manuelle sur un tag existant — choisir le tag comme ref
+  #     pour que ${GITHUB_REF_NAME} se résolve et republie idempotemment.
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -96,7 +101,7 @@ jobs:
           N=$(curl -s "https://api.github.com/repos/${{ github.repository }}/releases/tags/${GITHUB_REF_NAME}" \
               | { grep -oE '"name"[ ]*:[ ]*"Snitch-Setup[^"]*"' || true; } | wc -l | tr -d ' ')
           echo "count=$N" >> "$GITHUB_OUTPUT"
-          [ "$N" = "0" ] && echo "::notice::no Snitch-Setup-*.exe release asset — skipping winget submission"
+          if [ "$N" = "0" ]; then echo "::notice::no Snitch-Setup-*.exe release asset — skipping winget submission"; fi
       - name: Submit winget manifest / Soumettre le manifeste winget
         if: env.WINGET_TOKEN != '' && steps.assets.outputs.count != '0'
         uses: vedantmgoyal9/winget-releaser@v2

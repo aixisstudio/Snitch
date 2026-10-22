@@ -89,7 +89,8 @@ The entire interface is available in **English, Français, Español, Deutsch, Р
 | Platform | Package |
 |---|---|
 | **macOS (Apple Silicon)** | `brew install --cask aixisstudio/tap/snitch` — or **Snitch.app** zip/dmg from [latest release](https://github.com/aixisstudio/Snitch/releases/latest) |
-| **Linux** | **Snitch AppImage / .deb / .snap** from [latest release](https://github.com/aixisstudio/Snitch/releases/latest) — or `sudo docker compose up --build`, see [Docker (Linux)](#docker-linux) |
+| **Linux** | **Snitch AppImage / .deb / .rpm / .snap** from [latest release](https://github.com/aixisstudio/Snitch/releases/latest) — or `sudo docker compose up --build`, see [Docker (Linux)](#docker-linux) |
+| **Headless (any OS)** | `brew install aixisstudio/tap/snitch` → `snitchd` daemon binary (servers/VMs, no GUI) |
 | **Windows** | **Snitch Setup** `.exe` — one-click NSIS installer (native app, UAC prompt at launch, Npcap check built in) from [latest release](https://github.com/aixisstudio/Snitch/releases/latest). Lite alternative: `Snitch-Lite-Setup` (backend + browser UI). Requires [Npcap](https://npcap.com/) |
 | **All (1-click)** | [Pinokio](https://pinokio.co/apps/github-com-aixisstudio-snitch) — installs deps, runs the backend, opens the UI / installe tout, lance le backend, ouvre l'UI |
 
@@ -259,11 +260,17 @@ everything is file-driven and free:
 - **Fleet view** — `GET /remote/fleet` merges every configured peer's
   hardening audit into one dashboard; a Helm chart
   (`deploy/helm/snitch`) runs the collector in-cluster.
+- **Rust agent** — a zero-dependency daemon (`agent/`) streams socket
+  events to `POST /ingest/events` with Linux `/proc`→PID attribution;
+  `POST /ingest/enroll` issues one-shot `sagt_…` tokens (hashed at
+  rest, revocable via `/ingest/revoke`) so a compromised agent can
+  never impersonate a peer.
 - **Headless** — hardened systemd unit (`deploy/systemd/`), nfpm
   `.deb`/`.rpm` packaging (`packaging/`), Docker image — no GUI needed.
 - **Free threat feeds** — `POST /firewall/blocklist` imports domain
   (StevenBlack) and IP (Blocklist.de, URLhaus/Feodo) lists, locally or
-  via explicit opt-in fetch.
+  via explicit opt-in fetch; the `ti_feeds` setting schedules automatic
+  refreshes with a hot firewall reload.
 
 Step-by-step recipes live in [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md).
 
@@ -348,7 +355,8 @@ Toute l'interface est disponible en **English, Français, Español, Deutsch, Р�
 | Plateforme | Paquet |
 |---|---|
 | **macOS (Apple Silicon)** | `brew install --cask aixisstudio/tap/snitch` — ou **Snitch.app** zip/dmg depuis la [dernière release](https://github.com/aixisstudio/Snitch/releases/latest) |
-| **Linux** | **Snitch AppImage / .deb / .snap** depuis la [dernière release](https://github.com/aixisstudio/Snitch/releases/latest) — ou `sudo docker compose up --build`, voir [Docker (Linux)](#docker-linux-1) |
+| **Linux** | **Snitch AppImage / .deb / .rpm / .snap** depuis la [dernière release](https://github.com/aixisstudio/Snitch/releases/latest) — ou `sudo docker compose up --build`, voir [Docker (Linux)](#docker-linux-1) |
+| **Headless (tout OS)** | `brew install aixisstudio/tap/snitch` → binaire daemon `snitchd` (serveurs/VM, sans GUI) |
 | **Windows** | **Snitch Setup** `.exe` — installeur NSIS en un clic (app native, prompt UAC au lancement, détection Npcap intégrée) depuis la [dernière release](https://github.com/aixisstudio/Snitch/releases/latest). Alternative lite : `Snitch-Lite-Setup` (backend + UI navigateur). Nécessite [Npcap](https://npcap.com/) |
 
 Ou récupérez la dernière release : **[github.com/aixisstudio/Snitch/releases](https://github.com/aixisstudio/Snitch/releases)**
@@ -457,11 +465,18 @@ est piloté par fichiers et gratuit :
 - **Vue de flotte** — `GET /remote/fleet` fusionne l'audit de durcissement
   de chaque pair ; un chart Helm (`deploy/helm/snitch`) fait tourner le
   collecteur en cluster.
+- **Agent Rust** — un daemon zéro-dépendance (`agent/`) envoie les
+  sockets à `POST /ingest/events` avec attribution `/proc`→PID sous
+  Linux ; `POST /ingest/enroll` émet des jetons `sagt_…` à usage unique
+  (hashés, révocables via `/ingest/revoke`) — un agent compromis ne
+  peut pas usurper ses pairs.
 - **Headless** — unité systemd durcie (`deploy/systemd/`), packaging
   `.deb`/`.rpm` via nfpm (`packaging/`), image Docker — sans GUI.
 - **Flux TI gratuits** — `POST /firewall/blocklist` importe les listes
   de domaines (StevenBlack) et d'IP (Blocklist.de, URLhaus/Feodo),
-  localement ou via fetch opt-in explicite.
+  localement ou via fetch opt-in explicite ; le réglage `ti_feeds`
+  planifie les rafraîchissements automatiques avec rechargement pare-feu
+  à chaud.
 
 Recettes pas-à-pas dans [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md).
 
