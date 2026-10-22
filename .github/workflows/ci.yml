@@ -266,7 +266,7 @@ jobs:
               Snitch-Lite-Setup*) mv "$f" "$(dirname "$f")/Snitch-Lite-Setup-windows.exe" ;;
               *-arm64.dmg)        mv "$f" "$(dirname "$f")/Snitch-macos-arm64.dmg" ;;
               *-arm64-mac.zip)    mv "$f" "$(dirname "$f")/Snitch-macos-arm64.zip" ;;
-              *.AppImage)         mv "$f" "$(dirname "$f")/Snitch-linux-x64.AppImage" ;;
+              *.AppImage)         mv "$f" "$(dirname "$f")/Snitch-x86_64.AppImage" ;;
               *_amd64.deb)        mv "$f" "$(dirname "$f")/snitch-linux-amd64.deb" ;;
             esac
           done
