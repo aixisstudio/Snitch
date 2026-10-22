@@ -31,33 +31,68 @@ export function SettingsButton({ onClick }) {
   )
 }
 
-export function SettingsPanel({ onClose, lang, setLang }) {
+export function SettingsPanel({ onClose, lang, setLang, watchlist = [], onWatchlist, iface }) {
   const { t } = useT()
   const [settings, setSettings] = useState(null)
   const [retention, setRetention] = useState(24)
+  const [uploadMb, setUploadMb] = useState(50)
   const [geoStatus, setGeoStatus] = useState(null)
   const [geoMsg, setGeoMsg] = useState('')
   const [saved, setSaved] = useState(false)
   const [autoLaunch, setAutoLaunch] = useState(false)
+  const [ifaces, setIfaces] = useState(null)
+  const [watchInput, setWatchInput] = useState('')
+  const [updStatus, setUpdStatus] = useState(null)
+  const [updCheck, setUpdCheck] = useState(true)
 
   useEffect(() => {
     ;(async () => {
       const base = await apiBase()
       const headers = await authHeaders()
       try {
-        const [s, g] = await Promise.all([
+        const [s, g, i] = await Promise.all([
           fetch(`${base}/settings`, { headers }).then(r => r.json()),
           fetch(`${base}/geo/status`, { headers }).then(r => r.json()),
+          fetch(`${base}/capture/interfaces`, { headers }).then(r => r.json()),
         ])
         setSettings(s.settings || {})
         setRetention(s.settings?.retention_hours ?? 24)
+        setUploadMb(s.settings?.upload_threshold_mb ?? 50)
         setGeoStatus(g)
+        setIfaces(i.interfaces || [])
       } catch { setSettings({}) }
       if (window.snitch?.getAutoLaunch) {
         setAutoLaunch(await window.snitch.getAutoLaunch())
       }
+      if (window.snitch?.getUpdateStatus) {
+        setUpdStatus(await window.snitch.getUpdateStatus())
+        setUpdCheck(await window.snitch.getUpdateCheck())
+      }
     })()
+    // EN: Live update progress pushed by the main process.
+    // FR: Progression des mises à jour poussée par le processus principal.
+    const off = window.snitch?.onUpdateStatus?.(setUpdStatus)
+    return () => off?.()
   }, [])
+
+  async function setInterface(name) {
+    const base = await apiBase()
+    await fetch(`${base}/capture/interface`, {
+      method: 'POST',
+      headers: await authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ name }),
+    })
+    setSaved(true)
+    setTimeout(() => setSaved(false), 1500)
+  }
+
+  function addWatch(e) {
+    e.preventDefault()
+    const item = watchInput.trim()
+    if (!item || watchlist.includes(item)) { setWatchInput(''); return }
+    onWatchlist?.([...watchlist, item])
+    setWatchInput('')
+  }
 
   async function save(key, value) {
     const base = await apiBase()
@@ -134,7 +169,7 @@ export function SettingsPanel({ onClose, lang, setLang }) {
         <div style={row}>
           <div><div style={label}>{t('settings_language')}</div></div>
           <div style={{ display: 'flex', gap: 4 }}>
-            {['en', 'fr'].map(l => (
+            {['en', 'fr', 'es'].map(l => (
               <button key={l} onClick={() => { setLang(l); save('language', l) }} style={{
                 background: lang === l ? '#3b82f6' : 'var(--bg)',
                 border: '1px solid var(--border)', borderRadius: 6,
@@ -182,6 +217,128 @@ export function SettingsPanel({ onClose, lang, setLang }) {
                 transition: 'left 0.15s',
               }} />
             </button>
+          </div>
+        )}
+
+        {/* Capture interface / Interface de capture */}
+        <div style={row}>
+          <div>
+            <div style={label}>{t('settings_interface')}</div>
+            <div style={hint}>{t('settings_interface_hint')}</div>
+          </div>
+          <select
+            value={settings?.interface ?? ''}
+            onChange={e => {
+              const v = e.target.value || null
+              setSettings(s => ({ ...s, interface: v }))
+              setInterface(v)
+            }}
+            style={{
+              background: 'var(--bg)', border: '1px solid var(--border)',
+              borderRadius: 6, color: 'var(--text)', padding: '4px 8px',
+              fontSize: 11, maxWidth: 180,
+            }}
+          >
+            <option value="">{t('settings_interface_auto')}</option>
+            {(ifaces || []).map(d => (
+              <option key={d.name} value={d.name}>
+                {d.name}{d.description ? ` — ${d.description}` : ''}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Upload alert threshold / Seuil d'alerte d'envoi */}
+        <div style={row}>
+          <div>
+            <div style={label}>{t('settings_upload')}</div>
+            <div style={hint}>{t('settings_upload_hint')}</div>
+          </div>
+          <select
+            value={uploadMb}
+            onChange={e => { const v = +e.target.value; setUploadMb(v); save('upload_threshold_mb', v) }}
+            style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', padding: '4px 8px', fontSize: 11 }}
+          >
+            {[10, 25, 50, 100, 250, 500, 0].map(v => (
+              <option key={v} value={v}>{v === 0 ? t('settings_off') : `${v} MB/min`}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Watchlist / Liste de surveillance */}
+        <div style={{ ...row, display: 'block' }}>
+          <div style={label}>{t('watchlist_title')}</div>
+          <div style={hint}>{t('watchlist_hint')}</div>
+          <form onSubmit={addWatch} style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+            <input
+              value={watchInput}
+              onChange={e => setWatchInput(e.target.value)}
+              placeholder={t('watchlist_placeholder')}
+              aria-label={t('watchlist_title')}
+              style={{
+                flex: 1, background: 'var(--bg)', border: '1px solid var(--border)',
+                borderRadius: 6, color: 'var(--text)', padding: '6px 10px',
+                fontSize: 11, outline: 'none',
+              }}
+            />
+            <button type="submit" style={{
+              background: 'var(--bg)', border: '1px solid var(--border)',
+              borderRadius: 6, color: 'var(--text-dim)', padding: '6px 12px',
+              fontSize: 11, cursor: 'pointer',
+            }}>{t('watchlist_add')}</button>
+          </form>
+          {watchlist.length > 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 8 }}>
+              {watchlist.map(item => (
+                <button key={item} title={t('watchlist_remove')}
+                  onClick={() => onWatchlist?.(watchlist.filter(i => i !== item))}
+                  style={{
+                    background: 'var(--bg)', border: '1px solid var(--border)',
+                    borderRadius: 10, color: 'var(--text)', padding: '3px 9px',
+                    fontSize: 10, cursor: 'pointer', display: 'flex', gap: 5,
+                    alignItems: 'center',
+                  }}>
+                  {item} <X size={9} />
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Updates (Electron only) / Mises à jour (Electron seul) */}
+        {window.snitch?.getUpdateStatus && (
+          <div style={{ ...row, display: 'block' }}>
+            <div style={label}>{t('update_title')}</div>
+            <div style={hint}>
+              {updStatus?.state === 'checking'   && t('update_checking')}
+              {updStatus?.state === 'available'  && t('update_available', updStatus.version)}
+              {updStatus?.state === 'downloading' && t('update_downloading', updStatus.percent ?? 0)}
+              {updStatus?.state === 'downloaded' && t('update_ready', updStatus.version)}
+              {updStatus?.state === 'none'       && t('update_none')}
+              {updStatus?.state === 'error'      && t('update_error')}
+              {(!updStatus || updStatus.state === 'idle' || updStatus.state === 'dev') && t('update_idle')}
+            </div>
+            <div style={{ display: 'flex', gap: 6, marginTop: 8, alignItems: 'center' }}>
+              {updStatus?.state === 'downloaded' ? (
+                <button onClick={() => window.snitch.installUpdate()} style={{
+                  background: '#3b82f6', border: 'none', borderRadius: 6,
+                  color: '#fff', padding: '6px 12px', fontSize: 11,
+                  cursor: 'pointer', fontWeight: 600,
+                }}>{t('update_restart')}</button>
+              ) : (
+                <button onClick={() => window.snitch.checkUpdates()} style={{
+                  background: 'var(--bg)', border: '1px solid var(--border)',
+                  borderRadius: 6, color: 'var(--text-dim)',
+                  padding: '6px 12px', fontSize: 11, cursor: 'pointer',
+                }}>{t('update_check_btn')}</button>
+              )}
+              <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 10, color: 'var(--text-muted)', cursor: 'pointer' }}>
+                <input type="checkbox" checked={updCheck}
+                  onChange={async e => setUpdCheck(await window.snitch.setUpdateCheck(e.target.checked))} />
+                {t('update_auto')}
+              </label>
+            </div>
+            <div style={{ ...hint, marginTop: 4 }}>{t('update_privacy')}</div>
           </div>
         )}
 

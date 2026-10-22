@@ -18,7 +18,7 @@ import { useState, useEffect, useRef } from 'react'
 import {
   Bell, Info, AlertTriangle, AlertCircle, X,
   Globe, WifiOff, Wifi, ScanLine,
-  Activity, Unlock, TrendingUp, Camera,
+  Activity, Unlock, TrendingUp, Camera, ShieldAlert,
 } from 'lucide-react'
 import { useT } from '../i18n'
 
@@ -40,6 +40,8 @@ const TYPE_ICONS = {
   DEVICE_OFFLINE:     WifiOff,
   MEDIA_EXFIL:        Camera,
   PORT_SCAN:          ScanLine,
+  UPLOAD_SPIKE:       TrendingUp,
+  WATCHLIST_HIT:      ShieldAlert,
 }
 
 export function AlertBell({ unread, onClick }) {

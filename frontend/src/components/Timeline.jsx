@@ -37,7 +37,7 @@ export default function Timeline() {
    */
   function fmtMinute(iso) {
     const d = new Date(iso + ':00Z')
-    return d.toLocaleTimeString(lang === 'fr' ? 'fr-FR' : 'en-US', { hour: '2-digit', minute: '2-digit' })
+    return d.toLocaleTimeString({ en: 'en-US', fr: 'fr-FR', es: 'es-ES' }[lang] || 'en-US', { hour: '2-digit', minute: '2-digit' })
   }
 
   const fetchTimeline = useCallback(() => {

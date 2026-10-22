@@ -58,6 +58,13 @@ export function useWebSocket(url) {
   const [excludedProcesses, setExcludedProcesses] = useState([])
   const [whitelistedIps, setWhitelistedIps] = useState([])
   const [media, setMedia] = useState({ mic: [], camera: [] })
+  // EN: Network context surfaced by the backend — Wi-Fi SSID ("" on
+  //     Ethernet), active capture interface, user watchlist.
+  // FR: Contexte réseau remonté par le backend — SSID Wi-Fi (« » sur
+  //     Ethernet), interface de capture active, watchlist utilisateur.
+  const [ssid, setSsid] = useState('')
+  const [iface, setIface] = useState(null)
+  const [watchlist, setWatchlist] = useState([])
   // EN: { secondTimestamp: bytesReceivedThatSecond } — rolled into `bandwidth`.
   // FR: { timestampSeconde: octetsReçusCetteSeconde } — agrégé dans `bandwidth`.
   const bwRef = useRef({})
@@ -144,6 +151,9 @@ export function useWebSocket(url) {
           if (msg.ports !== undefined) setPortFilter(msg.ports)
           if (msg.excluded_processes !== undefined) setExcludedProcesses(msg.excluded_processes)
           if (msg.whitelisted_ips !== undefined) setWhitelistedIps(msg.whitelisted_ips)
+          if (msg.watchlist !== undefined) setWatchlist(msg.watchlist)
+          if (msg.ssid !== undefined) setSsid(msg.ssid)
+          if (msg.interface !== undefined) setIface(msg.interface)
           const nodeMap = {}, edgeMap = {}, deviceMap = {}
           msg.nodes.forEach(n => {
             if (n.category === 'lan_device') deviceMap[n.id] = n
@@ -240,6 +250,8 @@ export function useWebSocket(url) {
           if (msg.ports !== undefined) setPortFilter(msg.ports)
           if (msg.excluded_processes !== undefined) setExcludedProcesses(msg.excluded_processes)
           if (msg.whitelisted_ips !== undefined) setWhitelistedIps(msg.whitelisted_ips)
+          if (msg.watchlist !== undefined) setWatchlist(msg.watchlist)
+          if (msg.interface !== undefined) setIface(msg.interface)
         }
 
         // EN: Whitelisted nodes were removed server-side — mirror the removal.
@@ -345,5 +357,15 @@ export function useWebSocket(url) {
     setWhitelistedIps(data.whitelisted_ips)
   }
 
-  return { nodes, edges, lanDevices, packets, alerts, unread, clearUnread, status, bandwidth, capturing, toggleCapture, portFilter, updatePortFilter, excludedProcesses, updateProcessFilter, whitelistedIps, updateIpWhitelist, media }
+  async function updateWatchlist(items) {
+    const res = await fetch(`${await apiBase()}/watchlist`, {
+      method: 'POST',
+      headers: await authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ items }),
+    })
+    const data = await res.json()
+    setWatchlist(data.items)
+  }
+
+  return { nodes, edges, lanDevices, packets, alerts, unread, clearUnread, status, bandwidth, capturing, toggleCapture, portFilter, updatePortFilter, excludedProcesses, updateProcessFilter, whitelistedIps, updateIpWhitelist, media, ssid, iface, watchlist, updateWatchlist }
 }

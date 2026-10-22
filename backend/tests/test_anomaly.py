@@ -170,3 +170,83 @@ def test_reset_runtime_clears_state():
     det.reset_runtime()
     alerts = det.analyze_packet(pkt(), {})
     assert any(a.type == "NEW_HOST" for a in alerts)
+
+
+def test_upload_spike_alerts_past_threshold():
+    """EN: One process exceeding the MB/min upload ceiling alerts once.
+    FR: Un processus dépassant le plafond Mo/min alerte une fois."""
+    det = AnomalyDetector()
+    det.set_upload_threshold_mb(1)   # EN: 1 MB/min / FR: 1 Mo/min
+    alerts = []
+    for _ in range(12):
+        alerts += det.analyze_packet(
+            pkt(size=100_000, process="backupd"), {"hostname": "x.io"})
+    types = [a.type for a in alerts]
+    assert "UPLOAD_SPIKE" in types
+    # EN: Cooldown — feeding more traffic must NOT re-alert immediately.
+    # FR: Cooldown — plus de trafic ne doit PAS re-alerter aussitôt.
+    n_before = len(alerts)
+    for _ in range(12):
+        alerts += det.analyze_packet(
+            pkt(size=100_000, process="backupd"), {"hostname": "x.io"})
+    assert [a.type for a in alerts[n_before:]].count("UPLOAD_SPIKE") == 0
+
+
+def test_upload_spike_disabled_with_zero():
+    """EN: upload_threshold_mb <= 0 disables the rule entirely.
+    FR: upload_threshold_mb <= 0 désactive la règle."""
+    det = AnomalyDetector()
+    det.set_upload_threshold_mb(0)
+    alerts = []
+    for _ in range(30):
+        alerts += det.analyze_packet(
+            pkt(size=200_000, process="backupd"), {"hostname": "x.io"})
+    assert "UPLOAD_SPIKE" not in [a.type for a in alerts]
+
+
+def test_upload_spike_ignores_inbound_and_no_process():
+    """EN: Inbound packets and unattributed traffic never count.
+    FR: Paquets entrants et trafic non attribué ne comptent jamais."""
+    det = AnomalyDetector()
+    det.set_upload_threshold_mb(1)
+    alerts = []
+    for _ in range(20):
+        alerts += det.analyze_packet(
+            pkt(size=100_000, direction="in", process="backupd"), {})
+        alerts += det.analyze_packet(pkt(size=100_000), {})
+    assert "UPLOAD_SPIKE" not in [a.type for a in alerts]
+
+
+def test_watchlist_hit_by_ip():
+    """EN: A packet to a watched IP raises WATCHLIST_HIT once per 5 min.
+    FR: Un paquet vers une IP surveillée déclenche WATCHLIST_HIT."""
+    det = AnomalyDetector()
+    det.set_watchlist(["91.198.174.192"])
+    alerts = det.analyze_packet(pkt(), {})
+    assert any(a.type == "WATCHLIST_HIT" for a in alerts)
+
+
+def test_watchlist_hit_by_domain_suffix():
+    """EN: A watched suffix matches subdomains via the resolved hostname.
+    FR: Un suffixe surveillé matche les sous-domaines via le nom résolu."""
+    det = AnomalyDetector()
+    det.set_watchlist(["evil.example"])
+    alerts = det.analyze_packet(pkt(), {"hostname": "cdn.evil.example"})
+    assert any(a.type == "WATCHLIST_HIT" for a in alerts)
+
+
+def test_watchlist_no_match_no_alert():
+    """EN: Unrelated traffic stays quiet. / FR: Le trafic étranger reste muet."""
+    det = AnomalyDetector()
+    det.set_watchlist(["8.8.8.8", "evil.example"])
+    alerts = det.analyze_packet(pkt(), {"hostname": "wikipedia.org"})
+    assert "WATCHLIST_HIT" not in [a.type for a in alerts]
+
+
+def test_watchlist_rejects_domain_lookalike():
+    """EN: "notexample.com" must NOT match suffix "example.com".
+    FR: « notexample.com » ne doit PAS matcher le suffixe « example.com »."""
+    det = AnomalyDetector()
+    det.set_watchlist(["example.com"])
+    alerts = det.analyze_packet(pkt(), {"hostname": "notexample.com"})
+    assert "WATCHLIST_HIT" not in [a.type for a in alerts]

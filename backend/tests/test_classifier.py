@@ -59,3 +59,20 @@ def test_suffix_match_accepts_deep_subdomain():
     FR: a.b.c.doubleclick.net correspond toujours à doubleclick.net."""
     r = classify("a.b.c.doubleclick.net", 443, "TCP")
     assert r.category == "tracking"
+
+
+def test_udp_443_is_quic_http3():
+    """EN: UDP/443 = QUIC (HTTP/3) — labeled honestly since SNI is encrypted.
+    FR: UDP/443 = QUIC (HTTP/3) — étiqueté honnêtement, le SNI est chiffré."""
+    from classifier.traffic import classify
+    c = classify(None, 443, "UDP")
+    assert c.label == "QUIC/HTTP3"
+    assert c.category == "safe"   # EN: port-443 bucket / FR: famille port 443
+
+
+def test_tcp_443_stays_https():
+    """EN: TCP/443 keeps the HTTPS label — QUIC detection must not leak.
+    FR: TCP/443 garde l'étiquette HTTPS — la détection QUIC ne doit pas fuiter."""
+    from classifier.traffic import classify
+    c = classify(None, 443, "TCP")
+    assert c.label != "QUIC/HTTP3"

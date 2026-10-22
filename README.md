@@ -31,7 +31,7 @@
 **Snitch** is a real-time network traffic visualizer.
 See every connection your computer makes — who it talks to, where they are, and which app is responsible.
 
-The entire interface is available in **English and French**: use the `EN / FR` toggle in the top-right toolbar.
+The entire interface is available in **English, French and Spanish**: use the `EN / FR / ES` toggle in the top-right toolbar.
 
 ### Why Snitch?
 
@@ -56,15 +56,22 @@ The entire interface is available in **English and French**: use the `EN / FR` t
 | Settings Panel | Language, retention, filters, consent-gated GeoIP download, diagnostics |
 | Tracker Detection | Suffix-matched domain lists shipped as editable data files (`backend/classifier/lists/`) |
 | Bandwidth Monitor | Live MB/s sparkline |
-| EN / FR UI | Full bilingual interface, one click to switch |
+| EN / FR / ES UI | Full trilingual interface, one click to switch |
 | Light / Dark Theme | Follows your OS preference by default, manual toggle persists |
+| Auto-Update | Desktop app checks GitHub Releases (opt-out in Settings; `SNITCH_NO_UPDATE=1`) |
+| QUIC / HTTP/3 | UDP/443 flows labeled honestly — QUIC SNI is encrypted and never read |
+| Watchlist | Pin IPs/domains — dedicated alert the moment traffic touches them |
+| Upload Spike Alert | Per-process MB/min ceiling with adjustable threshold |
+| Interface Selector | Pick which adapter is sniffed — no env var needed |
+| Wi-Fi Context | Current SSID shown in the toolbar |
+| Export | Graph + alerts to JSON/CSV, one click |
 
 ### Download
 
 | Platform | Package |
 |---|---|
 | **macOS (Apple Silicon)** | `brew install --cask aixisstudio/tap/snitch` — or **Snitch.app** zip/dmg from [latest release](https://github.com/aixisstudio/Snitch/releases/latest) |
-| **Linux** | **Snitch AppImage / .deb** from [latest release](https://github.com/aixisstudio/Snitch/releases/latest) — or `sudo docker compose up --build`, see [Docker (Linux)](#docker-linux) |
+| **Linux** | **Snitch AppImage / .deb / .snap** from [latest release](https://github.com/aixisstudio/Snitch/releases/latest) — or `sudo docker compose up --build`, see [Docker (Linux)](#docker-linux) |
 | **Windows** | **Snitch Setup** `.exe` — one-click NSIS installer (native app, UAC prompt at launch, Npcap check built in) from [latest release](https://github.com/aixisstudio/Snitch/releases/latest). Lite alternative: `Snitch-Lite-Setup` (backend + browser UI). Requires [Npcap](https://npcap.com/) |
 | **All (1-click)** | [Pinokio](https://pinokio.co/apps/github-com-aixisstudio-snitch) — installs deps, runs the backend, opens the UI / installe tout, lance le backend, ouvre l'UI |
 
@@ -220,7 +227,7 @@ snitch/
 **Snitch** est un visualiseur de trafic réseau en temps réel.
 Voyez chaque connexion que votre ordinateur établit — à qui il parle, où se trouvent les serveurs, et quelle application est responsable.
 
-Toute l'interface est disponible en **français et en anglais** : utilisez le sélecteur `EN / FR` dans la barre d'outils en haut à droite.
+Toute l'interface est disponible en **français, anglais et espagnol** : utilisez le sélecteur `EN / FR / ES` dans la barre d'outils en haut à droite.
 
 ### Pourquoi Snitch ?
 
@@ -245,15 +252,22 @@ Toute l'interface est disponible en **français et en anglais** : utilisez le s�
 | Panneau Réglages | Langue, rétention, filtres, téléchargement GeoIP sous consentement, diagnostic |
 | Détection de trackers | Listes de domaines par suffixe, livrées en fichiers de données éditables (`backend/classifier/lists/`) |
 | Moniteur de débit | Sparkline MB/s en direct |
-| UI FR / EN | Interface entièrement bilingue, bascule en un clic |
+| UI FR / EN / ES | Interface entièrement trilingue, bascule en un clic |
 | Thème clair / sombre | Suit la préférence système par défaut, bascule manuelle persistée |
+| Mise à jour auto | L'app bureau vérifie les releases GitHub (désactivable dans Réglages ; `SNITCH_NO_UPDATE=1`) |
+| QUIC / HTTP/3 | Flux UDP/443 étiquetés honnêtement — le SNI QUIC est chiffré, jamais lu |
+| Watchlist | Épinglez IP/domaines — alerte dédiée dès qu'un trafic les touche |
+| Alerte pic d'envoi | Plafond Mo/min par processus, seuil réglable |
+| Sélecteur d'interface | Choisissez la carte écoutée — plus besoin de variable d'env |
+| Contexte Wi-Fi | SSID courant affiché dans la barre d'outils |
+| Export | Graphe + alertes en JSON/CSV, en un clic |
 
 ### Téléchargement
 
 | Plateforme | Paquet |
 |---|---|
 | **macOS (Apple Silicon)** | `brew install --cask aixisstudio/tap/snitch` — ou **Snitch.app** zip/dmg depuis la [dernière release](https://github.com/aixisstudio/Snitch/releases/latest) |
-| **Linux** | **Snitch AppImage / .deb** depuis la [dernière release](https://github.com/aixisstudio/Snitch/releases/latest) — ou `sudo docker compose up --build`, voir [Docker (Linux)](#docker-linux-1) |
+| **Linux** | **Snitch AppImage / .deb / .snap** depuis la [dernière release](https://github.com/aixisstudio/Snitch/releases/latest) — ou `sudo docker compose up --build`, voir [Docker (Linux)](#docker-linux-1) |
 | **Windows** | **Snitch Setup** `.exe` — installeur NSIS en un clic (app native, prompt UAC au lancement, détection Npcap intégrée) depuis la [dernière release](https://github.com/aixisstudio/Snitch/releases/latest). Alternative lite : `Snitch-Lite-Setup` (backend + UI navigateur). Nécessite [Npcap](https://npcap.com/) |
 
 Ou récupérez la dernière release : **[github.com/aixisstudio/Snitch/releases](https://github.com/aixisstudio/Snitch/releases)**

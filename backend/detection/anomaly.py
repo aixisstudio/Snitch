@@ -16,6 +16,12 @@ EN: Stateful, rule-based detector fed with every captured packet and every
       - PORT_SCAN          many distinct remote ports from one origin in a
                            short window (both directions)
       - VOLUME_SPIKE       bytes-per-window far above the rolling baseline
+      - UPLOAD_SPIKE       a single process uploads more than the configured
+                           threshold in a 60 s window — "who is sending big
+                           data right now" catches exfil that VOLUME_SPIKE's
+                           baseline-relative test misses
+      - WATCHLIST_HIT      contact with a user-pinned IP or domain — the
+                           "tell me when X shows up" feature
       - MEDIA_EXFIL        mic/camera-using process (not whitelisted) sending out
       - NEW_LAN_DEVICE     device appears on the local network
       - DEVICE_OFFLINE     device disappears from the local network
@@ -44,6 +50,13 @@ FR: Détecteur à état basé sur des règles, alimenté par chaque paquet captu
       - PORT_SCAN          beaucoup de ports distants distincts depuis une
                            origine sur une courte fenêtre (deux sens)
       - VOLUME_SPIKE       octets par fenêtre bien au-dessus de la base roulante
+      - UPLOAD_SPIKE       un processus émet plus que le seuil configuré sur
+                           une fenêtre de 60 s — « qui envoie beaucoup de
+                           données en ce moment » attrape l'exfil que le test
+                           relatif à la base de VOLUME_SPIKE rate
+      - WATCHLIST_HIT      contact avec une IP ou un domaine épinglé par
+                           l'utilisateur — la fonction « dis-moi quand X
+                           apparaît »
       - MEDIA_EXFIL        processus micro/caméra (non whitelisté) qui émet
       - NEW_LAN_DEVICE     un appareil apparaît sur le réseau local
       - DEVICE_OFFLINE     un appareil disparaît du réseau local
@@ -127,6 +140,19 @@ VOLUME_WINDOW_S = 60
 VOLUME_MIN_BYTES = 5 * 1024 * 1024     # EN: windows under 5 MB never alert
                                        # FR: les fenêtres sous 5 Mo n'alertent pas
 VOLUME_MULTIPLIER = 5.0
+
+# ── Upload threshold / Seuil d'émission ──────────────────────────────────────
+# EN: Absolute per-process outbound threshold — unlike VOLUME_SPIKE (which
+#     needs a baseline to compare against), this fires the moment a process
+#     crosses a hard ceiling, so a brand-new uploader is caught too. Tunable
+#     through the `upload_threshold_mb` setting.
+# FR: Seuil sortant absolu par processus — contrairement à VOLUME_SPIKE
+#     (qui exige une base de comparaison), il déclenche dès qu'un processus
+#     franchit un plafond strict : un nouvel émetteur est attrapé aussi.
+#     Réglable via le paramètre `upload_threshold_mb`.
+UPLOAD_WINDOW_S = 60
+UPLOAD_DEFAULT_MB = 50
+MAX_TRACKED_PROCS = 5_000
 
 # ── Port scan / Scan de ports ────────────────────────────────────────────────
 SCAN_WINDOW_S = 60
@@ -271,6 +297,15 @@ class AnomalyDetector:
         self._byte_window: dict[str, deque] = defaultdict(lambda: deque(maxlen=5000))
         self._byte_baseline: dict[str, deque] = defaultdict(lambda: deque(maxlen=10))
         self._byte_last_fold: dict[str, float] = {}
+        # EN: (ts, bytes) outbound events per PROCESS NAME for UPLOAD_SPIKE,
+        #     plus the user watchlist (ips/domains) and its threshold.
+        # FR: Événements (ts, octets) sortants par NOM DE PROCESSUS pour
+        #     UPLOAD_SPIKE, plus la watchlist utilisateur (ip/domaines) et
+        #     son seuil.
+        self._proc_upload: dict[str, deque] = defaultdict(lambda: deque(maxlen=500))
+        self._upload_threshold_b = UPLOAD_DEFAULT_MB * 1024 * 1024
+        self._watch_ips: set[str] = set()
+        self._watch_domains: set[str] = set()
 
         # EN: User suppressions — persisted in the settings table, loaded at
         #     startup. An entry is {"type": "BEACON"|None, "ip": "1.2.3.4"|None};
@@ -309,6 +344,34 @@ class AnomalyDetector:
         with self._lock:
             self._mic_procs = {p.lower() for p in mic}
             self._cam_procs = {p.lower() for p in camera}
+
+    def set_upload_threshold_mb(self, mb: float) -> None:
+        """EN: Configure the per-process upload ceiling (megabytes/minute);
+            <= 0 disables the rule entirely.
+        FR: Configurer le plafond d'émission par processus (Mo/minute) ;
+            <= 0 désactive entièrement la règle."""
+        with self._lock:
+            self._upload_threshold_b = max(0, int(mb)) * 1024 * 1024
+
+    def set_watchlist(self, items: list[str]) -> None:
+        """
+        EN: Replace the user watchlist — entries are IPs or domain suffixes
+            ("example.com" also catches "api.example.com").
+        FR: Remplacer la watchlist utilisateur — les entrées sont des IP ou
+            suffixes de domaine (« example.com » attrape aussi
+            « api.example.com »).
+        """
+        with self._lock:
+            self._watch_ips, self._watch_domains = set(), set()
+            for item in items:
+                s = str(item).strip().lower().rstrip(".")
+                if not s:
+                    continue
+                try:
+                    ipaddress.ip_address(s)
+                    self._watch_ips.add(s)
+                except ValueError:
+                    self._watch_domains.add(s)
 
     def forget(self, ip: str) -> None:
         """
@@ -374,6 +437,8 @@ class AnomalyDetector:
             alerts += self._check_beacon(remote_ip, geo)
             alerts += self._check_volume_spike(remote_ip, pkt, geo)
             alerts += self._check_media_exfil(pkt, remote_ip, geo)
+            alerts += self._check_upload_spike(pkt, remote_ip, geo)
+            alerts += self._check_watchlist(pkt, remote_ip, geo)
             # EN: Drop suppressed alerts before recording — persisted
             #     "ignore this host/type" rules from the UI.
             # FR: Écarter les alertes supprimées avant l'enregistrement —
@@ -687,6 +752,87 @@ class AnomalyDetector:
             message=f"Suspected {device} exfiltration: {pkt.process_name} -> {label}",
             node_id=remote_ip,
             details={"process": pkt.process_name, "device": device, "ip": remote_ip, "host": label, "org": geo.get("org", "")},
+        )]
+
+    def _check_upload_spike(self, pkt: Packet, remote_ip: str, geo: dict) -> list[Alert]:
+        """
+        EN: Per-process absolute upload ceiling — VOLUME_SPIKE only fires
+            against a learned baseline, so a process that was quiet since
+            boot has none and can exfiltrate freely. This rule tracks each
+            process's outbound bytes over the last UPLOAD_WINDOW_S seconds
+            and warns past `upload_threshold_mb` (default 50 MB/min).
+        FR: Plafond d'émission absolu par processus — VOLUME_SPIKE ne tire
+            que par rapport à une base apprise, donc un processus silencieux
+            depuis le boot n'en a pas et peut exfiltrer librement. Cette
+            règle suit les octets sortants de chaque processus sur les
+            dernières UPLOAD_WINDOW_S secondes et alerte au-delà de
+            `upload_threshold_mb` (50 Mo/min par défaut).
+        """
+        if (pkt.direction != "out" or not pkt.process_name
+                or self._upload_threshold_b <= 0):
+            return []
+        now = time.time()
+        dq = self._proc_upload[pkt.process_name]
+        if len(self._proc_upload) > MAX_TRACKED_PROCS:
+            # EN: Bound long-term memory — drop the coldest process windows.
+            # FR: Borner la mémoire longue durée — jeter les fenêtres de
+            #     processus les plus froides.
+            for k in [k for k, d in self._proc_upload.items()
+                      if not d or now - d[-1][0] > 3600]:
+                self._proc_upload.pop(k, None)
+            if len(self._proc_upload) > MAX_TRACKED_PROCS:
+                self._proc_upload.clear()
+                dq = self._proc_upload[pkt.process_name]
+        dq.append((now, pkt.size))
+        cutoff = now - UPLOAD_WINDOW_S
+        while dq and dq[0][0] < cutoff:
+            dq.popleft()
+        total = sum(b for _, b in dq)
+        if total < self._upload_threshold_b:
+            return []
+        if not self._cooldown_ok(f"upload_spike:{pkt.process_name}", cooldown=300):
+            return []
+        label = geo.get("hostname") or remote_ip
+        mb = round(total / (1024 * 1024), 1)
+        return [Alert(
+            type="UPLOAD_SPIKE",
+            severity="warning",
+            message=f"Upload spike: {pkt.process_name} sent {mb} MB in {UPLOAD_WINDOW_S}s",
+            node_id=remote_ip,
+            details={"process": pkt.process_name, "bytes": total,
+                     "mb": mb, "window_s": UPLOAD_WINDOW_S,
+                     "ip": remote_ip, "host": label},
+        )]
+
+    def _check_watchlist(self, pkt: Packet, remote_ip: str, geo: dict) -> list[Alert]:
+        """
+        EN: User-pinned IP / domain suffix hit — fires once per (entry, ip)
+            per 5 min so a busy watched host does not spam. Severity
+            "warning": the user asked to be told.
+        FR: Atteinte d'une IP / d'un suffixe de domaine épinglé par
+            l'utilisateur — tire une fois par (entrée, ip) par 5 min pour ne
+            pas spammer un hôte surveillé bavard. Sévérité « warning » :
+            l'utilisateur a demandé à être prévenu.
+        """
+        if not self._watch_ips and not self._watch_domains:
+            return []
+        host = (geo.get("hostname") or pkt.sni or "").lower().rstrip(".")
+        matched = remote_ip if remote_ip in self._watch_ips else None
+        if not matched and host:
+            matched = next((d for d in self._watch_domains
+                            if host == d or host.endswith("." + d)), None)
+        if not matched:
+            return []
+        if not self._cooldown_ok(f"watchlist:{matched}:{remote_ip}", cooldown=300):
+            return []
+        return [Alert(
+            type="WATCHLIST_HIT",
+            severity="warning",
+            message=f"Watchlist hit: {matched} ({host or remote_ip})",
+            node_id=remote_ip,
+            details={"match": matched, "ip": remote_ip,
+                     "host": host or remote_ip,
+                     "process": pkt.process_name},
         )]
 
     # ── Helpers / Utilitaires ────────────────────────────────────────────────

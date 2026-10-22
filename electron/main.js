@@ -93,6 +93,19 @@ const iconPath = isDev
 const logDir  = path.join(backendDataDir(), 'logs')
 const logFile = path.join(logDir, 'backend.log')
 
+// EN: Tiny main-process logger — appends to backend.log next to the backend's
+//     own output so update errors land where "Open logs" points.
+// FR: Mini-logger du processus principal — ajoute dans backend.log à côté de
+//     la sortie du backend, pour que les erreurs de mise à jour arrivent là
+//     où « Ouvrir les logs » pointe.
+const log = {
+  warn: (...args) => {
+    const line = `[main] ${args.join(' ')}`
+    try { fs.appendFileSync(logFile, `${new Date().toISOString()} ${line}\n`) } catch { /* log dir not writable yet */ }
+    console.warn(line)
+  },
+}
+
 let mainWindow   = null
 let splashWindow = null
 let backendProc  = null
@@ -139,6 +152,91 @@ ipcMain.handle('snitch:set-auto-launch', (_evt, enabled) => {
   if (process.platform === 'linux') return false
   app.setLoginItemSettings({ openAtLogin: !!enabled })
   return app.getLoginItemSettings().openAtLogin
+})
+
+// ── Auto-update / Mise à jour automatique ────────────────────────────────────
+// EN: electron-updater against the public GitHub Releases feed
+//     (latest.yml / latest-mac.yml / latest-linux.yml are already published
+//     by CI). Privacy note: checking for updates is an OUTBOUND call to
+//     github.com — it is on by default but can be disabled in Settings,
+//     persisted in userData/update-prefs.json, or killed wholesale via
+//     SNITCH_NO_UPDATE=1. Never runs in unpackaged dev builds.
+// FR: electron-updater sur le flux GitHub Releases public
+//     (latest.yml / latest-mac.yml / latest-linux.yml déjà publiés par la
+//     CI). Note vie privée : la vérification de mise à jour est un appel
+//     SORTANT vers github.com — activée par défaut mais désactivable dans
+//     les Réglages, persistée dans userData/update-prefs.json, ou coupée
+//     entièrement via SNITCH_NO_UPDATE=1. Jamais en dev non empaqueté.
+let autoUpdater = null
+let updateStatus = { state: 'idle' }   // EN: idle|checking|available|downloading|downloaded|none|error|dev
+const updatePrefsPath = path.join(app.getPath('userData'), 'update-prefs.json')
+
+function updateCheckEnabled() {
+  if (process.env.SNITCH_NO_UPDATE) return false
+  try {
+    return JSON.parse(fs.readFileSync(updatePrefsPath, 'utf8')).enabled !== false
+  } catch { return true }   // EN: default on / FR: activé par défaut
+}
+
+function setUpdateCheckEnabled(enabled) {
+  try {
+    fs.writeFileSync(updatePrefsPath, JSON.stringify({ enabled: !!enabled }))
+  } catch (e) { log.warn('update prefs write failed:', e.message) }
+  rebuildTrayMenu()
+}
+
+function reportUpdate(state, extra = {}) {
+  updateStatus = { state, ...extra }
+  // EN: Forward to the renderer (Settings panel shows it) — guarded, the
+  //     window may not exist yet when the first check fires.
+  // FR: Relayer au renderer (le panneau Réglages l'affiche) — protégé, la
+  //     fenêtre peut ne pas encore exister au premier contrôle.
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('snitch:update-status', updateStatus)
+  }
+  rebuildTrayMenu()
+}
+
+function initAutoUpdater() {
+  try {
+    ({ autoUpdater } = require('electron-updater'))
+  } catch {
+    log.warn('electron-updater not bundled — update checks disabled')
+    return
+  }
+  autoUpdater.autoDownload = true        // EN: download in background / FR: télécharger en tâche de fond
+  autoUpdater.autoInstallOnAppQuit = true
+  autoUpdater.on('checking-for-update', () => reportUpdate('checking'))
+  autoUpdater.on('update-available', (info) => reportUpdate('available', { version: info.version }))
+  autoUpdater.on('update-not-available', () => reportUpdate('none'))
+  autoUpdater.on('download-progress', (p) => reportUpdate('downloading', { percent: Math.round(p.percent) }))
+  autoUpdater.on('update-downloaded', (info) => reportUpdate('downloaded', { version: info.version }))
+  autoUpdater.on('error', (err) => {
+    log.warn('auto-update error:', err.message)
+    reportUpdate('error', { message: err.message })
+  })
+}
+
+function checkForUpdates(manual = false) {
+  if (!autoUpdater || !app.isPackaged) {
+    // EN: Dev builds have no update feed — don't pretend to check.
+    // FR: Les builds dev n'ont pas de flux de mise à jour — ne pas faire semblant.
+    if (manual) reportUpdate('dev')
+    return
+  }
+  if (!manual && !updateCheckEnabled()) return
+  autoUpdater.checkForUpdates().catch(err => {
+    log.warn('update check failed:', err.message)
+    reportUpdate('error', { message: err.message })
+  })
+}
+
+ipcMain.handle('snitch:get-update-status', () => updateStatus)
+ipcMain.handle('snitch:get-update-check', () => updateCheckEnabled())
+ipcMain.handle('snitch:set-update-check', (_e, on) => { setUpdateCheckEnabled(on); return on })
+ipcMain.handle('snitch:check-updates', () => { checkForUpdates(true); return updateStatus })
+ipcMain.handle('snitch:install-update', () => {
+  if (autoUpdater && updateStatus.state === 'downloaded') autoUpdater.quitAndInstall()
 })
 
 /**
@@ -288,14 +386,32 @@ function createMain() {
  *     Quitter. L'icône est le PNG 512 px généré ; Electron l'adapte selon
  *     la plateforme.
  */
-function createTray() {
-  tray = new Tray(iconPath)
-  tray.setToolTip('Snitch')
-  const menu = Menu.buildFromTemplate([
+function rebuildTrayMenu() {
+  if (!tray) return
+  const items = [
     {
       label: 'Show Snitch / Afficher Snitch',
       click: () => { if (mainWindow) { mainWindow.show(); mainWindow.focus() } },
     },
+  ]
+  // EN: Update entries reflect live state — "restart to update" once the
+  //     new version is staged, "check now" otherwise.
+  // FR: Les entrées de mise à jour reflètent l'état courant — « redémarrer
+  //     pour mettre à jour » une fois la version prête, « vérifier » sinon.
+  if (updateStatus.state === 'downloaded') {
+    items.push({
+      label: `Restart to update to v${updateStatus.version} / Redémarrer pour v${updateStatus.version}`,
+      click: () => autoUpdater && autoUpdater.quitAndInstall(),
+    })
+  } else if (updateStatus.state === 'downloading') {
+    items.push({ label: `Downloading update… ${updateStatus.percent ?? 0}% / Téléchargement…`, enabled: false })
+  } else if (app.isPackaged) {
+    items.push({
+      label: 'Check for updates / Vérifier les mises à jour',
+      click: () => checkForUpdates(true),
+    })
+  }
+  items.push(
     {
       label: 'Open logs / Ouvrir les logs',
       click: () => shell.openPath(logDir),
@@ -305,8 +421,14 @@ function createTray() {
       label: 'Quit / Quitter',
       click: () => { isQuitting = true; app.quit() },
     },
-  ])
-  tray.setContextMenu(menu)
+  )
+  tray.setContextMenu(Menu.buildFromTemplate(items))
+}
+
+function createTray() {
+  tray = new Tray(iconPath)
+  tray.setToolTip('Snitch')
+  rebuildTrayMenu()
   // EN: A plain click (Windows/Linux) or double-click restores the window.
   // FR: Un simple clic (Windows/Linux) ou double-clic restaure la fenêtre.
   tray.on('click', () => { if (mainWindow) { mainWindow.show(); mainWindow.focus() } })
@@ -648,6 +770,14 @@ app.whenReady().then(async () => {
 
   createMain()
   createTray()
+
+  // EN: Kick the updater once the UI is up — first check now, then every
+  //     6 h while running. Honors the user opt-out (see updateCheckEnabled).
+  // FR: Lancer l'updater une fois l'UI prête — premier contrôle maintenant,
+  //     puis toutes les 6 h. Respecte l'opt-out (voir updateCheckEnabled).
+  initAutoUpdater()
+  checkForUpdates()
+  setInterval(() => checkForUpdates(), 6 * 3600 * 1000).unref()
 })
 
 app.on('window-all-closed', () => {

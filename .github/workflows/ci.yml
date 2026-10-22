@@ -159,6 +159,45 @@ jobs:
           choco install innosetup --no-progress -y
           $v = "${{ github.ref_name }}" -replace '^v',''
           & "C:\Program Files (x86)\Inno Setup 6\iscc.exe" "/DMyAppVersion=$v" "installer\snitch.iss"
+      # EN: FREE Authenticode signing via the SignPath Foundation OSS
+      #     program (https://signpath.org) — the only legal no-cost path to
+      #     publicly-trusted Windows code signing. Completely inert until the
+      #     maintainer is accepted and configures:
+      #       vars.SIGNPATH_ORGANIZATION_ID / SIGNPATH_PROJECT_SLUG /
+      #       SIGNPATH_POLICY_SLUG + secret SIGNPATH_API_TOKEN.
+      #     See docs/SIGNING.md for the full setup walkthrough.
+      # FR: Signature Authenticode GRATUITE via le programme OSS de la
+      #     Fondation SignPath (https://signpath.org) — la seule voie légale
+      #     sans frais vers une signature Windows publiquement reconnue.
+      #     Totalement inerte tant que le mainteneur n'est pas accepté et
+      #     n'a pas configuré :
+      #       vars.SIGNPATH_ORGANIZATION_ID / SIGNPATH_PROJECT_SLUG /
+      #       SIGNPATH_POLICY_SLUG + secret SIGNPATH_API_TOKEN.
+      #     Voir docs/SIGNING.md pour la procédure complète.
+      - name: Upload unsigned Windows installer (SignPath input)
+        if: ${{ matrix.os == 'windows-latest' && vars.SIGNPATH_ORGANIZATION_ID != '' }}
+        id: upload-unsigned-exe
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: snitch-unsigned-exe
+          path: dist/installer/*.exe
+      - name: SignPath — submit signing request
+        if: ${{ matrix.os == 'windows-latest' && vars.SIGNPATH_ORGANIZATION_ID != '' }}
+        uses: signpath/github-action-submit-signing-request@f6d04783b4569d051e0c80105fe66e82819d0092 # v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_POLICY_SLUG }}
+          github-artifact-id: ${{ steps.upload-unsigned-exe.outputs.artifact-id }}
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 600
+          output-artifact-directory: dist/installer/signed
+      - name: Replace unsigned installer with signed copy
+        if: ${{ matrix.os == 'windows-latest' && vars.SIGNPATH_ORGANIZATION_ID != '' }}
+        shell: pwsh
+        run: Copy-Item -Force "dist/installer/signed/*" "dist/installer/"
+
       # EN: Upload only the final installable files — unpacked dirs and
       #     blockmaps bloat artifacts to ~900 MB and break the release
       #     download. / FR: N'envoyer que les fichiers installables finaux —

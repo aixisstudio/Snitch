@@ -40,4 +40,19 @@ contextBridge.exposeInMainWorld('snitch', {
   //     false sous Linux).
   getAutoLaunch: () => ipcRenderer.invoke('snitch:get-auto-launch'),
   setAutoLaunch: (enabled) => ipcRenderer.invoke('snitch:set-auto-launch', enabled),
+  // EN: Auto-update bridge — status push channel plus the four controls the
+  //     Settings panel needs. `onUpdateStatus` returns an unsubscribe fn.
+  // FR: Pont de mise à jour — canal de statut poussé + les quatre contrôles
+  //     du panneau Réglages. `onUpdateStatus` renvoie une fonction de
+  //     désabonnement.
+  getUpdateStatus:  () => ipcRenderer.invoke('snitch:get-update-status'),
+  getUpdateCheck:   () => ipcRenderer.invoke('snitch:get-update-check'),
+  setUpdateCheck:   (on) => ipcRenderer.invoke('snitch:set-update-check', on),
+  checkUpdates:     () => ipcRenderer.invoke('snitch:check-updates'),
+  installUpdate:    () => ipcRenderer.invoke('snitch:install-update'),
+  onUpdateStatus:   (cb) => {
+    const handler = (_e, s) => cb(s)
+    ipcRenderer.on('snitch:update-status', handler)
+    return () => ipcRenderer.removeListener('snitch:update-status', handler)
+  },
 })

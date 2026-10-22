@@ -33,7 +33,7 @@ import { computePrivacyScore } from './scoring/privacy'
 import { useT } from './i18n'
 
 export default function App() {
-  const { nodes, edges, lanDevices, packets, alerts, unread, clearUnread, status, bandwidth, capturing, toggleCapture, portFilter, updatePortFilter, excludedProcesses, updateProcessFilter, whitelistedIps, updateIpWhitelist, media } = useWebSocket(null)  // EN: null → resolves the dynamic port/scheme via wsBase()
+  const { nodes, edges, lanDevices, packets, alerts, unread, clearUnread, status, bandwidth, capturing, toggleCapture, portFilter, updatePortFilter, excludedProcesses, updateProcessFilter, whitelistedIps, updateIpWhitelist, media, ssid, iface, watchlist, updateWatchlist } = useWebSocket(null)  // EN: null → resolves the dynamic port/scheme via wsBase()
                     // FR: null → résout port/schéma dynamiques via wsBase()
   const [selected, setSelected] = useState(null)
   const [view, setView] = useState('graph')
@@ -191,6 +191,7 @@ export default function App() {
             display: 'flex', alignItems: 'center', gap: 8,
           }}>
             <MediaBadge media={media} />
+            <NetworkBadge ssid={ssid} iface={iface} />
             <ThemeToggle />
             <LangToggle />
             <ViewToggle view={view} onChange={setView} />
@@ -209,7 +210,8 @@ export default function App() {
           )}
 
           {showSettings && (
-            <SettingsPanel onClose={() => setShowSettings(false)} lang={lang} setLang={setLang} />
+            <SettingsPanel onClose={() => setShowSettings(false)} lang={lang} setLang={setLang}
+              watchlist={watchlist} onWatchlist={updateWatchlist} iface={iface} />
           )}
 
           {showOnboarding && <Onboarding onDone={() => setShowOnboarding(false)} />}
@@ -750,8 +752,8 @@ function ThemeToggle() {
   )
 }
 
-/** EN: EN/FR language toggle — the headline feature.
- *  FR: Bascule de langue EN/FR — la fonctionnalité vedette. */
+/** EN: EN/FR/ES language toggle — the headline feature.
+ *  FR: Bascule de langue EN/FR/ES — la fonctionnalité vedette. */
 function LangToggle() {
   const { lang, setLang } = useT()
   return (
@@ -759,7 +761,7 @@ function LangToggle() {
       display: 'flex', background: 'var(--surface)',
       border: '1px solid var(--border)', borderRadius: 20, overflow: 'hidden',
     }}>
-      {['en', 'fr'].map(l => (
+      {['en', 'fr', 'es'].map(l => (
         <button key={l} onClick={() => setLang(l)} style={{
           background: lang === l ? '#3b82f6' : 'transparent',
           border: 'none', cursor: 'pointer',
@@ -800,6 +802,33 @@ function ViewToggle({ view, onChange }) {
           <Icon size={12} /> {label}
         </button>
       ))}
+    </div>
+  )
+}
+
+/** EN: Network-context chip — current Wi-Fi SSID when known, otherwise the
+ *      capture interface name. Lets the user see "hotel wifi" vs "home" and
+ *      which adapter is sniffed, at a glance. Renders nothing when neither
+ *      is known.
+ *  FR: Pastille de contexte réseau — SSID Wi-Fi courant quand il est connu,
+ *      sinon le nom de l'interface de capture. Permet de voir « wifi hôtel »
+ *      vs « maison » et quelle carte est écoutée, d'un coup d'œil. Ne rend
+ *      rien quand ni l'un ni l'autre n'est connu. */
+function NetworkBadge({ ssid, iface }) {
+  const label = ssid || iface
+  if (!label) return null
+  return (
+    <div title={ssid ? `${iface || ''} · ${ssid}` : iface} style={{
+      display: 'flex', alignItems: 'center', gap: 6,
+      background: 'var(--surface)', border: '1px solid var(--border)',
+      borderRadius: 20, padding: '5px 12px', cursor: 'default',
+      maxWidth: 180, overflow: 'hidden',
+    }}>
+      <Wifi size={11} color="var(--text-muted)" />
+      <span style={{
+        fontSize: 10, color: 'var(--text-muted)', fontWeight: 600,
+        whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden',
+      }}>{label}</span>
     </div>
   )
 }

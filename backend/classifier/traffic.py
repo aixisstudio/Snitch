@@ -142,7 +142,14 @@ def classify(
           3. port de destination bien connu              -> safe/dns/admin
           4. repli                                       -> unknown
     """
-    label = PORT_LABELS.get(dst_port or 0, protocol)
+    # EN: UDP/443 = QUIC (HTTP/3) — SNI lives inside the encrypted QUIC
+    #     Initial, so we cannot read it; labelling the flow is the honest
+    #     middle ground between pretending it is HTTPS and ignoring it.
+    # FR: UDP/443 = QUIC (HTTP/3) — le SNI vit dans le paquet Initial QUIC
+    #     chiffré, illisible ; étiqueter le flux est l'honnête compromis
+    #     entre faire croire à du HTTPS et l'ignorer.
+    is_quic = dst_port == 443 and protocol == "UDP"
+    label = "QUIC/HTTP3" if is_quic else PORT_LABELS.get(dst_port or 0, protocol)
 
     if hostname:
         if _domain_match(hostname, KNOWN_TRACKERS):

@@ -66,7 +66,8 @@
     "linux": {
       "target": [
         "AppImage",
-        "deb"
+        "deb",
+        "snap"
       ],
       "category": "Utility",
       "icon": "icon.png",
@@ -75,6 +76,11 @@
       "maintainer": "aiXis Studio",
       "syncDesktopName": true,
       "artifactName": "${productName}-${arch}.${ext}"
+    },
+    "snap": {
+      "confinement": "strict",
+      "grade": "stable",
+      "plugs": ["network", "network-bind", "network-observe", "desktop", "desktop-legacy", "x11", "wayland", "opengl", "removable-media"]
     },
     "publish": [
       {
@@ -86,5 +92,8 @@
   },
   "homepage": "https://github.com/aixisstudio/Snitch",
   "desktopName": "Snitch",
-  "author": "aiXis Studio"
+  "author": "aiXis Studio",
+  "dependencies": {
+    "electron-updater": "^6.8.9"
+  }
 }

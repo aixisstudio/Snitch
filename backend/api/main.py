@@ -113,6 +113,7 @@ _capturing: bool = True
 _port_filter: list[int] = []
 _excluded_processes: set[str] = set()
 _whitelisted_ips: set[str] = set()
+_watchlist: list[str] = []        # EN: user-pinned IPs/domains / FR: IP/domaines épinglés
 _media_state: dict = {"mic": [], "camera": [], "supported": True}
 _shutdown = False
 
@@ -187,6 +188,18 @@ class GeoDownloadBody(BaseModel):
     only outbound call in the whole app. / FR: Charge utile de /geo/download —
     consentement explicite OBLIGATOIRE, c'est le seul appel sortant de l'app."""
     consent: bool = False
+
+
+class InterfaceBody(BaseModel):
+    """EN: /capture/interface payload — None/empty means "auto-pick".
+    FR: Charge utile de /capture/interface — None/vide = choix automatique."""
+    name: Optional[str] = None
+
+
+class WatchlistBody(BaseModel):
+    """EN: /watchlist payload — IPs and/or domain suffixes to watch.
+    FR: Charge utile de /watchlist — IP et/ou suffixes de domaine à surveiller."""
+    items: list[str] = Field(default_factory=list)
 
 
 # ── Broadcast / Diffusion ────────────────────────────────────────────────────
@@ -979,6 +992,54 @@ def _stop_capture() -> None:
     logger.info("capture stopped")
 
 
+# ── Wi-Fi SSID / SSID Wi-Fi ──────────────────────────────────────────────────
+# EN: Current wireless network name — displayed in the status bar so the user
+#     can tell "home" from "hotel wifi" at a glance. Best-effort per platform,
+#     cached 60 s, empty string on Ethernet/unsupported.
+# FR: Nom du réseau sans fil courant — affiché dans la barre de statut pour
+#     distinguer « maison » et « wifi d'hôtel » d'un coup d'œil. Au mieux par
+#     plateforme, en cache 60 s, chaîne vide sur Ethernet/non géré.
+_ssid_cache: dict = {"ssid": "", "ts": 0.0}
+
+
+def _current_ssid() -> str:
+    """EN: Active Wi-Fi SSID (60 s cache), "" when not on Wi-Fi or unknown.
+    FR: SSID Wi-Fi actif (cache 60 s), « » hors Wi-Fi ou inconnu."""
+    now = time.time()
+    if now - _ssid_cache["ts"] < 60:
+        return _ssid_cache["ssid"]
+    ssid = ""
+    try:
+        if sys.platform == "darwin":
+            iface = (_sniffer.iface if _sniffer else None) or "en0"
+            out = subprocess.run(
+                ["ipconfig", "getsummary", iface],
+                capture_output=True, text=True, timeout=3).stdout
+            for line in out.splitlines():
+                if "SSID :" in line:
+                    ssid = line.split("SSID :", 1)[1].strip()
+                    break
+        elif sys.platform.startswith("linux"):
+            out = subprocess.run(
+                ["iwgetid", "-r"], capture_output=True, text=True, timeout=3
+            ).stdout.strip()
+            if out:
+                ssid = out
+        elif sys.platform == "win32":
+            out = subprocess.run(
+                ["netsh", "wlan", "show", "interfaces"],
+                capture_output=True, text=True, timeout=3).stdout
+            for line in out.splitlines():
+                if line.strip().startswith("SSID"):
+                    ssid = line.split(":", 1)[1].strip()
+                    break
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    _ssid_cache["ssid"] = ssid
+    _ssid_cache["ts"] = now
+    return ssid
+
+
 def _load_settings() -> None:
     """
     EN: Restore persisted settings from SQLite at startup — filters, whitelist
@@ -986,11 +1047,15 @@ def _load_settings() -> None:
     FR: Restaurer les réglages persistés depuis SQLite au démarrage — filtres,
         whitelist et exclusions de processus survivent aux redémarrages.
     """
-    global _port_filter, _excluded_processes, _whitelisted_ips
+    global _port_filter, _excluded_processes, _whitelisted_ips, _watchlist
     _port_filter = db.get_setting("ports", []) or []
     _excluded_processes = set(db.get_setting("excluded_processes", []) or [])
     _whitelisted_ips = set(db.get_setting("whitelisted_ips", []) or [])
+    _watchlist = list(db.get_setting("watchlist", []) or [])
     detector.load_suppressions(db.get_setting("suppressions", []) or [])
+    detector.set_watchlist(_watchlist)
+    detector.set_upload_threshold_mb(
+        float(db.get_setting("upload_threshold_mb", 50)))
     if _port_filter:
         logger.info("restored port filter: %s", _port_filter)
 
@@ -1143,6 +1208,15 @@ async def post_settings(body: SettingsBody) -> dict:
     loop = asyncio.get_running_loop()
     for key, value in body.settings.items():
         await loop.run_in_executor(None, db.set_setting, key, value)
+        # EN: Live-apply settings the detector reads dynamically — no restart
+        #     needed for the upload threshold to take effect.
+        # FR: Appliquer à chaud les réglages que le détecteur lit
+        #     dynamiquement — pas besoin de redémarrer pour le seuil d'envoi.
+        if key == "upload_threshold_mb":
+            try:
+                detector.set_upload_threshold_mb(float(value))
+            except (TypeError, ValueError):
+                pass
     return {"ok": True}
 
 @app.get("/capture/status", dependencies=_AUTH)
@@ -1153,6 +1227,9 @@ async def get_capture_status() -> dict:
         "ports": _port_filter,
         "excluded_processes": sorted(_excluded_processes),
         "whitelisted_ips": sorted(_whitelisted_ips),
+        "watchlist": list(_watchlist),
+        "interface": _sniffer.iface if _sniffer else None,
+        "ssid": _current_ssid(),
     }
 
 @app.post("/capture/stop", dependencies=_AUTH)
@@ -1166,6 +1243,8 @@ async def stop_capture() -> dict:
         "ports": _port_filter,
         "excluded_processes": sorted(_excluded_processes),
         "whitelisted_ips": sorted(_whitelisted_ips),
+        "watchlist": list(_watchlist),
+        "interface": _sniffer.iface if _sniffer else None,
     })
     return {"capturing": False}
 
@@ -1272,6 +1351,77 @@ async def set_ip_whitelist(body: WhitelistBody) -> dict:
     if removed_ids:
         await broadcast({"type": "nodes_removed", "ids": removed_ids})
     return {"whitelisted_ips": sorted(_whitelisted_ips)}
+
+
+# ── Capture interface + watchlist / Interface de capture + watchlist ────────
+
+@app.get("/capture/interfaces", dependencies=_AUTH)
+async def list_interfaces() -> dict:
+    """
+    EN: Capture-capable interfaces from libpcap + the one currently in use
+        (None = auto-picked). Runs in the executor — pcap_findalldevs can be
+        slow on Windows.
+    FR: Interfaces capturables via libpcap + celle en cours (None = choix
+        automatique). Dans l'executor — pcap_findalldevs peut être lent sous
+        Windows.
+    """
+    from capture.pcap import PcapError, list_devices
+    loop = asyncio.get_running_loop()
+    try:
+        devs = await loop.run_in_executor(None, list_devices)
+    except PcapError as exc:
+        return {"interfaces": [], "current": None, "error": str(exc)}
+    return {
+        "interfaces": [
+            {"name": d.name, "description": d.description,
+             "loopback": d.loopback, "addresses": list(d.addresses)}
+            for d in devs
+        ],
+        "current": _sniffer.iface if _sniffer else None,
+        "configured": db.get_setting("interface"),
+    }
+
+
+@app.post("/capture/interface", dependencies=_AUTH)
+async def set_interface(body: InterfaceBody) -> dict:
+    """
+    EN: Pin the capture interface (empty body = back to auto). Persisted, and
+        the capture restarts immediately on the new interface.
+    FR: Épingler l'interface de capture (corps vide = retour à l'auto).
+        Persisté, et la capture redémarre aussitôt sur la nouvelle interface.
+    """
+    name = (body.name or "").strip() or None
+    db.set_setting("interface", name)
+    if _capturing:
+        _stop_capture()
+        _start_capture()
+    return {"interface": name,
+            "current": _sniffer.iface if _sniffer else None}
+
+
+@app.get("/watchlist", dependencies=_AUTH)
+async def get_watchlist() -> dict:
+    """EN: Pinned IPs/domains the detector alerts on.
+    FR: IP/domaines épinglés sur lesquels le détecteur alerte."""
+    return {"items": list(_watchlist)}
+
+
+@app.post("/watchlist", dependencies=_AUTH)
+async def set_watchlist(body: WatchlistBody) -> dict:
+    """
+    EN: Replace the watchlist — entries are IPs (exact match) or domain
+        suffixes ("example.com" catches "api.example.com"). Persisted and
+        pushed live into the detector.
+    FR: Remplacer la watchlist — les entrées sont des IP (correspondance
+        exacte) ou des suffixes de domaine (« example.com » attrape
+        « api.example.com »). Persisté et poussé à chaud dans le détecteur.
+    """
+    global _watchlist
+    _watchlist = [str(i).strip() for i in body.items if str(i).strip()][:500]
+    db.set_setting("watchlist", _watchlist)
+    detector.set_watchlist(_watchlist)
+    return {"items": _watchlist}
+
 
 # EN: Upper bound for `minutes` query params — a week. Prevents absurd
 #     values (minutes=1e9) from scanning the whole history table; the
@@ -1572,6 +1722,9 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         "ports": _port_filter,
         "excluded_processes": sorted(_excluded_processes),
         "whitelisted_ips": sorted(_whitelisted_ips),
+        "watchlist": list(_watchlist),
+        "interface": _sniffer.iface if _sniffer else None,
+        "ssid": _current_ssid(),
     }))
 
     connected_clients.append(websocket)
