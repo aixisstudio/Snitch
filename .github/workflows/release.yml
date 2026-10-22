@@ -27,7 +27,7 @@ jobs:
   nfpm:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Stage backend tree / Arbre staging
         run: |
           mkdir -p staging/opt/snitch
@@ -60,7 +60,7 @@ jobs:
     env:
       HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Skip when the secret is absent / Sauter si secret absent
         if: env.HOMEBREW_TAP_TOKEN == ''
         run: echo "::notice::HOMEBREW_TAP_TOKEN not set — skipping tap update"
@@ -83,7 +83,7 @@ jobs:
     env:
       WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Skip when the secret is absent / Sauter si secret absent
         if: env.WINGET_TOKEN == ''
         run: echo "::notice::WINGET_TOKEN not set — skipping manifest submission"
@@ -115,7 +115,7 @@ jobs:
     env:
       CHOCO_API_KEY: ${{ secrets.CHOCO_API_KEY }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Skip when the secret is absent / Sauter si secret absent
         if: env.CHOCO_API_KEY == ''
         run: echo "::notice::CHOCO_API_KEY not set — skipping choco push"
