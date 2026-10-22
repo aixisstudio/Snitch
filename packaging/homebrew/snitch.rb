@@ -1,6 +1,5 @@
-# Snitch — Homebrew formula template (rendered by release.yml →
-# aixisstudio/homebrew-tap). @VERSION@/@SHA256@ are CI placeholders.
-# FR: Modèle de formule Homebrew (rendu par release.yml vers le tap).
+# Snitch — Homebrew formula (rendered by release.yml → aixisstudio/homebrew-tap).
+# FR: Formule Homebrew Snitch (rendue par release.yml vers le tap).
 class Snitch < Formula
   desc "Local-first network observability and outbound firewall"
   homepage "https://github.com/aixisstudio/Snitch"
