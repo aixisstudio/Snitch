@@ -82,6 +82,15 @@ class ParsedPacket:
     # EN: (hostname, requested_ip|None, mac) from a client DHCP message.
     # FR: (nom d'hôte, ip demandée|None, mac) d'un message DHCP client.
     dhcp: Optional[tuple] = None
+    # EN: First ≤64 bytes of a PLAINTEXT TCP payload — used internally by
+    #     the stratum/mining detector only. NEVER stored or broadcast:
+    #     it exists to answer "does this flow speak a known-bad cleartext
+    #     protocol?" and is dropped with the packet. TLS is skipped.
+    # FR: Premiers ≤64 octets d'un payload TCP EN CLAIR — utilisé
+    #     uniquement en interne par le détecteur stratum/minage. JAMAIS
+    #     stocké ni diffusé : sert à répondre « ce flux parle-t-il un
+    #     protocole malveillant en clair ? », puis jeté. TLS ignoré.
+    app_head: bytes = b""
 
 
 def parse_frame(linktype: int, buf: bytes) -> Optional[ParsedPacket]:
@@ -254,15 +263,24 @@ def _parse_transport(payload: bytes, proto: int, src: str, dst: str,
         #     any port — be liberal, check both endpoints' payload anyway).
         # FR: Filtre rapide : un enregistrement TLS commence par 0x16 0x03 xx
         #     sur le port 443 (ou SNI sur tout port — rester souple).
+        sni = None
+        app_head = b""
         if tcp_payload[:2] == b"\x16\x03":
             sni = parse_tls_sni(tcp_payload)
+        elif tcp_payload:
+            # EN: Cleartext protocol fingerprinting needs only the head —
+            #     stratum/HTTP/IRC banners all declare themselves early.
+            # FR: La signature de protocole en clair n'a besoin que de la
+            #     tête — stratum/HTTP/IRC se déclarent tôt.
+            app_head = tcp_payload[:64]
 
         dns = []
         if sport == 53 or dport == 53:
             # EN: DNS-over-TCP has a 2-byte length prefix. / FR: DNS sur TCP a un préfixe de longueur de 2 octets.
             dns = parse_dns(tcp_payload[2:]) if len(tcp_payload) > 2 else []
 
-        return ParsedPacket(src, dst, "TCP", wire_len, sport, dport, flags, dns, sni)
+        return ParsedPacket(src, dst, "TCP", wire_len, sport, dport, flags,
+                            dns, sni, None, app_head)
 
     if proto == IPPROTO_UDP:
         if len(payload) < 8:

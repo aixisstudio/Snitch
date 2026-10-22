@@ -90,3 +90,16 @@ endpoint'ы получают `{alert, source, text}`. Сбои пишутся в
 - **Перерезолв доменов** — правила `domain` перерезолвятся каждые ~10 мин, дельта IP применяется по ОС — ротация CDN не снимет блок silently.
 - **Контроль целостности** (включён по умолчанию, read-only, локально) — SHA-256 baselines исполняемых файлов (`BINARY_CHANGED`), несовпадение имени/exe (`NAME_MISMATCH`), скан `rwxp` только Linux (`MEM_RWX`, уровень info для известных JIT-приложений). `GET /security/integrity`, `POST /security/integrity/check`.
 - **Объяснения алертов** — `GET /security/explain?type=X` возвращает двуязычные (EN/FR) объяснения, написанные вручную; детерминированно и офлайн — не модель. UI показывает их за кнопкой «Почему?».
+
+### Опциональные зонды (v1.3)
+
+Все **выключены по умолчанию или самоограничены**, деградируют честно и никогда не отправляют данные с машины:
+
+- **Зонд eBPF connect** (Linux, `ebpf_probe`) — kprobe BCC типа `tcpconnect` атрибутирует `connect()` короткоживущих процессов. Нужны `python3-bcc` + root; неоднозначные цели не угадываются. `GET /security/ebpf`.
+- **Инспекция Frida** — `POST /security/deep_inspect {pid,seconds}` присоединяется к ОДНОМУ pid ≤60 с и сообщает, какой модуль инициировал каждый `connect()`. Staging-пути → `INJECT_SUSPECT`.
+- **Респондер sinkhole** — при активной `sinkhole`-правиле loopback-листенеры на :80/:443 превращают каждую попытку в алерт `SINKHOLE_HIT` с Host/URI или SNI + процессом.
+- **Целостность модулей** — корень Меркла над исполняемыми маппингами → `MODULE_CHANGED`; пути в `/tmp`/memfd → `MODULE_SUSPECT`.
+- **Детект майнинга** — stratum JSON в голове payload → `MINING_STRATUM`; порты пулов + устойчивая CPU → `MINING_SUSPECT`.
+- **Аппаратные счётчики** — `POST /security/perf` сэмплирует циклы/инструкции через `perf_event_open` (Linux).
+- **Локальный LLM** — opt-in (`slm_enabled`): `/security/explain` вызывает Ollama-эндпоинт **только loopback** — удалённые отклоняются.
+- **Пакеты IOC** — `GET /security/iocpack` экспортирует Bloom + randomized response (не в открытом виде); `POST /security/iocpack/import` проверяет цели вероятностно.

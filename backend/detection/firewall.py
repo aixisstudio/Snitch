@@ -1,9 +1,12 @@
 """
 EN: Firewall orchestration — Snitch does NOT filter packets in user-space;
     it drives the OS-native firewall instead:
-      * Windows → `netsh advfirewall` (Windows Defender Firewall rules),
+      * Windows → WFP USER-MODE filters via `fwpuclnt.dll` ctypes (ALE
+                  connect layers, per-app ALE_APP_ID, per-key deletes —
+                  see detection/wfp.py), `netsh advfirewall` as fallback,
       * Linux   → `iptables` OUTPUT chain (a dedicated SNITCH_LOCK chain for
-                  lockdown, per-destination DROP rules otherwise),
+                  lockdown, per-destination DROP rules otherwise) +
+                  `tc` clsact/flower policing for throttle rules,
       * macOS   → `pf` anchors (a generated ruleset loaded with pfctl).
     Rules are persisted in the settings table ("firewall_rules") so they
     survive restarts. Every apply/remove is best-effort: failures are
@@ -16,17 +19,20 @@ EN: Firewall orchestration — Snitch does NOT filter packets in user-space;
                  "domain"  resolved to IPs at apply time AND re-resolved
                           periodically (refresh_domains) so CDN rotation
                           and DNS changes don't silently unblock a name
-                 "process" process name/path (netsh `program=` on Windows,
-                          owner match on Linux — name resolved to PIDs)
+                 "process" process name/path (WFP ALE_APP_ID on Windows —
+                          names resolved to exe paths — iptables owner
+                          match on Linux; unsupported on macOS pf)
                  "port"    remote port
     Rule actions: "block"    drop the traffic (default)
                   "sinkhole" redirect instead of dropping — domains go to
                           127.0.0.1 via a marked block in the hosts file
                           (all OSes), IPs/CIDRs via iptables DNAT in the
-                          nat OUTPUT chain (Linux only; other platforms
-                          report applied=False honestly). Sinkholing keeps
-                          the connection "answered" by localhost so an
-                          analyst can watch what the malware expects.
+                          nat OUTPUT chain (Linux only). The loopback
+                          responder (detection/sinkresponder.py) then logs
+                          the request's Host/path/SNI → SINKHOLE_HIT.
+                  "throttle" rate-limit instead of blocking — Linux `tc`
+                          clsact egress police per destination (rule["rate"]
+                          kbit/s); other platforms report applied=False.
     "lockdown" drops ALL outbound traffic to non-private destinations —
     loopback and LAN stay up so the UI remains reachable.
 
@@ -87,6 +93,14 @@ class FirewallManager:
         self._block_alerts: dict[str, float] = {}
         # EN: rule_id → count of matching packets seen / FR: paquets vus par règle
         self._blocked_counts: dict[str, int] = {}
+        # EN: WFP user-mode backend (Windows) — opened lazily on first apply;
+        #     None = not tried, False = unavailable, WfpBackend = active.
+        # FR: Backend WFP user-mode (Windows) — ouvert au premier apply ;
+        #     None = pas tenté, False = indisponible, WfpBackend = actif.
+        self._wfp: object | None = None
+        # EN: tc state for throttle rules — iface cached after first setup.
+        # FR: État tc pour les règles throttle — iface mise en cache.
+        self._tc_iface: str | None = None
 
     # ── Introspection / Introspection ────────────────────────────────────────
 
@@ -129,26 +143,28 @@ class FirewallManager:
 
     # ── Public rule ops / Opérations publiques ───────────────────────────────
 
-    def add_rule(self, kind: str, value: str, action: str = "block") -> dict:
+    def add_rule(self, kind: str, value: str, action: str = "block",
+                 rate: int = 64) -> dict:
         """EN: Create + apply a rule. `value` depends on kind (see module doc),
-        `action` is "block" (default) or "sinkhole". Returns the persisted
-        rule dict including its apply result.
-        FR: Créer + appliquer une règle. `action` = « block » (défaut) ou
-        « sinkhole ». Retourne la règle persistée avec le résultat."""
+        `action` is "block" (default), "sinkhole" or "throttle" (rate kbit/s).
+        Returns the persisted rule dict including its apply result.
+        FR: Créer + appliquer une règle. `action` = « block » (défaut),
+        « sinkhole » ou « throttle » (rate en kbit/s)."""
         kind = kind.lower().strip()
         value = str(value).strip()
         action = (action or "block").lower().strip()
         if kind not in ("ip", "cidr", "domain", "process", "port"):
             raise ValueError(f"unknown rule kind: {kind}")
-        if action not in ("block", "sinkhole"):
+        if action not in ("block", "sinkhole", "throttle"):
             raise ValueError(f"unknown rule action: {action}")
-        if action == "sinkhole" and kind in ("process", "port"):
-            raise ValueError(f"sinkhole is not meaningful for kind {kind}")
+        if action != "block" and kind in ("process", "port"):
+            raise ValueError(f"{action} is not meaningful for kind {kind}")
         rule = {
             "id": uuid.uuid4().hex[:10],
             "kind": kind,
             "value": value,
             "action": action,
+            "rate": max(1, min(int(rate or 64), 1_000_000)),  # EN: kbit/s / FR: kbit/s
             "enabled": True,
             "applied": False,
             "error": None,
@@ -295,6 +311,9 @@ class FirewallManager:
         if action == "sinkhole":
             rule["applied"], rule["error"] = self._sinkhole_apply(rule)
             return
+        if action == "throttle":
+            rule["applied"], rule["error"] = self._throttle_apply(rule)
+            return
         targets = rule.get("resolved") if kind == "domain" else [value]
         if kind == "domain" and not targets:
             rule["applied"], rule["error"] = False, "domain did not resolve"
@@ -308,6 +327,13 @@ class FirewallManager:
 
     def _apply_one(self, kind: str, target: str, rid: str) -> tuple[bool, str]:
         if self._platform == "windows":
+            # EN: WFP user-mode first — per-app ALE_APP_ID + atomic per-key
+            #     deletes; netsh stays as the honest fallback.
+            # FR: WFP user-mode d'abord — ALE_APP_ID par app + suppressions
+            #     atomiques par clé ; netsh reste le repli honnête.
+            ok, err = self._wfp_apply(kind, target, rid)
+            if ok is not None:
+                return ok, err
             name = f"SnitchRule-{rid}"
             if kind == "process":
                 return self._run(["netsh", "advfirewall", "firewall", "add", "rule",
@@ -333,6 +359,140 @@ class FirewallManager:
         if self._platform == "darwin":
             return self._pf_apply()
         return False, f"unsupported platform {self._platform}"
+
+    # ── Windows WFP backend / Backend WFP Windows ────────────────────────────
+
+    def _wfp(self):
+        """EN: Lazy engine open — returns the backend, False when unavailable
+        (non-Windows, missing admin, absent dll), and remembers the verdict.
+        FR: Ouverture paresseuse du moteur — renvoie le backend, False si
+        indisponible, et mémorise le verdict."""
+        if self._wfp is not None:
+            return self._wfp or None
+        try:
+            from detection.wfp import WfpBackend
+        except ImportError:
+            try:
+                from .wfp import WfpBackend            # type: ignore
+            except ImportError:
+                self._wfp = False
+                return None
+        if not WfpBackend.available():
+            self._wfp = False
+            return None
+        backend = WfpBackend()
+        ok, _err = backend.open()
+        self._wfp = backend if ok else False
+        return self._wfp or None
+
+    def _resolve_exe(self, name_or_path: str) -> Optional[str]:
+        """EN: WFP ALE_APP_ID needs a real exe path — resolve bare process
+        names through the running process table (netsh needed the same).
+        FR: ALE_APP_ID exige un chemin d'exe — les noms nus sont résolus
+        via la table des processus (netsh l'exigeait déjà)."""
+        if os.sep in name_or_path or "/" in name_or_path:
+            return name_or_path
+        try:
+            import psutil
+            for p in psutil.process_iter(["name", "exe"]):
+                if (p.info.get("name") or "").lower() == name_or_path.lower():
+                    return p.info.get("exe")
+        except Exception:                            # noqa: BLE001
+            pass
+        return None
+
+    def _wfp_apply(self, kind: str, target: str, rid: str):
+        """EN: Apply through WFP. Returns (ok, err) or (None, reason) when
+        WFP can't serve this rule — the caller then falls back to netsh.
+        FR: Applique via WFP. Renvoie (ok, err) ou (None, raison) quand
+        WFP ne peut pas servir — l'appelant replie alors sur netsh."""
+        wfp = self._wfp()
+        if wfp is None:
+            return None, "wfp unavailable"
+        if kind == "process":
+            exe = self._resolve_exe(target)
+            if not exe:
+                return False, f"no running process/exe for {target}"
+            conds = [{"app": exe}]
+        elif kind == "port":
+            conds = [{"port": int(target)}]
+        else:                                        # EN: ip/cidr/domain / FR: idem
+            conds = [{"remote": target}]
+        ok, err = wfp.add_block(rid, conds)
+        return ok, err
+
+    def _wfp_delete(self, rule: dict) -> None:
+        """EN: Delete all WFP filters a rule may have created — keys are
+        deterministic, unknown ones are simply absent.
+        FR: Supprime tous les filtres WFP créés par la règle — les clés
+        sont déterministes, les absentes ignorées."""
+        wfp = self._wfp()
+        if wfp is None:
+            return
+        from detection.wfp import WfpBackend
+        tags = WfpBackend.tags_for(rule["kind"], rule["value"],
+                                   rule.get("resolved"))
+        wfp.delete(rule["id"], tags)
+
+    # ── Throttle (tc) / Limitation (tc) ─────────────────────────────────────
+
+    def _tc_setup(self) -> tuple[bool, str]:
+        """EN: One-time clsact qdisc on the default-route interface — the
+        modern, filterable egress hook (no root-qdisc takeover like htb).
+        FR: qdisc clsact unique sur l'interface de la route par défaut —
+        le point d'accroche sortant filtrable moderne (pas de reprise de
+        la qdisc root comme htb)."""
+        if self._tc_iface:
+            return True, ""
+        ok, out = self._run(["ip", "-o", "route", "show", "default"])
+        if not ok or not out:
+            return False, "no default route / ip tool missing"
+        try:
+            self._tc_iface = out.split()[4]
+        except IndexError:
+            return False, "cannot parse default route"
+        self._run(["tc", "qdisc", "add", "dev", self._tc_iface, "clsact"])
+        # EN: "File exists" is fine — filters attach either way.
+        # FR: « File exists » est acceptable — les filtres s'attachent pareil.
+        return True, ""
+
+    def _throttle_apply(self, rule: dict) -> tuple[bool, str]:
+        """EN: Police egress to this destination at rule["rate"] kbit/s —
+        clsact + flower dst_ip + police action. Linux only, honest False
+        elsewhere. FR: Police la sortie vers cette destination à
+        rule["rate"] kbit/s — clsact + flower dst_ip + action police.
+        Linux seulement, False honnête ailleurs."""
+        if self._platform != "linux":
+            return False, "throttle needs tc/clsact (linux only)"
+        ok, err = self._tc_setup()
+        if not ok:
+            return False, err
+        idx = (int(rule["id"], 16) % 9900) + 100     # EN: stable prio / FR: prio stable
+        rule["tc_pref"] = idx
+        targets = rule.get("resolved") if rule["kind"] == "domain" else [rule["value"]]
+        ok_all, err_all = True, ""
+        for t in targets:
+            proto = "ipv6" if ":" in t else "ip"
+            ok, err = self._run([
+                "tc", "filter", "add", "dev", self._tc_iface, "egress",
+                "protocol", proto, "pref", str(idx), "flower",
+                "dst_ip", t.split("/")[0],
+                "action", "police", "rate", f"{rule['rate']}kbit",
+                "burst", "32k", "conform-exceed", "drop"])
+            ok_all = ok_all and ok
+            err_all = err or err_all
+        return ok_all, err_all or None
+
+    def _throttle_remove(self, rule: dict) -> None:
+        """EN: Remove this rule's tc filter by its stored pref.
+        FR: Supprime le filtre tc de la règle par son pref mémorisé."""
+        idx = rule.get("tc_pref")
+        if self._platform != "linux" or not idx or not self._tc_iface:
+            return
+        for proto in ("ip", "ipv6"):
+            self._run(["tc", "filter", "del", "dev", self._tc_iface,
+                       "egress", "protocol", proto, "pref", str(idx),
+                       "flower"])
 
     # ── Sinkhole / Trou noir ─────────────────────────────────────────────────
 
@@ -443,6 +603,16 @@ class FirewallManager:
                 r["resolved"] = new
                 continue
             if not self._demo:
+                if r.get("action") == "throttle":
+                    # EN: tc filters are per-IP — re-apply the whole flower
+                    #     set (same pref → add replaces; stale IPs removed
+                    #     by delete+re-add cycle).
+                    # FR: Les filtres tc sont par IP — réapplication du jeu
+                    #     flower complet (même pref → l'ajout remplace).
+                    self._throttle_remove(r)
+                    r["resolved"] = new
+                    self._throttle_apply(r)
+                    continue
                 if self._platform == "linux":
                     rid = r["id"]
                     for t in sorted(set(old) - set(new)):
@@ -454,14 +624,26 @@ class FirewallManager:
                                    "-j", "DROP", "-m", "comment",
                                    "--comment", f"snitch-{rid}"])
                 elif self._platform == "windows":
-                    # EN: netsh rules are name-keyed, not value-keyed —
-                    #     cheapest correct delta = delete + recreate.
-                    # FR: Les règles netsh sont indexées par nom — le delta
-                    #     correct le plus simple = supprimer + recréer.
-                    self._remove(r)
-                    r["resolved"] = new
-                    self._apply(r)
-                    continue
+                    if self._wfp() is not None:
+                        # EN: True delta — per-IP keys mean stale addresses
+                        #     are deleted and new ones added atomically.
+                        # FR: Vrai delta — les clés par IP suppriment les
+                        #     adresses périmées et ajoutent les nouvelles.
+                        self._wfp_delete({
+                            "id": r["id"], "kind": "domain",
+                            "value": r["value"], "resolved": old})
+                        for t in sorted(set(new) - set(old)):
+                            self._wfp().add_block(
+                                r["id"], [{"remote": t}])
+                    else:
+                        # EN: netsh rules are name-keyed, not value-keyed —
+                        #     cheapest correct delta = delete + recreate.
+                        # FR: Les règles netsh sont indexées par nom —
+                        #     delta correct minimal = supprimer + recréer.
+                        self._remove(r)
+                        r["resolved"] = new
+                        self._apply(r)
+                        continue
                 elif self._platform == "darwin":
                     r["resolved"] = new
                     self._pf_apply()      # EN: anchor is regenerated whole
@@ -476,8 +658,16 @@ class FirewallManager:
         if rule.get("action", "block") == "sinkhole":
             self._sinkhole_remove(rule)
             return
+        if rule.get("action") == "throttle":
+            self._throttle_remove(rule)
+            return
         rid, kind = rule["id"], rule["kind"]
         if self._platform == "windows":
+            # EN: WFP filters are deleted by deterministic key — then the
+            #     netsh copies (fallback path) get cleaned too.
+            # FR: Les filtres WFP se suppriment par clé déterministe —
+            #     puis les copies netsh (chemin de repli) sont nettoyées.
+            self._wfp_delete(rule)
             self._run(["netsh", "advfirewall", "firewall", "delete", "rule",
                        f"name=SnitchRule-{rid}"])
             # EN: per-target suffixed copies / FR: copies suffixées par cible

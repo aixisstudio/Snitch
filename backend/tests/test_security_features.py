@@ -11,13 +11,27 @@ FR: Couvre le FirewallManager (matching/lockdown/compteurs — les commandes
     checks d'anomalie : DNS_TUNNEL, CLEARTEXT, BASELINE_DEVIATION.
 """
 
+import ctypes as _ct
+import socket as _socket
 import time
+import types as _types
 from datetime import datetime, timezone
 
+import psutil as _psutil
+
+from capture.ebpf_probe import EbpfProbe, _Event
 from capture.sniffer import Packet
+from detection import explain as _explain
+from detection import iocshare, perfprobe
 from detection.anomaly import AnomalyDetector, BASELINE_LEARN_MIN
+from detection.deepinspect import DeepInspector, suspicious_module_paths
 from detection.firewall import FirewallManager
+from detection.integrity import IntegrityWatcher, _merkle_root, _names_match
+from detection.llm_local import LocalSlm, _is_loopback
+from detection.miner import MinerDetector
+from detection.sinkresponder import SinkholeResponder
 from detection.threatintel import ThreatIntel
+from detection.wfp import _LAYER_V4, _LAYER_V6, WfpBackend
 
 PUBLIC_IP = "91.198.174.192"
 PRIVATE_IP = "192.168.1.55"
@@ -334,7 +348,6 @@ def test_rule_action_defaults_to_block(tmp_path, monkeypatch):
 
 # ── Integrity watch / Veille d'intégrité ────────────────────────────────────
 
-from detection.integrity import IntegrityWatcher, _names_match
 
 
 def test_names_match_tolerates_versions():
@@ -405,7 +418,6 @@ def test_integrity_status_capabilities():
 
 # ── Alert explanations / Explications d'alertes ────────────────────────────
 
-from detection import explain as _explain
 
 
 def test_explain_covers_every_type_bilingually():
@@ -425,3 +437,404 @@ def test_explain_unknown_type_returns_none():
     assert _explain.explain("NOPE") is None
     assert _explain.explain("") is None
     assert "THREAT_HIT" in _explain.all_types()
+
+
+# ── WFP user-mode (Windows) / WFP user-mode ─────────────────────────────────
+
+
+
+def test_wfp_unavailable_off_windows():
+    """EN: On non-Windows the backend honestly reports unavailable and
+    open() refuses cleanly (no WinDLL attribute to crash on).
+    FR: Hors Windows le backend rapporte honnêtement indisponible et
+    open() refuse proprement."""
+    import os
+    if os.name != "nt":
+        assert WfpBackend.available() is False
+        ok, why = WfpBackend().open()
+        assert ok is False and why
+
+
+def test_wfp_plan_layers_and_tags():
+    """EN: Remote CIDR → one filter on the matching layer; port → filters
+    on BOTH ALE layers (v4+v6). Tags are deterministic for delete-by-key.
+    FR: CIDR distant → un filtre sur la bonne couche ; port → filtres sur
+    les DEUX couches ALE. Tags déterministes pour la suppression par clé."""
+    plan = WfpBackend()._plan([{"remote": "203.0.113.0/24"},
+                               {"port": 4444}])
+    layers = [p[0] for p in plan]
+    tags = [p[2] for p in plan]
+    assert _LAYER_V4 in layers and _LAYER_V6 in layers
+    assert "port4" in tags and "port6" in tags
+    assert any(t.startswith("ip-203.0.113.0/24") for t in tags)
+
+
+def test_wfp_tags_for_matches_plan():
+    """EN: tags_for() must enumerate every tag _plan can emit — a missed
+    tag would leak a stale filter. / FR: tags_for() doit énumérer chaque
+    tag que _plan émet — un tag manqué laisserait un filtre périmé."""
+    assert set(WfpBackend.tags_for("process", "x")) == {"app4", "app6"}
+    assert set(WfpBackend.tags_for("port", "443")) == {"port4", "port6"}
+    assert WfpBackend.tags_for("ip", "203.0.113.9/32") == ["ip-203.0.113.9/32"]
+
+
+# ── eBPF probe / Sonde eBPF ─────────────────────────────────────────────────
+
+
+
+def _evt(pid: int, comm: bytes, ip: bytes, port: int) -> _Event:
+    e = _Event()
+    e.pid, e.dport, e.ipver = pid, port, 4
+    e.comm = comm + b"\x00" * (16 - len(comm))
+    e.daddr[:4] = ip
+    return e
+
+
+def test_ebpf_lookup_unique_event():
+    """EN: A unique connect() event attributes (pid, comm) to later
+    packets the socket table missed. / FR: Un connect() unique attribue
+    (pid, comm) aux paquets ratés par la table des sockets."""
+    p = EbpfProbe()
+    e = _evt(4242, b"dropper", bytes([93, 184, 216, 34]), 4444)
+    p._on_evt(0, _ct.addressof(e), _ct.sizeof(e))
+    assert p.lookup("93.184.216.34", 4444) == (4242, "dropper")
+    assert p.lookup("93.184.216.34", 443) == (None, None)
+
+
+def test_ebpf_ambiguous_destination_refused():
+    """EN: Two pids → same (ip,port): attribution would be a coin flip —
+    lookup must refuse. / FR: Deux pids → même (ip,port) : l'attribution
+    serait aléatoire — lookup doit refuser."""
+    p = EbpfProbe()
+    for pid in (100, 200):
+        e = _evt(pid, b"proc", bytes([1, 2, 3, 4]), 443)
+        p._on_evt(0, _ct.addressof(e), _ct.sizeof(e))
+    assert p.lookup("1.2.3.4", 443) == (None, None)
+
+
+def test_ebpf_available_honest():
+    """EN: availability is a (bool, reason) tuple — never a bare guess.
+    FR: disponibilité = tuple (bool, raison) — jamais une estimation."""
+    ok, why = EbpfProbe.available()
+    assert isinstance(ok, bool) and isinstance(why, str)
+
+
+# ── Deep inspect (Frida) / Inspection profonde ──────────────────────────────
+
+
+
+def test_deep_inspect_never_crashes():
+    """EN: Without frida or a dead pid, inspect() returns ok=False with a
+    reason — never raises. / FR: Sans frida ou pid mort, inspect() renvoie
+    ok=False avec une raison — ne lève jamais."""
+    res = DeepInspector().inspect(2 ** 30, seconds=3)
+    assert res["ok"] is False and res["error"]
+    assert res["events"] == []
+
+
+def test_suspicious_module_paths_flags_staging():
+    """EN: Temp/shm/downloads module paths are flagged, system paths not.
+    FR: Les chemins temp/shm/downloads sont signalés, pas les chemins
+    système."""
+    events = [{"path": r"C:\Users\x\AppData\Local\Temp\evil.dll"},
+              {"path": "/tmp/.hidden/libc.so"},
+              {"path": "/usr/lib/libc.so.6"},
+              {"path": ""}]
+    bad = suspicious_module_paths(events)
+    assert len(bad) == 2 and not any("libc.so.6" in p for p in bad)
+
+
+# ── Sinkhole responder / Répondeur sinkhole ─────────────────────────────────
+
+
+
+def test_sink_responder_http_hit(monkeypatch):
+    """EN: An HTTP request to the responder records host+path+process —
+    the sinkhole becomes a sensor. / FR: Une requête HTTP enregistre
+    hôte+chemin+processus — le sinkhole devient un capteur."""
+    monkeypatch.setattr("detection.sinkresponder._pid_for_port",
+                        lambda p: (4321, "beacon.exe"))
+    r = SinkholeResponder()
+    srv, cli = _socket.socketpair()
+    try:
+        cli.sendall(b"POST /gate.php HTTP/1.1\r\nHost: c2.evil\r\n"
+                    b"Content-Length: 4\r\n\r\ntoken")
+        r._handle_http(srv, ("127.0.0.1", 44444))
+    finally:
+        cli.close()
+    hits = r.pop_hits()
+    assert hits and hits[0]["host"] == "c2.evil"
+    assert hits[0]["method"] == "POST" and hits[0]["path"] == "/gate.php"
+    assert hits[0]["pid"] == 4321 and hits[0]["process"] == "beacon.exe"
+    assert r.pop_hits() == []
+
+
+def test_sink_responder_tls_hit(monkeypatch):
+    """EN: A ClientHello records a tls hit (SNI parsed when present).
+    FR: Un ClientHello enregistre un hit tls (SNI analysé si présent)."""
+    monkeypatch.setattr("detection.sinkresponder._pid_for_port",
+                        lambda p: (None, None))
+    r = SinkholeResponder()
+    srv, cli = _socket.socketpair()
+    try:
+        cli.sendall(b"\x16\x03\x01" + b"\x00" * 200)   # EN: TLS record head
+        r._handle_tls(srv, ("127.0.0.1", 55555))
+    finally:
+        cli.close()
+    hits = r.pop_hits()
+    assert hits and hits[0]["kind"] == "tls"
+
+
+# ── Miner detector / Détecteur de minage ────────────────────────────────────
+
+
+
+def _mpkt(remote=PUBLIC_IP, port=4444, pid=4242, process="xmr",
+          head=b""):
+    p = pkt(remote=remote, port=port, process=process)
+    p.pid = pid
+    p.app_head = head
+    return p
+
+
+def test_miner_stratum_signature():
+    """EN: Cleartext stratum JSON in the payload head → critical hit.
+    FR: JSON stratum en clair dans la tête du payload → hit critique."""
+    m = MinerDetector()
+    out = m.analyze_packet(_mpkt(head=b'{"id":1,"method":"mining.subscribe",'
+                                      b'"params":["xmr.1"]}'))
+    assert out[0]["type"] == "MINING_STRATUM"
+    assert out[0]["severity"] == "critical"
+
+
+def test_miner_pool_port_alone_never_alerts():
+    """EN: A pool port without CPU corroboration marks a suspect only.
+    FR: Un port de pool sans corroboration CPU ne fait que marquer."""
+    m = MinerDetector()
+    assert m.analyze_packet(_mpkt(port=4444)) == []
+    assert (4242, PUBLIC_IP) in m._suspects
+
+
+def test_miner_cpu_corroboration(monkeypatch):
+    """EN: Pool port + sustained high CPU → MINING_SUSPECT.
+    FR: Port de pool + CPU haute soutenue → MINING_SUSPECT."""
+    import types
+    import psutil
+    m = MinerDetector()
+    m.analyze_packet(_mpkt(port=4444))
+    m._suspects[(4242, PUBLIC_IP)] = time.time() - 60   # EN: force window
+    fake = types.SimpleNamespace(cpu_percent=lambda interval: 95.0,
+                                 name=lambda: "xmr")
+    monkeypatch.setattr(psutil, "Process", lambda pid: fake)
+    out = m.cpu_corroborate()
+    assert out[0]["type"] == "MINING_SUSPECT"
+    assert "95%" in out[0]["detail"]
+
+
+def test_miner_low_cpu_acquits(monkeypatch):
+    """EN: Pool port with normal CPU produces no alert — corroboration
+    matters. / FR: Port de pool avec CPU normale = rien — la
+    corroboration compte."""
+    import types
+    import psutil
+    m = MinerDetector()
+    m.analyze_packet(_mpkt(port=4444))
+    m._suspects[(4242, PUBLIC_IP)] = time.time() - 60
+    fake = types.SimpleNamespace(cpu_percent=lambda interval: 8.0,
+                                 name=lambda: "irc")
+    monkeypatch.setattr(psutil, "Process", lambda pid: fake)
+    assert m.cpu_corroborate() == []
+
+
+# ── perf probe / Sonde perf ─────────────────────────────────────────────────
+
+
+
+def test_perfprobe_available_honest():
+    """EN: tuple (bool, reason); off-Linux it's a clean refusal.
+    FR: tuple (bool, raison) ; hors Linux c'est un refus propre."""
+    ok, why = perfprobe.available()
+    import platform
+    if platform.system().lower() != "linux":
+        assert ok is False
+    res = perfprobe.sample(2 ** 30, seconds=0.2)
+    assert res["ok"] is False
+
+
+# ── Local SLM / SLM local ───────────────────────────────────────────────────
+
+
+
+def test_slm_loopback_gate():
+    """EN: Only literal loopback endpoints are accepted — everything else
+    is rejected so alert data can never leave the machine.
+    FR: Seuls les endpoints loopback littéraux sont acceptés — tout le
+    reste est rejeté pour que les données d'alerte ne partent jamais."""
+    assert _is_loopback("http://127.0.0.1:11434")
+    assert _is_loopback("http://localhost:11434")
+    assert _is_loopback("http://[::1]:11434")
+    assert not _is_loopback("http://192.168.1.1:11434")
+    assert not _is_loopback("http://ollama.internal:11434")
+    assert not _is_loopback("http://evil.example:11434")
+
+
+def test_slm_disabled_and_remote_rejected():
+    """EN: Disabled → None; a non-loopback endpoint is never adopted.
+    FR: Désactivé → None ; un endpoint non-loopback n'est jamais adopté."""
+    s = LocalSlm()
+    assert s.enrich("BEACON", {}) is None
+    s.configure(True, "http://10.0.0.9:11434", "m")
+    assert s._endpoint == "http://127.0.0.1:11434"   # EN: kept default
+    assert s.enrich("BEACON", {}) is None             # EN: unreachable → None
+
+
+# ── IOC pack / Paquet IOC ───────────────────────────────────────────────────
+
+
+
+def test_iocpack_roundtrip(monkeypatch):
+    """EN: Deterministic build (flip=0) → indicators are findable, foreign
+    ones are not. / FR: Build déterministe (flip=0) → les indicateurs se
+    retrouvent, les étrangers non."""
+    monkeypatch.setattr(iocshare, "_FLIP", 0.0)
+    pack = iocshare.build_pack(["203.0.113.7", "evil.example"])
+    assert pack["format"].startswith("snitch-ioc-pack")
+    res = iocshare.check_pack(pack, ["203.0.113.7", "9.9.9.9"])
+    assert res["ok"]
+    hints = {h["indicator"] for h in res["hints"]}
+    assert "203.0.113.7" in hints and "9.9.9.9" not in hints
+
+
+def test_iocpack_flip_adds_deniability():
+    """EN: With flipping enabled, two builds of the same indicators
+    differ — a pack can't be diffed back to the source list.
+    FR: Avec flip, deux builds des mêmes indicateurs diffèrent — un
+    paquet ne se remonte pas à la liste source."""
+    import base64
+    a = iocshare.build_pack(["1.2.3.4"] * 10)
+    b = iocshare.build_pack(["1.2.3.4"] * 10)
+    assert base64.b64decode(a["bits_b64"]) != base64.b64decode(b["bits_b64"])
+
+
+def test_iocpack_rejects_garbage():
+    """EN: Bad format/params/bits → honest error, not a crash.
+    FR: Format/params/bits mauvais → erreur honnête, pas de crash."""
+    assert iocshare.check_pack({}, ["x"])["ok"] is False
+    pack = {"format": "snitch-ioc-pack/1", "m": 8192, "k": 4,
+            "bits_b64": "AAAA"}
+    assert iocshare.check_pack(pack, ["x"])["ok"] is False
+
+
+# ── Integrity: modules + merkle / Intégrité : modules + merkle ──────────────
+
+
+
+def test_merkle_root_order_independent():
+    """EN: Root is sort-based — reload order can't trigger false alerts.
+    FR: Racine triée — l'ordre de rechargement ne peut pas alerter."""
+    assert _merkle_root(["a", "b", "c"]) == _merkle_root(["c", "a", "b"])
+    assert _merkle_root(["a", "b"]) != _merkle_root(["a", "b", "c"])
+    assert _merkle_root([]) == ""
+
+
+def test_integrity_module_suspect(monkeypatch):
+    """EN: A file-backed module living under /tmp is flagged.
+    FR: Un module fichier-basé sous /tmp est signalé."""
+    w = IntegrityWatcher()
+    maps = [_types.SimpleNamespace(path="/tmp/.x/evil.so"),
+            _types.SimpleNamespace(path="/usr/lib/libc.so.6")]
+    monkeypatch.setattr(
+        _psutil, "Process",
+        lambda pid: _types.SimpleNamespace(
+            memory_maps=lambda grouped=True: maps))
+    out = w._check_modules(999, "app", "")
+    assert out[0]["type"] == "MODULE_SUSPECT"
+    assert "/tmp/.x/evil.so" in out[0]["modules"]
+
+
+def test_integrity_module_merkle_baseline(tmp_path, monkeypatch):
+    """EN: First module set → baseline; a changed module file later →
+    MODULE_CHANGED. / FR: Premier ensemble → baseline ; un fichier de
+    module modifié → MODULE_CHANGED."""
+    m1, m2 = tmp_path / "a.so", tmp_path / "b.so"
+    m1.write_bytes(b"lib-a-v1")
+    m2.write_bytes(b"lib-b-v1")
+    w = IntegrityWatcher()
+    maps = [_types.SimpleNamespace(path=str(m1)),
+            _types.SimpleNamespace(path=str(m2))]
+    monkeypatch.setattr(
+        _psutil, "Process",
+        lambda pid: _types.SimpleNamespace(
+            memory_maps=lambda grouped=True: maps))
+    assert w._check_modules(999, "app", "/usr/bin/app") == []   # baseline
+    m1.write_bytes(b"lib-a-v2-patched")
+    import os as _os
+    _os.utime(m1, (0, 2_000_000_000))
+    out = w._check_modules(999, "app", "/usr/bin/app")
+    assert out[0]["type"] == "MODULE_CHANGED"
+    assert out[0]["severity"] == "critical"
+
+
+# ── Firewall: throttle action / Pare-feu : action throttle ──────────────────
+
+def test_throttle_rejects_port_and_process(tmp_path, monkeypatch):
+    """EN: throttle on port/process is meaningless → ValueError.
+    FR: throttle sur port/processus est insensé → ValueError."""
+    fw = _fw(tmp_path, monkeypatch)
+    for kind in ("process", "port"):
+        try:
+            fw.add_rule(kind, "x", action="throttle")
+        except ValueError:
+            continue
+        raise AssertionError(f"expected ValueError for {kind}")
+
+
+def test_throttle_apply_linux_commands(tmp_path, monkeypatch):
+    """EN: A Linux throttle emits clsact flower police filters at the
+    rule's rate. / FR: Un throttle Linux émet des filtres flower police
+    au débit de la règle."""
+    fw = FirewallManager(str(tmp_path))
+    fw._platform, fw._demo, fw._tc_iface = "linux", False, "eth0"
+    calls: list[list[str]] = []
+    monkeypatch.setattr(fw, "_run", lambda a: (calls.append(a), (True, ""))[1])
+    rule = fw.add_rule("ip", PUBLIC_IP, action="throttle", rate=128)
+    assert rule["applied"] is True
+    flat = [x for call in calls for x in call]
+    assert "police" in flat and "128kbit" in flat
+    assert "egress" in flat and "flower" in flat
+
+
+def test_throttle_off_linux_honest(tmp_path, monkeypatch):
+    """EN: Throttle on macOS reports applied=False, linux-only reason.
+    FR: Throttle sur macOS rapporte applied=False, raison linux."""
+    fw = FirewallManager(str(tmp_path))
+    fw._platform, fw._demo = "darwin", False
+    monkeypatch.setattr(fw, "_pf_apply", lambda: (True, ""))
+    rule = fw.add_rule("ip", PUBLIC_IP, action="throttle")
+    assert rule["applied"] is False and "linux" in (rule["error"] or "")
+
+
+# ── Parser app_head / app_head du parseur ───────────────────────────────────
+
+def test_parser_app_head_cleartext_only():
+    """EN: Cleartext TCP payload head is captured (≤64B) for stratum
+    fingerprinting; TLS stays opaque (app_head empty).
+    FR: La tête d'un payload TCP en clair est capturée (≤64 o.) pour la
+    signature stratum ; TLS reste opaque (app_head vide)."""
+    import struct as _st
+    from capture.parser import parse_frame, DLT_EN10MB
+
+    def frame(payload: bytes) -> bytes:
+        # EN: 20-byte TCP header — offset byte (0x50) sits at position 12.
+        # FR: en-tête TCP de 20 octets — octet d'offset (0x50) en position 12.
+        tcp = _st.pack("!HH", 40000, 3333) + b"\x00" * 8 + b"\x50\x18" \
+            + b"\x00" * 6 + payload
+        ip = bytes([0x45, 0]) + _st.pack("!H", 20 + len(tcp)) + \
+            b"\x00" * 4 + bytes([64, 6]) + b"\x00" * 2 + \
+            bytes([10, 0, 0, 1]) + bytes([93, 184, 216, 34])
+        return b"\xaa" * 12 + b"\x08\x00" + ip + tcp
+
+    p = parse_frame(DLT_EN10MB, frame(b'{"method":"mining.subscribe"}'))
+    assert p.app_head.startswith(b'{"method"')
+    p2 = parse_frame(DLT_EN10MB, frame(b"\x16\x03\x01" + b"\x00" * 40))
+    assert p2.app_head == b""

@@ -92,3 +92,16 @@ lenguaje claro. Es un *informe de hallazgos*, no una certificación.
 - **Re-resolución de dominios** — las reglas `domain` se re-resuelven cada ~10 min y el delta de IP se aplica por SO, para que la rotación CDN no desbloquee un nombre en silencio.
 - **Vigilancia de integridad** (activada por defecto, solo lectura, local) — baselines SHA-256 de ejecutables en red (`BINARY_CHANGED`), nombres/exe divergentes (`NAME_MISMATCH`), scan `rwxp` solo Linux (`MEM_RWX`, nivel info para apps JIT conocidas). `GET /security/integrity`, `POST /security/integrity/check`.
 - **Explicaciones de alertas** — `GET /security/explain?type=X` devuelve explicaciones bilingües (EN/FR) escritas a mano; deterministas y offline — no es un modelo. La UI las muestra tras el botón "¿Por qué?".
+
+### Sondas opcionales (v1.3)
+
+Todas están **desactivadas por defecto o se autolimitan**, degradan honestamente y nunca envían datos fuera de la máquina:
+
+- **Sonda eBPF connect** (Linux, ajuste `ebpf_probe`) — kprobe BCC tipo `tcpconnect` que atribuye `connect()` de procesos demasiado efímeros para la tabla de sockets. Requiere `python3-bcc` + root; destinos ambiguos nunca se adivinan. `GET /security/ebpf`.
+- **Inspección Frida** — `POST /security/deep_inspect {pid,seconds}` adjunta a UN pid ≤60 s y reporta qué módulo cargado emitió cada `connect()`. Rutas de módulos en temp/staging → `INJECT_SUSPECT`.
+- **Respondedor sinkhole** — con una regla `sinkhole` activa, listeners loopback en :80/:443 convierten cada intento en alerta `SINKHOLE_HIT` con Host/URI o SNI + proceso.
+- **Integridad de módulos** — raíz Merkle sobre los mapeos ejecutables → `MODULE_CHANGED`; rutas en `/tmp`/memfd → `MODULE_SUSPECT`.
+- **Detección de minería** — JSON stratum en cabecera de payload → `MINING_STRATUM`; puertos de pool + CPU sostenida → `MINING_SUSPECT`.
+- **Contadores hardware** — `POST /security/perf` muestrea ciclos/instrucciones vía `perf_event_open` (Linux).
+- **LLM local** — opt-in (`slm_enabled`): `/security/explain` llama a un endpoint Ollama **solo loopback** — endpoints remotos rechazados.
+- **Paquetes IOC** — `GET /security/iocpack` exporta un Bloom + randomized response (nunca en claro); `POST /security/iocpack/import` comprueba destinos de forma probabilística.

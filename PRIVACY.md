@@ -41,6 +41,25 @@ URL (Discord, Slack, Telegram bot endpoint or any URL) and flip the switch,
 warning/critical alert texts are POSTed to that endpoint in real time.
 Nothing is sent while the switch is off.
 
+**Local LLM enrichment (opt-in, off by default).** When `slm_enabled` is
+set, alert *metadata* (type, process, destination) may be sent to an
+Ollama-compatible model endpoint — **restricted to loopback addresses
+only**: the backend rejects any endpoint that does not resolve to
+127.0.0.1 / ::1, so this can never reach the network. Deterministic
+templates remain the default.
+
+**IOC packs are never transmitted by Snitch.** `GET /security/iocpack`
+builds a Bloom filter + randomized-response encoding of your local
+indicators and gives you the file — you decide whether and where to share
+it. The encoding is intentionally lossy (ε≈4.6) so raw IPs/domains can't
+be recovered from a pack. Importing a pack only returns probabilistic
+hints; it never auto-blocks.
+
+**Inspection probes stay read-only and local.** The eBPF connect probe,
+Frida deep-inspection, `perf_event_open` counters, module/Merkle integrity
+scans and the loopback sinkhole responder only *read* local state and
+listen on 127.0.0.1 — none of them sends data anywhere.
+
 **Geolocation is offline-only.** Once a DB-IP Lite or MaxMind GeoLite2
 `.mmdb` file sits in `<data_dir>/geo/`, lookups happen locally against that
 file. Without it, IPs simply show no location. There is no HTTP geolocation
@@ -105,6 +124,26 @@ une URL de webhook (Discord, Slack, endpoint de bot Telegram ou toute URL)
 et basculez l'interrupteur, les textes des alertes warning/critiques sont
 POSTés vers cet endpoint en temps réel. Rien n'est envoyé tant que
 l'interrupteur est éteint.
+
+**Enrichissement LLM local (opt-in, désactivé par défaut).** Quand
+`slm_enabled` est activé, les *métadonnées* d'alerte (type, processus,
+destination) peuvent être envoyées à un modèle compatible Ollama —
+**restreint aux adresses loopback uniquement** : le backend rejette tout
+endpoint qui ne résout pas vers 127.0.0.1 / ::1, donc cela ne peut jamais
+atteindre le réseau. Les gabarits déterministes restent le défaut.
+
+**Les paquets IOC ne sont jamais transmis par Snitch.**
+`GET /security/iocpack` construit un encodage filtre de Bloom +
+randomized response de vos indicateurs locaux et vous remet le fichier —
+vous décidez si et où le partager. L'encodage est volontairement avec
+pertes (ε≈4,6) : les IP/domaines en clair ne peuvent pas être retrouvés
+depuis un paquet. L'import ne renvoie que des indices probabilistes ;
+jamais de blocage automatique.
+
+**Les sondes d'inspection restent en lecture seule et locales.** La sonde
+eBPF, l'inspection Frida, les compteurs `perf_event_open`, les scans
+d'intégrité module/Merkle et le répondeur sinkhole ne font que *lire*
+l'état local et écouter sur 127.0.0.1 — aucun n'envoie de données.
 
 **La géolocalisation est 100 % hors ligne.** Une fois un fichier `.mmdb`
 DB-IP Lite ou MaxMind GeoLite2 dans `<data_dir>/geo/`, les recherches se

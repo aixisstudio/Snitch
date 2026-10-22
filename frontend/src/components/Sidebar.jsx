@@ -9,7 +9,7 @@
  *     listes déroulantes appareils LAN + hôtes externes, et le flux de
  *     paquets récents.
  */
-import { Wifi, Smartphone, Monitor, Tv, Cpu, HelpCircle, ShieldOff, Shield, Skull, PauseCircle } from 'lucide-react'
+import { Wifi, Smartphone, Monitor, Tv, Cpu, HelpCircle, ShieldOff, Shield, Skull, PauseCircle, Microscope } from 'lucide-react'
 import PrivacyScore from './PrivacyScore'
 import BandwidthChart from './BandwidthChart'
 import { useT } from '../i18n'
@@ -321,6 +321,33 @@ async function procAction(action, pid) {
   } catch { /* best effort */ }
 }
 
+/**
+ * EN: Bounded Frida deep-inspection — attaches to the pid for a few
+ *     seconds and reports which module initiated each connect(). Shows
+ *     the result in a simple dialog; errors are surfaced, not hidden.
+ * FR: Inspection Frida bornée — attache au pid quelques secondes et
+ *     rapporte quel module a initié chaque connect(). Résultat affiché
+ *     dans une boîte simple ; les erreurs sont montrées, pas cachées.
+ */
+async function deepInspect(pid, t) {
+  if (!pid) return
+  const base = await apiBase()
+  try {
+    const res = await fetch(`${base}/security/deep_inspect`, {
+      method: 'POST',
+      headers: await authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ pid, seconds: 8 }),
+    })
+    const j = await res.json()
+    if (!res.ok || j.ok === false) {
+      window.alert(j.detail || j.error || t('di_failed'))
+      return
+    }
+    const mods = (j.suspicious_paths || []).join('\n')
+    window.alert(mods ? `${t('di_result')}\n${mods}` : t('di_clean'))
+  } catch { window.alert(t('di_failed')) }
+}
+
 /** EN: Selected-node fields + top processes + whitelist/block actions.
  *  FR: Champs du nœud sélectionné + top processus + actions whitelist/blocage. */
 function NodeDetail({ node, onWhitelist }) {
@@ -397,6 +424,11 @@ function NodeDetail({ node, onWhitelist }) {
                     FR: Tuer/suspendre — seulement si un PID est connu. */}
                 {stats.pid && (
                   <>
+                    <button onClick={() => deepInspect(stats.pid, t)}
+                      title={t('di_inspect')} aria-label={t('di_inspect')}
+                      style={{ background: 'none', border: 'none', color: '#a855f7', cursor: 'pointer', padding: 0, display: 'flex' }}>
+                      <Microscope size={11} />
+                    </button>
                     <button onClick={() => procAction('suspend', stats.pid)}
                       title={t('proc_suspend')} aria-label={t('proc_suspend')}
                       style={{ background: 'none', border: 'none', color: '#f59e0b', cursor: 'pointer', padding: 0, display: 'flex' }}>

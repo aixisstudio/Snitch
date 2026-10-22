@@ -93,3 +93,16 @@ certificação.
 - **Re-resolução de domínios** — regras `domain` são re-resolvidas a cada ~10 min e o delta de IP é aplicado por SO, para que a rotação de CDN não desbloqueie um nome silenciosamente.
 - **Vigilância de integridade** (ativada por padrão, somente leitura, local) — baselines SHA-256 de executáveis em rede (`BINARY_CHANGED`), divergência nome/exe (`NAME_MISMATCH`), scan `rwxp` somente Linux (`MEM_RWX`, nível info para apps JIT conhecidas). `GET /security/integrity`, `POST /security/integrity/check`.
 - **Explicações de alertas** — `GET /security/explain?type=X` retorna explicações bilíngues (EN/FR) escritas à mão; determinísticas e offline — não é um modelo. A UI mostra atrás do botão "Por quê?".
+
+### Sondas opcionais (v1.3)
+
+Todas estão **desativadas por padrão ou autolimitadas**, degradam honestamente e nunca enviam dados para fora da máquina:
+
+- **Sonda eBPF connect** (Linux, `ebpf_probe`) — kprobe BCC tipo `tcpconnect` atribui `connect()` de processos efêmeros demais para a tabela de sockets. Requer `python3-bcc` + root; destinos ambíguos nunca são adivinhados. `GET /security/ebpf`.
+- **Inspeção Frida** — `POST /security/deep_inspect {pid,seconds}` anexa a UM pid por ≤60 s e reporta qual módulo carregado emitiu cada `connect()`. Caminhos de staging → `INJECT_SUSPECT`.
+- **Respondedor sinkhole** — com uma regra `sinkhole` ativa, listeners loopback em :80/:443 transformam cada tentativa em alerta `SINKHOLE_HIT` com Host/URI ou SNI + processo.
+- **Integridade de módulos** — raiz Merkle sobre mapeamentos executáveis → `MODULE_CHANGED`; caminhos em `/tmp`/memfd → `MODULE_SUSPECT`.
+- **Detecção de mineração** — JSON stratum no cabeçalho do payload → `MINING_STRATUM`; portas de pools + CPU sustentada → `MINING_SUSPECT`.
+- **Contadores de hardware** — `POST /security/perf` amostra ciclos/instruções via `perf_event_open` (Linux).
+- **LLM local** — opt-in (`slm_enabled`): `/security/explain` chama um endpoint Ollama **somente loopback** — endpoints remotos rejeitados.
+- **Pacotes IOC** — `GET /security/iocpack` exporta Bloom + randomized response (nunca em claro); `POST /security/iocpack/import` verifica destinos probabilisticamente.

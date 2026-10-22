@@ -20,6 +20,7 @@ import {
   Globe, WifiOff, Wifi, ScanLine,
   Activity, Unlock, TrendingUp, Camera, ShieldAlert,
   FileWarning, Fingerprint, Cpu, HelpCircle,
+  Pickaxe, Magnet, Syringe, Package,
 } from 'lucide-react'
 import { useT } from '../i18n'
 import { apiBase, authHeaders } from '../api'
@@ -53,6 +54,12 @@ const TYPE_ICONS = {
   BINARY_CHANGED:     FileWarning,
   NAME_MISMATCH:      Fingerprint,
   MEM_RWX:            Cpu,
+  MODULE_SUSPECT:     Package,
+  MODULE_CHANGED:     FileWarning,
+  MINING_STRATUM:     Pickaxe,
+  MINING_SUSPECT:     Pickaxe,
+  SINKHOLE_HIT:       Magnet,
+  INJECT_SUSPECT:     Syringe,
 }
 
 /**

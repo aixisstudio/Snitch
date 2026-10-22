@@ -42,6 +42,22 @@ URL) y activas el interruptor, los textos de alertas warning/críticas se
 POSTean a ese endpoint en tiempo real. Nada se envía con el interruptor
 apagado.
 
+**Enriquecimiento LLM local (opt-in, desactivado por defecto).** Con
+`slm_enabled`, los *metadatos* de alertas (tipo, proceso, destino) pueden
+enviarse a un modelo compatible con Ollama — **solo loopback**: el backend
+rechaza cualquier endpoint que no resuelva a 127.0.0.1 / ::1. Los
+gabarits deterministas siguen siendo el valor por defecto.
+
+**Los paquetes IOC nunca los transmite Snitch.** `GET /security/iocpack`
+codifica tus indicadores en un filtro Bloom + randomized response (ε≈4,6)
+y te entrega el archivo — tú decides si compartirlo. Importar un paquete
+solo devuelve pistas probabilísticas; nunca bloquea automáticamente.
+
+**Las sondas de inspección son de solo lectura y locales.** La sonda
+eBPF, la inspección Frida, los contadores `perf_event_open`, los escaneos
+de integridad de módulos y el respondedor sinkhole solo *leen* estado
+local y escuchan en 127.0.0.1 — ninguno envía datos.
+
 **La geolocalización es 100 % offline.** Una vez un `.mmdb` de DB-IP Lite
 o MaxMind GeoLite2 en `<data_dir>/geo/`, las consultas son locales. Sin
 base, las IP simplemente no muestran ubicación. No hay servicio HTTP de

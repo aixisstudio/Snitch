@@ -89,3 +89,16 @@ OS ネイティブファイアウォールへ best-effort で適用されます:
 - **ドメイン再解決** — `domain` ルールは約10分ごとに再解決され、IP 差分が OS ごとに適用されるため、CDN ローテーションで名前のブロックが外れません。
 - **整合性監視**（デフォルト有効・読み取り専用・ローカル） — ネットワーク使用実行ファイルの SHA-256 ベースライン（`BINARY_CHANGED`）、名前/exe 不一致（`NAME_MISMATCH`）、Linux のみ `rwxp` スキャン（`MEM_RWX`、既知 JIT アプリは info レベル）。`GET /security/integrity`、`POST /security/integrity/check`。
 - **アラート説明** — `GET /security/explain?type=X` が手書きの二言語（EN/FR）説明を返します；決定的でオフライン動作 — モデルではありません。UI の「なぜ？」ボタンから表示。
+
+### オプションのプローブ (v1.3)
+
+すべて **デフォルトで無効または自己制限** で、正直に劣化し、マシン外へデータを送りません：
+
+- **eBPF connect プローブ**（Linux、`ebpf_probe`）— `tcpconnect` 型の BCC kprobe が、ソケットテーブルが取り逃がす短命プロセスの `connect()` を帰属。`python3-bcc` + root が必要。曖昧な宛先は推測しません。`GET /security/ebpf`。
+- **Frida インスペクション** — `POST /security/deep_inspect {pid,seconds}` は1つの pid に ≤60 秒アタッチし、各 `connect()` を発行したロード済みモジュールを報告。staging パス → `INJECT_SUSPECT`。
+- **シンクホールレスポンダ** — `sinkhole` ルール有効中、:80/:443 の loopback リスナーが各試行を `SINKHOLE_HIT`（Host/URI または SNI + プロセス）に変換。
+- **モジュール整合性** — 実行可能マッピングの Merkle ルート → `MODULE_CHANGED`；`/tmp`/memfd のパス → `MODULE_SUSPECT`。
+- **マイニング検知** — payload ヘッド内の stratum JSON → `MINING_STRATUM`；プールポート + 持続的高 CPU → `MINING_SUSPECT`。
+- **ハードウェアカウンタ** — `POST /security/perf` が `perf_event_open` でサイクル/命令数をサンプル (Linux)。
+- **ローカル LLM** — opt-in（`slm_enabled`）：`/security/explain` は Ollama 互換エンドポイントを **loopback のみ** 呼び出し — リモートは拒否。
+- **IOC パック** — `GET /security/iocpack` が Bloom + randomized response でエクスポート（平文なし）；`POST /security/iocpack/import` が宛先を確率的に照合。

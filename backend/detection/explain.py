@@ -376,6 +376,149 @@ EXPLANATIONS: dict[str, dict] = {
     ["Vérifier si le processus est une app JIT connue (alertes info)",
      "Exporter le forensique du processus",
      "Tuer + bloquer si ce n'est pas un navigateur/runtime"]),
+
+"MODULE_SUSPECT": _e(
+    "Module loaded from a staging path",
+    "Module chargé depuis un chemin de staging",
+    "A file-backed library inside the process lives in a location executable "
+    "code should never use: temp dirs, /dev/shm, Downloads, browser caches — "
+    "classic dropper/injection staging.",
+    "Une bibliothèque chargée dans le processus vit dans un emplacement où du "
+    "code exécutable ne devrait jamais être : temp, /dev/shm, Downloads, "
+    "caches de navigateurs — staging classique de dropper/injection.",
+    "Legitimate apps keep their DLLs/.so under Program Files, /usr/lib or "
+    "their own bundle — almost nothing real loads code from %TEMP%.",
+    "Les applications légitimes gardent leurs DLL/.so sous Program Files, "
+    "/usr/lib ou leur propre bundle — presque rien de réel ne charge du code "
+    "depuis %TEMP%.",
+    ["List the flagged module paths in the finding",
+     "Hash the modules and check them against VirusTotal yourself",
+     "Kill + firewall the process if the module is unexpected"],
+    ["Lister les chemins de modules signalés dans le constat",
+     "Hasher les modules et les vérifier sur VirusTotal soi-même",
+     "Tuer + bloquer le processus si le module est inattendu"]),
+
+"MODULE_CHANGED": _e(
+    "Mapped-module set changed",
+    "Ensemble de modules modifié",
+    "The Merkle root over this process's file-backed modules changed versus "
+    "its recorded baseline — a DLL/.so was replaced on disk or a new module "
+    "appeared since baseline.",
+    "La racine Merkle des modules fichier-basés du processus a changé par "
+    "rapport à la baseline — une DLL/.so a été remplacée sur disque ou un "
+    "nouveau module est apparu.",
+    "Updates legitimately swap modules — correlate with a recent software "
+    "update. Absent one, an in-session module swap is a strong tamper signal.",
+    "Les mises à jour remplacent légitimement des modules — corréler avec une "
+    "update récente. Sans elle, un remplacement en session est un fort signal "
+    "d'altération.",
+    ["Check for a recent app/OS update covering these modules",
+     "Compare expected vs actual roots in the finding",
+     "Export forensics for the module list"],
+    ["Vérifier une mise à jour récente couvrant ces modules",
+     "Comparer les racines attendue/réelle dans le constat",
+     "Exporter le forensique pour la liste des modules"]),
+
+"MINING_STRATUM": _e(
+    "Cleartext mining protocol observed",
+    "Protocole de minage en clair observé",
+    "The connection payload contains the JSON-RPC stratum dialect miners "
+    "speak to pools (\"mining.subscribe\", \"mining.authorize\"…) — a "
+    "near-conclusive cryptomining signature.",
+    "Le payload de la connexion contient le dialecte JSON-RPC stratum que les "
+    "mineurs parlent aux pools (« mining.subscribe », « mining.authorize »…) "
+    "— signature quasi-concluante de cryptominage.",
+    "Nothing legitimate speaks stratum on a workstation. Encrypted stratum "
+    "(TLS) stays invisible to this check — cleartext is what miners still "
+    "use on many pools.",
+    "Rien de légitime ne parle stratum sur un poste. Le stratum chiffré (TLS) "
+    "reste invisible à ce contrôle — le clair reste utilisé par beaucoup de "
+    "pools.",
+    ["Identify the process and kill it if unwanted",
+     "Block the pool IP/port with a firewall rule",
+     "Export forensics — miners usually reinstall via a dropper"],
+    ["Identifier le processus et le tuer s'il est indésirable",
+     "Bloquer l'IP/port du pool par une règle pare-feu",
+     "Exporter le forensique — les mineurs se réinstallent via dropper"]),
+
+"MINING_SUSPECT": _e(
+    "Pool port + sustained CPU",
+    "Port de pool + CPU soutenue",
+    "A process keeps talking to a well-known mining-pool port while burning "
+    "sustained CPU — the combination is suspect even though neither signal "
+    "alone would be.",
+    "Un processus parle à un port de pool de minage connu tout en brûlant de "
+    "la CPU de façon soutenue — la combinaison est suspecte, même si aucun "
+    "signal seul ne le serait.",
+    "IRC/game traffic shares pool ports legitimately — sustained high CPU is "
+    "the corroboration. A warning, not a verdict.",
+    "Le trafic IRC/jeu partage ces ports légitimement — la CPU soutenue est "
+    "la corroboration. Un avertissement, pas un verdict.",
+    ["Check the process's CPU in the process list",
+     "Run a perf sample (/security/perf) for hardware counters",
+     "Block the destination if the usage is unexplained"],
+    ["Vérifier la CPU du processus dans la liste",
+     "Lancer un échantillon perf (/security/perf) pour les compteurs",
+     "Bloquer la destination si l'usage est inexpliqué"]),
+
+"SINKHOLE_HIT": _e(
+    "Sinkholed connection observed",
+    "Connexion sinkholée observée",
+    "A process connected to a destination you sinkholed — the loopback "
+    "responder captured its HTTP Host/path or TLS SNI, revealing what the "
+    "blocked app was trying to reach.",
+    "Un processus s'est connecté à une destination sinkholée — le répondeur "
+    "loopback a capturé son Host/chemin HTTP ou SNI TLS, révélant ce que "
+    "l'appli bloquée cherchait.",
+    "This is the sinkhole doing its job: the attempt is contained AND "
+    "observed. Repeated hits from one process deserve a process-level rule.",
+    "C'est le sinkhole qui fait son travail : la tentative est contenue ET "
+    "observée. Des hits répétés d'un même processus méritent une règle "
+    "processus.",
+    ["Read the captured host/path in the finding",
+     "Create a process rule if the same app keeps retrying",
+     "Deep-inspect the process if it adapts to the sinkhole"],
+    ["Lire l'hôte/chemin capturé dans le constat",
+     "Créer une règle processus si l'app retente sans cesse",
+     "Inspecter le processus s'il s'adapte au sinkhole"]),
+
+"INJECT_SUSPECT": _e(
+    "Connection from a staged module",
+    "Connexion depuis un module stagé",
+    "During deep inspection, an outbound connection originated from a module "
+    "loaded out of a temp/cache/download staging path — the signature of "
+    "injected code phoning home through a legit-looking process.",
+    "Pendant l'inspection profonde, une connexion sortante provenait d'un "
+    "module chargé depuis un chemin de staging temp/cache/download — la "
+    "signature de code injecté qui appelle sa base via un processus "
+    "d'apparence légitime.",
+    "This is Frida-level evidence, not a packet guess: the calling module "
+    "itself was resolved. Almost no legitimate software connects from %TEMP%.",
+    "C'est une preuve de niveau Frida, pas une estimation paquet : le module "
+    "appelant lui-même a été résolu. Presque aucun logiciel légitime ne "
+    "connecte depuis %TEMP%.",
+    ["Review the flagged module paths",
+     "Kill the host process and quarantine the module file",
+     "Expect re-injection — check the parent process tree"],
+    ["Examiner les chemins de modules signalés",
+     "Tuer le processus hôte et mettre le module en quarantaine",
+     "Anticiper la réinjection — vérifier l'arbre des processus parents"]),
+
+"COMMUNITY_IOC": _e(
+    "Community pack hint",
+    "Indice du paquet communautaire",
+    "A destination matched a shared IOC pack — Bloom + randomized response "
+    "means membership is probabilistic, not proof.",
+    "Une destination a correspondu à un paquet d'IOC partagé — Bloom + "
+    "randomized response rendent l'appartenance probabiliste, pas certaine.",
+    "Treat as a hint: false positives are expected by design. Corroborate "
+    "with local signals before acting.",
+    "À traiter comme un indice : les faux positifs sont attendus par "
+    "conception. Corroborer avec des signaux locaux avant d'agir.",
+    ["Run a local reputation check on the indicator",
+     "Watch the destination before blocking"],
+    ["Lancer une vérif de réputation locale sur l'indicateur",
+     "Surveiller la destination avant de bloquer"]),
 }
 
 

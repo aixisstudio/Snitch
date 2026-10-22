@@ -41,6 +41,22 @@ einträgst (Discord, Slack, Telegram-Bot-Endpoint oder beliebige URL) und
 den Schalter umlegst, werden Warn-/Kritik-Alarmtexte in Echtzeit an diesen
 Endpoint gePOSTet. Bei ausgeschaltetem Schalter geht nichts raus.
 
+**Lokale LLM-Anreicherung (Opt-in, standardmäßig aus).** Bei
+`slm_enabled` können Alarm-*Metadaten* (Typ, Prozess, Ziel) an ein
+Ollama-kompatibles Modell gehen — **ausschließlich Loopback**: der
+Backend lehnt jeden Endpunkt ab, der nicht nach 127.0.0.1 / ::1
+auflöst. Deterministische Vorlagen bleiben der Standard.
+
+**IOC-Pakete werden von Snitch nie übertragen.** `GET /security/iocpack`
+kodiert deine Indikatoren als Bloom-Filter + randomized response
+(ε≈4,6) und übergibt dir die Datei — du entscheidest, ob und wohin.
+Ein Import liefert nur probabilistische Hinweise; nie Auto-Blocking.
+
+**Inspektionssonden bleiben lesend und lokal.** Die eBPF-Sonde, die
+Frida-Inspektion, `perf_event_open`-Zähler, Modul-Integritätsscans und
+der Sinkhole-Responder *lesen* nur lokalen Zustand und lauschen auf
+127.0.0.1 — keiner sendet Daten.
+
 **Geolokalisierung ist zu 100 % offline.** Liegt eine `.mmdb` von DB-IP
 Lite oder MaxMind GeoLite2 in `<data_dir>/geo/`, laufen Lookups lokal. Ohne
 Datenbank zeigen IPs schlicht keinen Ort. Es gibt keinen HTTP-Geodienst —

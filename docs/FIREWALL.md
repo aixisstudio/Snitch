@@ -14,9 +14,17 @@ applied to the OS-native firewall, best-effort:
 
 | OS | Mechanism |
 |---|---|
-| Windows | `netsh advfirewall` outbound block rules |
-| Linux | `iptables -A OUTPUT -j DROP` (dedicated `SNITCH_LOCK` chain for lockdown) |
+| Windows | **WFP user-mode filters** via `fwpuclnt.dll` (ctypes, elevated) — `netsh advfirewall` remains the fallback |
+| Linux | `iptables -A OUTPUT -j DROP` (dedicated `SNITCH_LOCK` chain for lockdown); `tc` clsact/flower for throttling |
 | macOS | generated `pf` anchor loaded with `pfctl` |
+
+On Windows, `detection/wfp.py` talks to the **Windows Filtering Platform**
+directly — no `netsh` subprocess, no kernel driver: outbound ALE filters
+matched on app path, remote IP/CIDR and remote port, created with
+deterministic keys so a removed rule deletes exactly its own filters, and
+an enumeration sweep purges filters Snitch created but forgot. It is
+*filter management* — Snitch does not run a WFP callout, does not inspect
+payloads in-kernel, and reports `applied=False` when not elevated.
 
 Rule kinds: `ip`, `cidr`, `domain`, `process`, `port`. Rules persist in
 `snitch.db` and are re-applied at startup. `domain` rules are re-resolved
@@ -28,6 +36,9 @@ to loopback instead — domains via a marked `# snitch-sinkhole` block in the
 hosts file (all OSes), IPs/CIDRs via iptables `DNAT` in the nat OUTPUT chain
 (Linux only). A sinkholed destination keeps "answering" from 127.0.0.1 so an
 analyst can watch what the process expects instead of severing the call.
+`throttle` (Linux only, `rate` kbit/s) polices the destination with a `tc`
+clsact egress flower filter instead of blocking — useful for choking a
+suspect process without tipping it off.
 
 **Honest limits:**
 
@@ -124,6 +135,41 @@ the live graph: alert-type counts, contacts to high-risk countries,
 unresolved hosts, firewall posture — and returns plain-language
 recommendations. It is a *finding report*, not a certification.
 
+### Optional probes (v1.3)
+
+All of these are **off by default or self-gating**, degrade honestly, and
+never ship data off the machine:
+
+- **eBPF connect probe** (Linux, `ebpf_probe` setting) — a BCC
+  `tcpconnect`-style kprobe attributes `connect()` calls of processes too
+  short-lived for the socket table. Needs `python3-bcc` + root; ambiguous
+  destinations (two pids → same `ip:port`) are *never* guessed.
+  `GET /security/ebpf` reports availability with the honest reason.
+- **Frida deep inspection** — `POST /security/deep_inspect {pid,seconds}`
+  attaches to ONE pid for ≤60 s (needs the optional `frida` package +
+  debugger rights) and reports *which loaded module* issued each
+  `connect()`. Module paths under temp/staging dirs → `INJECT_SUSPECT`.
+- **Sinkhole responder** — while a `sinkhole` rule is enabled, loopback
+  listeners on :80 (HTTP) and :443 (TLS/SNI) turn every redirected
+  attempt into a `SINKHOLE_HIT` alert carrying Host/URI or SNI plus the
+  initiating process. `GET /security/sinkhole` shows listeners + hits.
+- **Module integrity** — a Merkle root over each process's file-backed
+  executable mappings → `MODULE_CHANGED` on tamper; mapped paths under
+  `/tmp`, memfd or other staging dirs → `MODULE_SUSPECT`.
+- **Mining detection** — stratum JSON (`mining.subscribe`) in a bounded
+  cleartext payload head → `MINING_STRATUM`; known pool ports + sustained
+  CPU → `MINING_SUSPECT`. A pool port alone never alerts.
+- **Hardware counters** — `POST /security/perf {pid,seconds}` samples
+  cycles/instructions/cache-misses via `perf_event_open` (Linux, gated by
+  `kernel.perf_event_paranoid`) to corroborate mining suspicion.
+- **Local LLM enrichment** — opt-in (`slm_enabled`): `/security/explain`
+  can call an Ollama-compatible endpoint, **loopback only** — remote
+  endpoints are rejected so alert metadata can't leave the machine.
+- **IOC packs** — `GET /security/iocpack` exports indicators as a Bloom
+  filter + randomized response (ε≈4.6 — deniable, never raw);
+  `POST /security/iocpack/import` checks observed destinations against a
+  received pack, probabilistically, and never auto-blocks.
+
 ---
 
 ## Français
@@ -139,9 +185,17 @@ appliquées au pare-feu natif de l'OS, au mieux :
 
 | OS | Mécanisme |
 |---|---|
-| Windows | règles de blocage sortantes `netsh advfirewall` |
-| Linux | `iptables -A OUTPUT -j DROP` (chaîne dédiée `SNITCH_LOCK` pour le lockdown) |
+| Windows | **filtres WFP user-mode** via `fwpuclnt.dll` (ctypes, élevé) — `netsh advfirewall` reste le repli |
+| Linux | `iptables -A OUTPUT -j DROP` (chaîne dédiée `SNITCH_LOCK` pour le lockdown) ; `tc` clsact/flower pour le bridage |
 | macOS | ancre `pf` générée chargée avec `pfctl` |
+
+Sous Windows, `detection/wfp.py` dialogue avec la **Windows Filtering
+Platform** directement — sans subprocess `netsh`, sans driver noyau :
+filtres ALE sortants par chemin d'appli, IP/CIDR et port, créés avec des
+clés déterministes pour qu'une règle supprimée efface exactement ses
+filtres, plus une purge par énumération des filtres orphelins. C'est de la
+*gestion de filtres* — Snitch ne fait pas de callout WFP, n'inspecte pas
+les payloads en noyau et rapporte `applied=False` sans élévation.
 
 Types de règles : `ip`, `cidr`, `domain`, `process`, `port`. Les règles
 persistent dans `snitch.db` et sont réappliquées au démarrage. Les règles
@@ -153,7 +207,9 @@ loopback — domaines via un bloc marqué `# snitch-sinkhole` dans le fichier
 hosts (tous OS), IP/CIDR via `DNAT` iptables dans la table nat OUTPUT
 (Linux seulement). Une destination sinkholée continue de « répondre »
 depuis 127.0.0.1 : l'analyste observe ce que le processus attend au lieu
-de couper l'appel.
+de couper l'appel. `throttle` (Linux seul, `rate` kbit/s) bride la
+destination avec un filtre flower egress `tc` clsact au lieu de bloquer —
+utile pour étouffer un processus suspect sans l'alerter.
 
 **Limites honnêtes :**
 
@@ -253,3 +309,40 @@ de chaque alerte.
 alertes et le graphe : comptes par type, contacts vers pays à risque,
 hôtes non résolus, posture pare-feu — et renvoie des recommandations en
 langage clair. C'est un *rapport de constats*, pas une certification.
+
+### Sondes optionnelles (v1.3)
+
+Toutes sont **désactivées par défaut ou auto-limitées**, dégradent
+honnêtement et n'envoient jamais de données hors de la machine :
+
+- **Sonde eBPF connect** (Linux, réglage `ebpf_probe`) — un kprobe BCC de
+  type `tcpconnect` attribue les `connect()` des processus trop courts
+  pour la table des sockets. Exige `python3-bcc` + root ; les
+  destinations ambiguës (deux pids → même `ip:port`) ne sont *jamais*
+  devinées. `GET /security/ebpf` rapporte la disponibilité honnêtement.
+- **Inspection Frida** — `POST /security/deep_inspect {pid,seconds}`
+  attache à UN pid ≤60 s (exige le paquet optionnel `frida` + droits de
+  débogage) et rapporte *quel module chargé* a émis chaque `connect()`.
+  Chemins de modules sous temp/staging → `INJECT_SUSPECT`.
+- **Répondeur sinkhole** — tant qu'une règle `sinkhole` est active, des
+  écouteurs loopback sur :80 (HTTP) et :443 (TLS/SNI) transforment chaque
+  tentative redirigée en alerte `SINKHOLE_HIT` avec Host/URI ou SNI +
+  processus. `GET /security/sinkhole` montre écouteurs + hits.
+- **Intégrité des modules** — racine Merkle sur les mappings exécutables
+  fichier-basés d'un processus → `MODULE_CHANGED` en cas d'altération ;
+  chemins sous `/tmp`, memfd ou staging → `MODULE_SUSPECT`.
+- **Détection de minage** — JSON stratum (`mining.subscribe`) dans une
+  tête de payload bornée → `MINING_STRATUM` ; ports de pools + CPU
+  soutenue → `MINING_SUSPECT`. Un port de pool seul n'alerte jamais.
+- **Compteurs matériels** — `POST /security/perf {pid,seconds}`
+  échantillonne cycles/instructions/cache-misses via `perf_event_open`
+  (Linux, sous réserve de `kernel.perf_event_paranoid`) pour corroborer
+  la suspicion de minage.
+- **Enrichissement LLM local** — opt-in (`slm_enabled`) :
+  `/security/explain` peut appeler un endpoint compatible Ollama,
+  **loopback uniquement** — les endpoints distants sont rejetés pour que
+  les métadonnées d'alerte ne quittent jamais la machine.
+- **Paquets IOC** — `GET /security/iocpack` exporte les indicateurs en
+  filtre de Bloom + randomized response (ε≈4,6 — déni plausible, jamais
+  en clair) ; `POST /security/iocpack/import` confronte les destinations
+  observées à un paquet reçu, en probabiliste, sans blocage automatique.

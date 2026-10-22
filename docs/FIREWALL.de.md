@@ -91,3 +91,16 @@ in Klartext. Ein *Befundbericht*, keine Zertifizierung.
 - **Domain-Re-Auflösung** — `domain`-Regeln werden alle ~10 Min neu aufgelöst; das IP-Delta wird je OS angewendet, damit CDN-Rotation einen Namen nicht stillschweigend freigibt.
 - **Integritätswache** (standardmäßig an, schreibgeschützt, lokal) — SHA-256-Baselines vernetzter Executables (`BINARY_CHANGED`), Name/Exe-Mismatches (`NAME_MISMATCH`), `rwxp`-Scan nur Linux (`MEM_RWX`, Info-Stufe für bekannte JIT-Apps). `GET /security/integrity`, `POST /security/integrity/check`.
 - **Alert-Erklärungen** — `GET /security/explain?type=X` liefert handgeschriebene zweisprachige (EN/FR) Erklärungen; deterministisch und offline — kein Modell. Die UI zeigt sie hinter der „Warum?“-Schaltfläche.
+
+### Optionale Sonden (v1.3)
+
+Alle sind **standardmäßig aus oder selbstlimitierend**, degradieren ehrlich und senden nie Daten von der Maschine:
+
+- **eBPF-Connect-Sonde** (Linux, `ebpf_probe`) — BCC-`tcpconnect`-Kprobe ordnet `connect()` zu kurzlebiger Prozesse zu. Braucht `python3-bcc` + root; mehrdeutige Ziele werden nie geraten. `GET /security/ebpf`.
+- **Frida-Inspektion** — `POST /security/deep_inspect {pid,seconds}` hängt ≤60 s an EINEN pid und meldet, welches geladene Modul jedes `connect()` auslöste. Staging-Pfade → `INJECT_SUSPECT`.
+- **Sinkhole-Responder** — bei aktiver `sinkhole`-Regel verwandeln Loopback-Listener auf :80/:443 jeden Versuch in einen `SINKHOLE_HIT`-Alarm mit Host/URI oder SNI + Prozess.
+- **Modul-Integrität** — Merkle-Wurzel über ausführbare Mappings → `MODULE_CHANGED`; Pfade unter `/tmp`/memfd → `MODULE_SUSPECT`.
+- **Mining-Erkennung** — Stratum-JSON im Payload-Kopf → `MINING_STRATUM`; Pool-Ports + anhaltende CPU → `MINING_SUSPECT`.
+- **Hardware-Zähler** — `POST /security/perf` sampelt Zyklen/Instruktionen via `perf_event_open` (Linux).
+- **Lokales LLM** — opt-in (`slm_enabled`): `/security/explain` ruft einen Ollama-Endpunkt **nur Loopback** — Remote-Endpunkte abgelehnt.
+- **IOC-Pakete** — `GET /security/iocpack` exportiert Bloom + randomized response (nie Klartext); `POST /security/iocpack/import` prüft Ziele probabilistisch.

@@ -431,6 +431,93 @@ export function SettingsPanel({ onClose, lang, setLang, watchlist = [], onWatchl
           <div style={{ ...hint, marginTop: 4 }}>{t('iw_privacy')}</div>
         </div>
 
+        {/* eBPF probe / Sonde eBPF */}
+        <div style={{ ...row, display: 'block' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <div style={label}>{t('ebpf_title')}</div>
+              <div style={hint}>{t('ebpf_hint')}</div>
+            </div>
+            <button
+              onClick={() => {
+                const v = settings?.ebpf_probe === false
+                setSettings(s => ({ ...s, ebpf_probe: v }))
+                save('ebpf_probe', v)
+              }}
+              role="switch" aria-checked={settings?.ebpf_probe !== false}
+              style={{
+                width: 36, height: 20, borderRadius: 10, border: 'none',
+                background: settings?.ebpf_probe !== false ? '#3b82f6' : 'var(--bg)',
+                outline: '1px solid var(--border)', cursor: 'pointer',
+                position: 'relative', flexShrink: 0,
+              }}>
+              <div style={{
+                width: 14, height: 14, borderRadius: '50%', background: 'var(--text)',
+                position: 'absolute', top: 3, left: settings?.ebpf_probe !== false ? 19 : 3,
+                transition: 'left 0.15s',
+              }} />
+            </button>
+          </div>
+          <div style={{ ...hint, marginTop: 4 }}>{t('ebpf_privacy')}</div>
+        </div>
+
+        {/* Local SLM (Ollama) / SLM local (Ollama) */}
+        <div style={{ ...row, display: 'block' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <div style={label}>{t('slm_title')}</div>
+              <div style={hint}>{t('slm_hint')}</div>
+            </div>
+            <button
+              onClick={() => {
+                const v = !settings?.slm_enabled
+                setSettings(s => ({ ...s, slm_enabled: v }))
+                save('slm_enabled', v)
+              }}
+              role="switch" aria-checked={!!settings?.slm_enabled}
+              style={{
+                width: 36, height: 20, borderRadius: 10, border: 'none',
+                background: settings?.slm_enabled ? '#3b82f6' : 'var(--bg)',
+                outline: '1px solid var(--border)', cursor: 'pointer',
+                position: 'relative', flexShrink: 0,
+              }}>
+              <div style={{
+                width: 14, height: 14, borderRadius: '50%', background: 'var(--text)',
+                position: 'absolute', top: 3, left: settings?.slm_enabled ? 19 : 3,
+                transition: 'left 0.15s',
+              }} />
+            </button>
+          </div>
+          {settings?.slm_enabled && (
+            <form onSubmit={e => {
+              e.preventDefault()
+              save('slm_endpoint', e.target.elements.slme.value.trim())
+              save('slm_model', e.target.elements.slmm.value.trim())
+            }} style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+              <input
+                name="slme"
+                defaultValue={settings?.slm_endpoint ?? ''}
+                placeholder="http://127.0.0.1:11434"
+                aria-label={t('slm_endpoint')}
+                style={{ flex: 2, background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', padding: '6px 10px', fontSize: 11, outline: 'none' }}
+              />
+              <input
+                name="slmm"
+                defaultValue={settings?.slm_model ?? ''}
+                placeholder="llama3.2"
+                aria-label={t('slm_model')}
+                style={{ flex: 1, background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', padding: '6px 10px', fontSize: 11, outline: 'none' }}
+              />
+              <button type="submit" style={{
+                background: 'var(--bg)', border: '1px solid var(--border)',
+                borderRadius: 6, color: 'var(--text-dim)', padding: '6px 12px',
+                fontSize: 10, cursor: 'pointer',
+              }}>{t('save')}</button>
+            </form>
+          )}
+          <div style={{ ...hint, marginTop: 4 }}>{t('slm_privacy')}</div>
+        </div>
+
         {/* Updates (Electron only) / Mises à jour (Electron seul) */}
         {window.snitch?.getUpdateStatus && (
           <div style={{ ...row, display: 'block' }}>

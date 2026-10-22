@@ -82,3 +82,16 @@ Snitch **不**在用户态过滤数据包。规则会被尽力下发到操作系
 - **域名重解析** — `domain` 规则每约 10 分钟重新解析，按 OS 应用 IP 差值，CDN 轮换不会静默放行域名。
 - **完整性监视**（默认开启，只读，本地） — 联网可执行文件的 SHA-256 基线（`BINARY_CHANGED`）、名称/exe 不匹配（`NAME_MISMATCH`）、仅 Linux `rwxp` 扫描（`MEM_RWX`，已知 JIT 应用为 info 级）。`GET /security/integrity`、`POST /security/integrity/check`。
 - **告警解释** — `GET /security/explain?type=X` 返回手写的双语（EN/FR）解释；确定性、完全离线 — 非模型。UI 中每条告警的「为什么？」按钮显示。
+
+### 可选探针 (v1.3)
+
+所有探针**默认关闭或自我限制**，降级时如实报告，绝不向机器外发送数据：
+
+- **eBPF connect 探针**（Linux，`ebpf_probe`）— `tcpconnect` 型 BCC kprobe 归属套接字表漏掉的短命进程的 `connect()`。需要 `python3-bcc` + root；模糊目标绝不猜测。`GET /security/ebpf`。
+- **Frida 深度检查** — `POST /security/deep_inspect {pid,seconds}` 附加到单个 pid ≤60 秒，报告每个 `connect()` 由哪个已加载模块发起。staging 路径 → `INJECT_SUSPECT`。
+- **沉洞响应器** — `sinkhole` 规则启用期间，:80/:443 上的 loopback 监听器把每次尝试转为 `SINKHOLE_HIT` 告警（Host/URI 或 SNI + 进程）。
+- **模块完整性** — 可执行映射的 Merkle 根 → `MODULE_CHANGED`；`/tmp`/memfd 路径 → `MODULE_SUSPECT`。
+- **挖矿检测** — payload 头部中的 stratum JSON → `MINING_STRATUM`；矿池端口 + 持续高 CPU → `MINING_SUSPECT`。
+- **硬件计数器** — `POST /security/perf` 通过 `perf_event_open` 采样周期/指令数 (Linux)。
+- **本地 LLM** — 可选（`slm_enabled`）：`/security/explain` 调用 Ollama 兼容端点，**仅限 loopback** — 远程端点被拒绝。
+- **IOC 包** — `GET /security/iocpack` 以 Bloom + randomized response 导出（绝不明文）；`POST /security/iocpack/import` 概率性地检查目标。

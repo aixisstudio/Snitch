@@ -89,9 +89,16 @@ from resolver.dns_geo import (enrich_ip, is_private, learn_dns_answers,
 from scanner.arp_scanner import ARPScanner, Device, default_gateway as _default_gateway
 from scanner.arp_scanner import READ_STATS as _arp_stats
 from detection.anomaly import AnomalyDetector, Alert
+from capture.ebpf_probe import EbpfProbe
+from detection.deepinspect import DeepInspector, suspicious_module_paths
 from detection.firewall import FirewallManager
 from detection.integrity import IntegrityWatcher
 from detection import explain as alert_explain
+from detection import iocshare
+from detection.llm_local import LocalSlm
+from detection.miner import MinerDetector
+from detection import perfprobe
+from detection.sinkresponder import SinkholeResponder
 from detection.threatintel import ThreatIntel
 from api.notify import notifier
 from paths import data_dir
@@ -123,6 +130,16 @@ ti = ThreatIntel()
 # FR: Veille d'intégrité des processus en lecture seule — baselines de hash
 #     d'exes, mismatch nom/exe, maps RWX Linux. Inspection locale, état borné.
 integrity = IntegrityWatcher()
+# EN: Optional/kernel-adjacent security modules — every one degrades
+#     honestly when its platform requirement isn't met (see each module).
+# FR: Modules de sécurité optionnels/proches noyau — chacun dégrade
+#     honnêtement quand sa prérequis plateforme manque (cf. chaque module).
+ebpf = EbpfProbe()                # EN: kprobe connect attribution (Linux+bcc)
+                                  # FR: attribution connect par kprobe
+deep = DeepInspector()            # EN: Frida module-origin attribution / FR: attribution de module Frida
+sink = SinkholeResponder()        # EN: loopback :80/:443 sinkhole listener / FR: écouteur sinkhole
+miner = MinerDetector()           # EN: stratum/pool/CPU mining signals / FR: signaux de minage
+slm = LocalSlm()                  # EN: optional localhost LLM enrichment / FR: enrichissement LLM local
 _loop: asyncio.AbstractEventLoop | None = None
 _sniffer: PacketSniffer | None = None
 _scanner: ARPScanner | None = None
@@ -202,17 +219,40 @@ class IgnoreBody(BaseModel):
 
 
 class FirewallRuleBody(BaseModel):
-    """EN: /firewall/rules payload — block or sinkhole an IP, domain suffix
-    or process. `action` defaults to "block"; "sinkhole" redirects the
-    destination to loopback (hosts file for domains, iptables DNAT on
-    Linux for IPs).
-    FR: Charge utile de /firewall/rules — bloquer ou trou-noircir une IP,
-    un suffixe de domaine ou un processus. `action` = « block » (défaut) ;
-    « sinkhole » redirige vers loopback (hosts pour les domaines, DNAT
-    iptables sous Linux pour les IP)."""
+    """EN: /firewall/rules payload — block, sinkhole or throttle an IP,
+    domain suffix or process. `action` defaults to "block"; "sinkhole"
+    redirects the destination to loopback (hosts file for domains, DNAT
+    on Linux for IPs); "throttle" rate-limits to `rate` kbit/s (Linux tc).
+    FR: Charge utile de /firewall/rules — bloquer, trou-noircir ou limiter
+    une IP, un suffixe de domaine ou un processus. `action` = « block »
+    (défaut) ; « sinkhole » redirige vers loopback ; « throttle » limite
+    à `rate` kbit/s (tc Linux)."""
     kind: str
     value: str
     action: str = "block"
+    rate: int = 64
+
+
+class PidSecondsBody(BaseModel):
+    """EN: PID + bounded duration for inspect/sample endpoints.
+    FR: PID + durée bornée pour les endpoints d'inspection/échantillonnage."""
+    pid: int
+    seconds: int = 20
+
+
+class ExplainBody(BaseModel):
+    """EN: /security/explain payload — alert type + context detail + lang.
+    FR: Charge utile de /security/explain — type + contexte + langue."""
+    type: str
+    detail: dict = Field(default_factory=dict)
+    lang: str = "en"
+
+
+class IocImportBody(BaseModel):
+    """EN: /security/iocpack/import payload — a received pack to check
+    local indicators against. / FR: Charge utile d'import IOC — un paquet
+    reçu à confronter aux indicateurs locaux."""
+    pack: dict = Field(default_factory=dict)
 
 
 class FirewallToggleBody(BaseModel):
@@ -888,6 +928,22 @@ def _process_batch(packets: list[Packet]) -> None:
                 db.log_alert(ad)
                 out_alerts.append(ad)
 
+        # EN: Mining signals — cleartext stratum in the payload head and
+        #     pool-port marking for later CPU corroboration (drain loop).
+        # FR: Signaux de minage — stratum en clair dans la tête du payload
+        #     et marquage port-pool pour corroboration CPU (boucle drain).
+        for f in miner.analyze_packet(pkt):
+            a = Alert(
+                type=f["type"], severity=f["severity"],
+                message=f"Mining: {f['type'].replace('_', ' ').title()} — "
+                        f"{f.get('process')}: {f.get('detail', '')}",
+                node_id=remote_ip, details=f)
+            _flag_alert(a, nodes)
+            ad = a.to_dict()
+            db.log_alert(ad)
+            out_alerts.append(ad)
+            asyncio.get_running_loop().create_task(_notify(ad))
+
         # EN: Outbound packets with attribution feed the integrity watch —
         #     the watcher itself is bounded (one inspection per pid lifetime).
         # FR: Les paquets sortants attribués alimentent la veille d'intégrité —
@@ -966,6 +1022,7 @@ async def _drain_loop() -> None:
         message « batch ». Remplace l'ancienne tempête coroutine+broadcast
         par paquet.
     """
+    ticks = 0
     while not _shutdown:
         batch: list[Packet] = []
         for _ in range(DRAIN_MAX_PACKETS):
@@ -978,7 +1035,37 @@ async def _drain_loop() -> None:
                 await broadcast(_process_batch(batch))
             except Exception as exc:
                 logger.exception("packet batch failed: %s", exc)
+        ticks += 1
+        # EN: ~10 s — pool-port suspects get their CPU corroboration in an
+        #     executor (cpu_percent samples briefly; never on the loop).
+        # FR: ~10 s — les suspects port-pool reçoivent leur corroboration
+        #     CPU dans un executor (cpu_percent échantillonne ; jamais sur
+        #     la boucle).
+        if ticks % 40 == 0:
+            asyncio.get_running_loop().create_task(_miner_corroborate())
         await asyncio.sleep(DRAIN_INTERVAL_S)
+
+
+async def _miner_corroborate() -> None:
+    """EN: Sample CPU for pool-port suspects off the event loop; each
+    corroborated case becomes a MINING_SUSPECT alert.
+    FR: Échantillonner la CPU des suspects port-pool hors boucle ; chaque
+    cas corroboré devient une alerte MINING_SUSPECT."""
+    loop = asyncio.get_running_loop()
+    try:
+        findings = await loop.run_in_executor(None, miner.cpu_corroborate)
+    except Exception as exc:
+        logger.debug("miner corroboration failed: %s", exc)
+        return
+    for f in findings:
+        a = Alert(type=f["type"], severity=f["severity"],
+                  message=f"Mining suspect — {f.get('process')}: "
+                          f"{f.get('detail', '')}",
+                  node_id=f.get("ip"), details=f)
+        d = a.to_dict()
+        db.log_alert(d)
+        await broadcast({"type": "alert", "alert": d})
+        await _notify(d)
 
 
 def _evict_weakest_node() -> None:
@@ -1164,6 +1251,33 @@ def _flush_loop() -> None:
                                 changed)
             except Exception as exc:
                 logger.debug("domain refresh failed: %s", exc)
+        # EN: Sinkhole responder lifecycle — listen while at least one
+        #     enabled sinkhole rule exists, drain its hits into alerts.
+        # FR: Cycle de vie du répondeur sinkhole — écouter tant qu'une
+        #     règle sinkhole active existe, vider ses hits en alertes.
+        try:
+            rules_now, _ld = fw.serialized()
+            has_sink = any(r.get("action") == "sinkhole" and r.get("enabled", True)
+                           for r in rules_now)
+            if has_sink:
+                sink.start()
+            else:
+                sink.stop()
+            for hit in sink.pop_hits():
+                a = Alert(
+                    type="SINKHOLE_HIT", severity="warning",
+                    message=f"Sinkholed connection observed: "
+                            f"{hit.get('host') or hit.get('kind')} — "
+                            f"{hit.get('process') or 'pid ' + str(hit.get('pid'))}",
+                    node_id=None, details=hit)
+                d = a.to_dict()
+                db.log_alert(d)
+                if _loop:
+                    asyncio.run_coroutine_threadsafe(
+                        broadcast({"type": "alert", "alert": d}), _loop)
+                    asyncio.run_coroutine_threadsafe(_notify(d), _loop)
+        except Exception as exc:
+            logger.debug("sinkhole responder tick failed: %s", exc)
 
 
 def _cleanup_loop() -> None:
@@ -1198,6 +1312,16 @@ def _start_capture() -> None:
     else:
         _sniffer = PacketSniffer(callback=on_packet, ports=_port_filter,
                                  iface=db.get_setting("interface"))
+        # EN: eBPF attribution probe — kernel sees every connect() even
+        #     from processes that die before the next socket-table refresh.
+        #     Opt-in-able via settings, silently no-ops without bcc/root.
+        # FR: Sonde d'attribution eBPF — le noyau voit chaque connect() même
+        #     des processus morts avant le prochain rafraîchissement de la
+        #     table. Réglable, silencieusement inactive sans bcc/root.
+        if db.get_setting("ebpf_probe", True):
+            if ebpf.start():
+                _sniffer.set_attribution_probe(ebpf)
+                logger.info("eBPF connect probe active")
         threading.Thread(target=_sniffer.start, daemon=True).start()
     _scanner = ARPScanner(callback=on_device, interval=30)
     threading.Thread(target=_scanner.start, daemon=True).start()
@@ -1298,6 +1422,11 @@ def _load_settings() -> None:
     notifier.configure(db.get_setting("webhook_url", "") or "",
                        bool(db.get_setting("webhook_enabled", False)),
                        db.get_setting("telegram_chat_id", "") or "")
+    # EN: Local SLM enrichment — loopback-only by construction, opt-in.
+    # FR: Enrichissement SLM local — loopback par construction, opt-in.
+    slm.configure(bool(db.get_setting("slm_enabled", False)),
+                  db.get_setting("slm_endpoint", "") or "",
+                  db.get_setting("slm_model", "") or "")
     if _port_filter:
         logger.info("restored port filter: %s", _port_filter)
 
@@ -1345,6 +1474,8 @@ async def _shutdown_all() -> None:
     global _shutdown
     _shutdown = True
     _stop_capture()
+    ebpf.stop()
+    sink.stop()
     if _media_monitor:
         _media_monitor.stop()
     # EN: Final drain + flush so nothing in flight is lost.
@@ -1472,6 +1603,22 @@ async def post_settings(body: SettingsBody) -> dict:
                                db.get_setting("telegram_chat_id", "") or "")
         if key == "integrity_watch":
             integrity.configure(bool(value))
+        if key == "ebpf_probe":
+            # EN: Live toggle — start the probe or stop it; never raises
+            #     (bcc/root absence is reported by /security/ebpf instead).
+            # FR: Bascule à chaud — démarre ou arrête la sonde ; ne lève
+            #     jamais (bcc/root absents rapportés par /security/ebpf).
+            if value:
+                ebpf.start()
+                if _sniffer is not None and hasattr(
+                        _sniffer, "set_attribution_probe"):
+                    _sniffer.set_attribution_probe(ebpf)
+            else:
+                ebpf.stop()
+        if key in ("slm_enabled", "slm_endpoint", "slm_model"):
+            slm.configure(bool(db.get_setting("slm_enabled", False)),
+                          db.get_setting("slm_endpoint", "") or "",
+                          db.get_setting("slm_model", "") or "")
     return {"ok": True}
 
 @app.get("/capture/status", dependencies=_AUTH)
@@ -1984,7 +2131,7 @@ async def firewall_add_rule(body: FirewallRuleBody) -> dict:
     loop = asyncio.get_running_loop()
     try:
         rule = await loop.run_in_executor(
-            None, fw.add_rule, body.kind, body.value, body.action)
+            None, fw.add_rule, body.kind, body.value, body.action, body.rate)
     except ValueError as exc:
         raise HTTPException(400, str(exc))
     rules, lockdown = fw.serialized()
@@ -2146,6 +2293,147 @@ async def integrity_check(body: PidBody) -> dict:
 
     findings = await loop.run_in_executor(None, _do)
     return {"pid": body.pid, "findings": findings}
+
+
+@app.get("/security/ebpf", dependencies=_AUTH)
+async def ebpf_status() -> dict:
+    """EN: eBPF connect-probe status — availability reason is always
+        reported honestly (linux-only, root, python3-bcc).
+    FR: État de la sonde eBPF — la raison d'indisponibilité est toujours
+        rapportée honnêtement (linux, root, python3-bcc)."""
+    return ebpf.status()
+
+
+@app.post("/security/deep_inspect", dependencies=_AUTH)
+async def deep_inspect(body: PidSecondsBody) -> dict:
+    """EN: Bounded Frida inspection — attach to ONE pid for ≤60 s and
+        report which module (exe/DLL) initiated each connection attempt,
+        plus staging-path flags for injected code. Requires the optional
+        `frida` package and the OS's usual debugger permissions.
+    FR: Inspection Frida bornée — attache à UN pid ≤60 s et rapporte quel
+        module (exe/DLL) a initié chaque connexion, plus les signalements
+        de chemins de staging pour le code injecté. Exige le paquet
+        `frida` optionnel et les droits de débogage usuels de l'OS."""
+    if body.pid <= 3 or body.pid == os.getpid():
+        raise HTTPException(400, "refusing to inspect a system/critical pid")
+    loop = asyncio.get_running_loop()
+    res = await loop.run_in_executor(
+        None, deep.inspect, body.pid, min(body.seconds, 60))
+    res["suspicious_paths"] = suspicious_module_paths(res.get("events", []))
+    if res["suspicious_paths"]:
+        a = Alert(type="INJECT_SUSPECT", severity="critical",
+                  message=f"Injected-module suspicion in pid {body.pid} — "
+                          f"module(s) in staging paths made connections",
+                  details={"pid": body.pid,
+                           "paths": res["suspicious_paths"]})
+        d = a.to_dict()
+        db.log_alert(d)
+        await broadcast({"type": "alert", "alert": d})
+        await _notify(d)
+    return res
+
+
+@app.get("/security/sinkhole", dependencies=_AUTH)
+async def sinkhole_status() -> dict:
+    """EN: Sinkhole responder state — which loopback listeners are bound
+        (80 HTTP / 443 SNI) plus the recent captured hits.
+    FR: État du répondeur sinkhole — quels écouteurs loopback sont liés
+        (80 HTTP / 443 SNI) plus les hits capturés récents."""
+    return sink.status()
+
+
+@app.post("/security/perf", dependencies=_AUTH)
+async def perf_sample(body: PidSecondsBody) -> dict:
+    """EN: Hardware-counter sample for one pid — cycles, instructions,
+        cache-misses over ≤10 s via perf_event_open (Linux; gated by
+        kernel.perf_event_paranoid). Corroborates MINING_SUSPECT.
+    FR: Échantillon de compteurs matériels pour un pid — cycles,
+        instructions, cache-misses sur ≤10 s via perf_event_open (Linux ;
+        sous réserve de kernel.perf_event_paranoid)."""
+    if body.pid <= 3:
+        raise HTTPException(400, "refusing to sample a kernel pid")
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(
+        None, perfprobe.sample, body.pid, min(body.seconds, 10))
+
+
+@app.get("/security/slm", dependencies=_AUTH)
+async def slm_status() -> dict:
+    """EN: Local SLM (Ollama-compatible) status — enabled, loopback
+        endpoint, reachable model. Never hides "unreachable".
+    FR: État du SLM local (compatible Ollama) — activé, endpoint loopback,
+        modèle joignable. Ne cache jamais « injoignable »."""
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, slm.status)
+
+
+@app.get("/security/iocpack", dependencies=_AUTH)
+async def iocpack_export() -> dict:
+    """EN: Export a privacy-preserving IOC pack (Bloom + randomized
+        response) built from this machine's firewall rules + alert
+        indicators. The user shares the JSON themselves — nothing is sent.
+    FR: Exporter un paquet d'IOC préservant la vie privée (Bloom +
+        randomized response) construit depuis les règles pare-feu +
+        indicateurs d'alertes de cette machine. L'utilisateur partage le
+        JSON lui-même — rien n'est envoyé."""
+    loop = asyncio.get_running_loop()
+    indicators = await loop.run_in_executor(None, _collect_indicators)
+    return iocshare.build_pack(indicators)
+
+
+@app.post("/security/iocpack/import", dependencies=_AUTH)
+async def iocpack_import(body: IocImportBody) -> dict:
+    """EN: Check this machine's observed destinations against a received
+        community pack — returns probabilistic hints, never auto-blocks.
+    FR: Confronter les destinations observées à un paquet communautaire
+        reçu — renvoie des indices probabilistes, ne bloque jamais seul."""
+    candidates = [ip for ip in nodes if ip != "local"]
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(
+        None, iocshare.check_pack, body.pack, candidates)
+
+
+def _collect_indicators() -> list[str]:
+    """EN: Local indicators worth sharing — firewall rule targets,
+    alert IPs of the serious types, changed-binary hashes. Bounded.
+    FR: Indicateurs locaux partageables — cibles des règles pare-feu,
+    IP des alertes sérieuses, hash des binaires modifiés. Borné."""
+    out: list[str] = []
+    rules, _ld = fw.serialized()
+    for r in rules:
+        v = str(r.get("value", ""))
+        if v and r.get("kind") in ("ip", "cidr", "domain"):
+            out.append(v)
+    try:
+        for a in db.get_alerts(500):
+            d = a.get("details") or {}
+            for key in ("ip", "host", "exe", "actual"):
+                v = d.get(key)
+                if isinstance(v, str) and v:
+                    out.append(v)
+    except Exception:                                # noqa: BLE001
+        pass
+    return list(dict.fromkeys(out))[:4096]
+
+
+@app.post("/security/explain", dependencies=_AUTH)
+async def security_explain_post(body: ExplainBody) -> dict:
+    """EN: Alert explanation — deterministic bilingual templates always;
+        `llm` carries the optional localhost-SLM natural-language variant
+        when slm_enabled and the model answers (else absent).
+    FR: Explication d'alerte — gabarits bilingues déterministes toujours ;
+        `llm` porte la variante SLM local quand activé et joignable."""
+    rec = alert_explain.explain(body.type)
+    if rec is None:
+        raise HTTPException(404, f"no explanation for alert type {body.type!r}")
+    out = {"type": body.type.upper(), **rec}
+    loop = asyncio.get_running_loop()
+    llm = await loop.run_in_executor(
+        None, slm.enrich, body.type, body.detail,
+        body.lang if body.lang in ("en", "fr") else "en")
+    if llm:
+        out["llm"] = llm
+    return out
 
 
 @app.get("/security/explain", dependencies=_AUTH)
@@ -2412,7 +2700,8 @@ def _forensics_stix(bundle: dict, ip: Optional[str] = None) -> dict:
         SIEM ; volontairement pas un graphe complet."""
     import uuid
     ts = bundle["generated_at"]
-    _uid = lambda s: str(uuid.uuid5(uuid.NAMESPACE_DNS, f"snitch.local/{s}"))
+    def _uid(s: str) -> str:
+        return str(uuid.uuid5(uuid.NAMESPACE_DNS, f"snitch.local/{s}"))
     objects: list[dict] = [{
         "type": "identity", "spec_version": "2.1",
         "id": f"identity--{_uid('exporter')}",

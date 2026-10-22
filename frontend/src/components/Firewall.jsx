@@ -47,6 +47,9 @@ export function FirewallPanel({ onClose, onLockdownChange }) {
   const [kind, setKind] = useState('ip')
   const [value, setValue] = useState('')
   const [action, setAction] = useState('block')
+  const [rate, setRate] = useState(64)
+  const [iocText, setIocText] = useState('')
+  const [iocResult, setIocResult] = useState(null)
   const [err, setErr] = useState('')
   const [audit, setAudit] = useState(null)
 
@@ -94,10 +97,39 @@ export function FirewallPanel({ onClose, onLockdownChange }) {
     if (!v) return
     setErr('')
     try {
-      await post('/firewall/rules', { kind, value: v, action })
+      await post('/firewall/rules', { kind, value: v, action, rate })
       setValue('')
       refresh()
     } catch (ex) { setErr(String(ex.message || ex)) }
+  }
+
+  /**
+   * EN: Download this machine's privacy-preserving IOC pack (Bloom +
+   *     randomized response) — the user decides where it goes.
+   * FR: Télécharger le paquet IOC préservant la vie privée de cette
+   *     machine (Bloom + randomized response) — l'utilisateur décide où
+   *     il va.
+   */
+  async function exportIoc() {
+    const base = await apiBase()
+    const res = await fetch(`${base}/security/iocpack`,
+      { headers: await authHeaders() })
+    if (!res.ok) { setErr(res.statusText); return }
+    const blob = await res.blob()
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = 'snitch-ioc-pack.json'
+    a.click()
+    URL.revokeObjectURL(a.href)
+  }
+
+  async function importIoc() {
+    setIocResult(null)
+    try {
+      const pack = JSON.parse(iocText)
+      const r = await post('/security/iocpack/import', { pack })
+      setIocResult(r)
+    } catch (ex) { setIocResult({ ok: false, error: String(ex.message || ex) }) }
   }
 
   async function toggleRule(id, enabled) {
@@ -212,7 +244,14 @@ export function FirewallPanel({ onClose, onLockdownChange }) {
             <select value={action} onChange={e => setAction(e.target.value)} aria-label={t('fw_action')} style={{ ...input, maxWidth: 90 }}>
               <option value="block">{t('fw_action_block')}</option>
               <option value="sinkhole">{t('fw_action_sinkhole')}</option>
+              <option value="throttle">{t('fw_action_throttle')}</option>
             </select>
+          )}
+          {action === 'throttle' && (kind === 'ip' || kind === 'domain') && (
+            <input type="number" min="8" max="1000000" value={rate}
+              onChange={e => setRate(Number(e.target.value) || 64)}
+              title={t('fw_rate_hint')} aria-label={t('fw_rate')}
+              style={{ ...input, width: 56 }} />
           )}
           <input value={value} onChange={e => setValue(e.target.value)}
             placeholder={t(`fw_ph_${kind}`)} aria-label={t('fw_value')}
@@ -237,12 +276,13 @@ export function FirewallPanel({ onClose, onLockdownChange }) {
                   color: r.enabled ? 'var(--blue-text)' : 'var(--text-faint)',
                   background: 'var(--bg)', borderRadius: 4, padding: '1px 5px',
                 }}>{r.kind}</span>
-                {r.action === 'sinkhole' && (
+                {r.action && r.action !== 'block' && (
                   <span style={{
                     fontSize: 9, fontWeight: 700, textTransform: 'uppercase',
-                    color: '#a855f7', background: 'var(--bg)', borderRadius: 4,
+                    color: r.action === 'sinkhole' ? '#a855f7' : '#f59e0b',
+                    background: 'var(--bg)', borderRadius: 4,
                     padding: '1px 5px',
-                  }}>{t('fw_action_sinkhole')}</span>
+                  }}>{t(`fw_action_${r.action}`)}{r.action === 'throttle' && r.rate ? ` ${r.rate}k` : ''}</span>
                 )}
                 <span style={{ fontSize: 11, color: r.enabled ? 'var(--text)' : 'var(--text-faint)', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {r.value}
@@ -319,6 +359,43 @@ export function FirewallPanel({ onClose, onLockdownChange }) {
                 textTransform: 'uppercase',
               }}>{f}</button>
             ))}
+          </div>
+          {/* EN: Privacy-preserving IOC pack — export shares indicators as
+                  a noised Bloom filter (never raw); import checks observed
+                  destinations against a community pack, probabilistically.
+              FR: Paquet IOC préservant la vie privée — l'export partage les
+                  indicateurs en filtre de Bloom bruité (jamais en clair) ;
+                  l'import confronte les destinations observées à un paquet
+                  communautaire, de façon probabiliste. */}
+          <div style={{ borderTop: '1px solid var(--border)', marginTop: 10, paddingTop: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={label}>{t('ioc_title')}</span>
+              <button onClick={exportIoc} style={{
+                background: 'var(--bg)', border: '1px solid var(--border)',
+                borderRadius: 5, color: 'var(--text-muted)', fontSize: 9,
+                fontWeight: 700, padding: '3px 8px', cursor: 'pointer',
+              }}>{t('ioc_export')}</button>
+            </div>
+            <div style={hint}>{t('ioc_hint')}</div>
+            <textarea value={iocText} onChange={e => setIocText(e.target.value)}
+              placeholder={t('ioc_import_ph')} rows={2}
+              style={{ ...input, width: '100%', boxSizing: 'border-box', marginTop: 4, resize: 'vertical', fontFamily: 'monospace' }} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
+              <button onClick={importIoc} disabled={!iocText.trim()} style={{
+                background: iocText.trim() ? '#3b82f6' : 'var(--bg)', border: 'none',
+                borderRadius: 5, color: iocText.trim() ? '#fff' : 'var(--text-faint)',
+                fontSize: 9, fontWeight: 700, padding: '3px 8px', cursor: 'pointer',
+              }}>{t('ioc_check')}</button>
+              {iocResult && (
+                <span style={{ fontSize: 10, color: iocResult.ok ? (iocResult.hints?.length ? '#f59e0b' : '#4ade80') : '#ef4444' }}>
+                  {iocResult.ok
+                    ? (iocResult.hints?.length
+                      ? t('ioc_hints', iocResult.hints.length)
+                      : t('ioc_clean'))
+                    : t('ioc_bad')}
+                </span>
+              )}
+            </div>
           </div>
         </div>
       </div>

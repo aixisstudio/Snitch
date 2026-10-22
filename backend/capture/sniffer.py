@@ -100,6 +100,11 @@ class Packet:
     # FR: (nom d'hôte, ip demandée|None, mac) appris d'un message DHCP
     #     client — nomme l'appareil avant même mDNS/LLMNR.
     dhcp: Optional[tuple] = None
+    # EN: ≤64B of cleartext payload for in-process protocol fingerprinting
+    #     (stratum miner detection). Internal only — never broadcast.
+    # FR: ≤64 o. de payload en clair pour la signature de protocole en
+    #     interne (détection mineur stratum). Interne — jamais diffusé.
+    app_head: bytes = b""
 
 
 def get_local_ips() -> set[str]:
@@ -206,6 +211,11 @@ class PacketSniffer:
         self.local_ips = get_local_ips()
         self._session: Optional[PcapSession] = None
         self._conn_table = ConnectionTable()
+        # EN: Optional kernel-level attribution probe (eBPF) — consulted when
+        #     the socket table misses. Set via set_attribution_probe().
+        # FR: Sonde d'attribution noyau optionnelle (eBPF) — consultée quand
+        #     la table des sockets rate. Réglée via set_attribution_probe().
+        self._attribution_probe = None
         self._running = False
         self._thread: Optional[threading.Thread] = None
         # EN: Drop accounting — every discarded frame is counted with its
@@ -217,6 +227,13 @@ class PacketSniffer:
         #     qui comptait.
         self.stats = {"frames": 0, "delivered": 0, "parse_failed": 0,
                       "not_for_us": 0}
+
+    def set_attribution_probe(self, probe) -> None:
+        """EN: Register an object exposing lookup(ip, port) → (pid, name)
+        used as fallback when the connection table misses.
+        FR: Enregistre un objet exposant lookup(ip, port) → (pid, nom)
+        utilisé en repli quand la table des connexions rate."""
+        self._attribution_probe = probe
 
     @staticmethod
     def _default_iface() -> Optional[str]:
@@ -328,6 +345,16 @@ class PacketSniffer:
         pid, process_name = None, None
         if local_port and parsed.protocol in ("TCP", "UDP"):
             pid, process_name = self._conn_table.lookup(local_port, parsed.protocol)
+        # EN: eBPF fallback — the socket table misses processes that died
+        #     between refreshes (short-lived connects); the kprobe ring saw
+        #     every connect() call. Only unambiguous events are used.
+        # FR: Repli eBPF — la table des sockets rate les processus morts
+        #     entre deux rafraîchissements ; l'anneau kprobe a vu chaque
+        #     connect(). Seuls les événements non ambigus servent.
+        if pid is None and direction == "out" and parsed.protocol == "TCP" \
+                and self._attribution_probe is not None:
+            pid, process_name = self._attribution_probe.lookup(
+                dst, parsed.dst_port)
 
         self.callback(Packet(
             src_ip=src,
@@ -345,6 +372,7 @@ class PacketSniffer:
             sni=parsed.sni,
             dns=parsed.dns,
             dhcp=parsed.dhcp,
+            app_head=parsed.app_head,
         ))
         self.stats["delivered"] += 1
 

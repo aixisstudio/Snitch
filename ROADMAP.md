@@ -41,25 +41,28 @@ Also live / également en place : Docker image on GHCR, Homebrew tap (`brew inst
 - Blocklist imports (StevenBlack hosts, EasyList) — needs a privacy/licensing review first / import de blocklists — revue vie privée/licence requise
 - Firewall profiles (strict/travel vs developer/permissive) / profils pare-feu (strict/voyage vs dev/permissif)
 
-## � Research — documented, not implemented / documenté, pas implémenté
+## 🔬 Research — shipped vs remaining / livré vs restant
 
-Ideas that would take Snitch toward a desktop EDR/XDR. They are tracked
-here honestly — **none of them is implemented**, each needs its own design,
-native components and often a second binary artifact / Idées qui mèneraient
-Snitch vers un EDR/XDR de bureau. Suivies ici honnêtement — **aucune n'est
-implémentée**, chacune exige sa conception, des composants natifs et souvent
-un second artefact binaire :
+Ideas that would take Snitch toward a desktop EDR/XDR. v1.3 shipped the
+user-mode-accessible parts of most of them — what remains here genuinely
+needs a signed kernel component, an Apple entitlement or a research-grade
+build / Idées qui mèneraient Snitch vers un EDR/XDR de bureau. La v1.3 a
+livré les parties accessibles en user-mode de la plupart d'entre elles —
+ce qui reste ici exige réellement un composant noyau signé, un entitlement
+Apple ou un développement de recherche :
 
-- **eBPF probes (Linux)** — `sys_enter_connect`/`accept` kernel-space capture, bypass-resistant; needs a compiled BPF program + root / sondes eBPF — capture noyau in-contournable ; exige un programme BPF compilé + root
-- **WFP callout (Windows)** — real kernel packet filtering instead of `netsh` rule orchestration; needs a signed kernel driver / callout WFP — filtrage noyau réel au lieu de l'orchestration `netsh` ; exige un driver signé
-- **NetworkExtension (macOS)** — `NEFilterProvider` for per-bundle filtering; needs Apple Developer ID + entitlements / `NEFilterProvider` pour filtrer par bundle ; exige Developer ID + entitlements
-- **Memory/flow correlation** — *partially shipped*: RWX memory scan (Linux `/proc/<pid>/maps`) + name/exe mismatch + exe hash watch are live; unsigned-DLL / full memory forensics stay here / *partiellement livré* : scan mémoire RWX + mismatch nom/exe + veille de hash sont actifs ; inspection DLL complète reste ici
-- **Dynamic Taint Analysis** — prove exfiltration byte-for-byte; heavy research / analyse de teinture dynamique — prouver l'exfiltration octet par octet ; recherche lourde
-- **Local SecOps SLM** — a 1–3 B param model explaining alerts in natural language; *deterministic bilingual explanations ship today* (`/security/explain`), the model stays research / SLM SecOps local — modèle 1–3 Md ; *des explications déterministes bilingues sont livrées* (`/security/explain`), le modèle reste en recherche
-- **ZKP fleet intel** — share detections across a peer fleet without revealing endpoints / intel de flotte en ZKP — partager les détections sans révéler les endpoints
-- **PMU/hardware counters** — ransomware tells below the OS (speculation, crypto bursts) / compteurs matériels PMU — signaux de ransomware sous l'OS
-- **Merkle integrity of loaded modules** — *partially shipped*: executable SHA-256 baselines detect on-disk replacement (`BINARY_CHANGED`); full module-tree verification stays here / *partiellement livré* : les baselines SHA-256 d'exécutables détectent le remplacement sur disque (`BINARY_CHANGED`) ; la vérification complète des modules reste ici
-- **Sinkholing / micro-containment** — *partially shipped*: `sinkhole` rule action redirects domains (hosts) and IPs (iptables DNAT, Linux) to loopback; a real honeypot responder and micro-VM containment stay here / *partiellement livré* : l'action `sinkhole` redirige domaines (hosts) et IP (DNAT iptables, Linux) vers loopback ; un vrai honeypot répondeur et le confinement micro-VM restent ici
+- **eBPF probes (Linux)** — *shipped, optional*: a BCC `tcpconnect`-style kprobe attributes `connect()` from short-lived processes that `psutil.net_connections` misses (setting `ebpf_probe`, needs python3-bcc + root; ambiguous destinations are never guessed). Full kernel-space packet capture stays here / *livré, optionnel* : kprobe `tcpconnect` BCC pour attribuer les `connect()` des processus éphémères (réglage `ebpf_probe`, exige python3-bcc + root). La capture noyau complète reste ici
+- **WFP (Windows)** — *partially shipped*: `detection/wfp.py` drives `fwpuclnt.dll` directly via ctypes — per-app/IP/port ALE filters, delete-by-key, orphan purge. What stays here is a **kernel callout driver** (signed driver, payload inspection) / *partiellement livré* : `wfp.py` pilote `fwpuclnt.dll` en ctypes — filtres ALE par appli/IP/port. Reste ici : un **callout noyau** (driver signé, inspection de payload)
+- **NetworkExtension (macOS)** — `NEFilterProvider` for per-bundle filtering; needs Apple Developer ID + entitlements. Verified: `socketfilterfw` only polices *incoming* app connections — no user-mode substitute exists for outbound per-app / `NEFilterProvider` pour filtrer par bundle ; exige Developer ID + entitlements. Vérifié : `socketfilterfw` ne contrôle que l'**entrant** — aucun équivalent user-mode pour le sortant par-appli
+- **Memory/flow correlation** — *partially shipped*: RWX scan + name/exe mismatch + exe hash + **Frida deep-inspect** (`/security/deep_inspect`) which reports which loaded module issued each `connect()` — injected code in staging paths → `INJECT_SUSPECT` / *partiellement livré* : scan RWX + mismatch nom/exe + hash + **inspection Frida** qui rapporte quel module a émis chaque `connect()` — code injecté en chemin de staging → `INJECT_SUSPECT`
+- **Dynamic Taint Analysis** — Frida's module-origin attribution (above) is the honest user-mode slice; byte-for-byte exfiltration proof stays research / l'attribution de module via Frida (ci-dessus) est la part user-mode honnête ; la preuve d'exfiltration octet par octet reste en recherche
+- **Local SecOps SLM** — *shipped, opt-in*: `detection/llm_local.py` enriches `/security/explain` through an Ollama-compatible endpoint **restricted to loopback** (`slm_enabled`, remote endpoints rejected); deterministic bilingual templates remain the default. Bundling a model binary stays here / *livré, opt-in* : enrichissement via endpoint Ollama **loopback uniquement** ; les gabarits déterministes restent le défaut. Embarquer un modèle binaire reste ici
+- **ZKP fleet intel** — *honest substitute shipped*: `/security/iocpack` exports a Bloom filter + randomized-response pack (ε≈4.6, plausible deniability) instead of raw IOCs; `/security/iocpack/import` checks observed destinations probabilistically. A real ZK protocol + fleet transport stays research / *substitut honnête livré* : paquets Bloom + randomized response au lieu d'IOC en clair. Un vrai protocole ZK + transport de flotte reste en recherche
+- **PMU/hardware counters** — *shipped, Linux*: `detection/perfprobe.py` wraps `perf_event_open` in ctypes for cycles/instructions/cache-misses per pid (`/security/perf`, gated by `perf_event_paranoid`) — corroborates `MINING_SUSPECT` / *livré, Linux* : compteurs `perf_event_open` en ctypes (`/security/perf`) — corrobore `MINING_SUSPECT`
+- **Merkle integrity of loaded modules** — *shipped*: a real Merkle root over file-backed executable mappings per process → `MODULE_CHANGED`; staging paths (`/tmp`, memfd, AppData Temp) → `MODULE_SUSPECT`. Kernel-enforced module allowlisting stays here / *livré* : racine Merkle sur les mappings exécutables → `MODULE_CHANGED` ; chemins de staging → `MODULE_SUSPECT`. L'allowlist noyau de modules reste ici
+- **Sinkholing / micro-containment** — *mostly shipped*: redirects + a loopback **responder** on :80/:443 that turns each sinkholed attempt into a `SINKHOLE_HIT` alert with Host/SNI/process attribution. Micro-VM containment stays here / *quasi livré* : redirections + **répondeur** loopback :80/:443 → alertes `SINKHOLE_HIT` avec Host/SNI/processus. Le confinement micro-VM reste ici
+- **Cryptomining detection** — *shipped*: stratum signatures in bounded payload heads + known pool ports, corroborated by sustained process CPU → `MINING_STRATUM`/`MINING_SUSPECT` / *livré* : signatures stratum + ports de pools, corroborés par CPU soutenue → `MINING_STRATUM`/`MINING_SUSPECT`
+- **Egress throttling** — *shipped (Linux)*: `throttle` rule action polices a destination via `tc` clsact/flower at the rule's kbit rate / *livré (Linux)* : action `throttle` bride une destination via `tc` clsact/flower
 - **PCAP export** stays in scope above / l'export PCAP reste dans le périmètre ci-dessus
 
 ## 🚫 Out of scope / hors périmètre
