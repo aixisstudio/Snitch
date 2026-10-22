@@ -1,5 +1,7 @@
 # Snitch — Architecture / Architecture
 
+[English](architecture.md) | [Français](architecture.md) | [Español](architecture.es.md) | [Deutsch](architecture.de.md) | [Русский](architecture.ru.md) | [日本語](architecture.ja.md) | [Português](architecture.pt-BR.md) | [中文](architecture.zh-CN.md)
+
 ## English
 
 ```
@@ -29,6 +31,10 @@
 │                           PORT_SCAN, BEACON (regularity),    │
 │                           VOLUME_SPIKE (window vs baseline), │
 │                           MEDIA_EXFIL, LAN device rules      │
+│  detection/firewall.py  — OS-firewall orchestration +        │
+│                           lockdown + blocked counters        │
+│  detection/threatintel.py — opt-in reputation lookups        │
+│  notify/webhooks.py     — opt-in external alert dispatch     │
 │  resolver/dns_geo.py    — observed DNS/SNI map > reverse DNS │
 │                           > offline .mmdb (DB-IP/GeoLite2)   │
 │  storage/db.py          — SQLite: traffic, alerts, settings  │
@@ -41,7 +47,9 @@
   `batch` WS message per ~250 ms.
 - `remote_port` is direction-aware everywhere; `dst_port` is never used for
   classification (it's a *local* port on inbound traffic).
-- No third-party network call exists in the codebase.
+- No third-party network call fires without an explicit opt-in
+  (threat-intel lookups, webhooks, GeoIP download, update checks are all
+  off by default).
 - The detector holds a lock around all mutable state and every container is
   size-bounded.
 - macOS: media monitoring reports `supported: false`; the UI hides the badge.

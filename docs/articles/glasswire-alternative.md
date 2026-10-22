@@ -1,3 +1,5 @@
+[English](glasswire-alternative.md) | [Español](glasswire-alternative.es.md) | [Deutsch](glasswire-alternative.de.md) | [Русский](glasswire-alternative.ru.md) | [日本語](glasswire-alternative.ja.md) | [Português](glasswire-alternative.pt-BR.md) | [中文](glasswire-alternative.zh-CN.md)
+
 If you've searched for a network monitor on Windows, you've hit GlassWire. It's polished, it looks great — and then the paywalls start showing up: history behind a subscription, firewall features behind tiers, an account that keeps being suggested, cloud "elite" sync.
 
 There's nothing wrong with paying for software. But "show me what my computer connects to" is basic hygiene — it arguably shouldn't be gated at all. I'm the author of [Snitch](https://github.com/aixisstudio/Snitch), a free, open-source (AGPL) alternative, so let me give you the honest comparison instead of a sales pitch.
@@ -9,14 +11,17 @@ There's nothing wrong with paying for software. But "show me what my computer co
 | Price | Free, forever | Freemium — key features paywalled |
 | License | AGPL open source | Proprietary |
 | Account | **None — ever** | Account/cloud tier promoted |
-| Telemetry | **Zero outbound calls** (GeoIP download is opt-in) | Phone-home for sync/features |
+| Telemetry | **No outbound call without opt-in** (GeoIP, updates, threat intel, webhooks all off by default) | Phone-home for sync/features |
 | Data location | Local SQLite, yours | Cloud-linked features exist |
 | Live world map of connections | ✅ geolocated offline | ✅ (paid tiers) |
 | Per-app traffic & bandwidth | ✅ | ✅ (partially free) |
 | History | 24h free (SQLite ring buffer) | Limited on free tier |
-| Anomaly alerts (port scans, beaconing, exfil) | ✅ | ✅ (mostly paid) |
+| Anomaly alerts (port scans, beaconing, exfil, DNS tunneling) | ✅ | ✅ (mostly paid) |
 | LAN device scan | ✅ passive, via ARP | ✅ (paid) |
-| Firewall / blocking | ❌ visualizer only | ✅ (this is GlassWire's real strength) |
+| Firewall / blocking | ✅ OS-firewall orchestration + lockdown (best-effort, needs privileges) | ✅ (GlassWire's firewall is more mature) |
+| Threat intel reputation | ✅ opt-in (AbuseIPDB / OTX / VirusTotal, your own key) | ❌ |
+| Kill / suspend process | ✅ built-in | ✅ |
+| Forensics export | ✅ JSON / CSV / STIX | ❌ |
 | Platforms | macOS, Windows, Linux | Windows, Android |
 | Privacy score / tracker detection | ✅ editable lists | ❌ |
 
@@ -24,8 +29,8 @@ There's nothing wrong with paying for software. But "show me what my computer co
 
 Being fair:
 
-- **Blocking.** GlassWire has a real application firewall. Snitch deliberately doesn't block — it shows you, it doesn't decide. If "deny this app" is your core need, GlassWire (or free Portmaster) is the right tool.
-- **Polish.** GlassWire's had a decade of UI work. Snitch is 3 weeks old — the graph is great, the settings are functional, expect edges.
+- **Blocking maturity.** GlassWire's application firewall has had a decade of refinement — Snitch's outbound blocking (added in v1.2) orchestrates the OS-native firewall best-effort and needs capture privileges to actually apply rules. If interactive "deny this app" prompts are your core need, GlassWire (or free Portmaster) is still the more polished choice.
+- **Polish.** GlassWire's had a decade of UI work. Snitch is much younger — the graph is great, the settings are functional, expect edges.
 - **Long history retention** — Snitch keeps 24h by design (privacy-first means *not* hoarding your traffic either).
 
 ## The architecture difference that matters

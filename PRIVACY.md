@@ -82,7 +82,9 @@ aucun trafic silencieux :
 
 **L'app bureau vérifie les nouvelles versions sur github.com** au lancement
 puis toutes les 6 h (electron-updater, lecture des fichiers publics
-`latest-*.yml`). C'est le seul appel sortant périodique. Désactivation dans
+`latest-*.yml`). C'est le seul appel sortant *périodique* — les autres
+(GeoIP, threat intel, webhooks) restent déclenchés par vous ou opt-in.
+Désactivation dans
 *Réglages → Mises à jour → Vérifier automatiquement* (persisté) ou via
 `SNITCH_NO_UPDATE=1`. Le build Docker et le backend ne vérifient jamais.
 

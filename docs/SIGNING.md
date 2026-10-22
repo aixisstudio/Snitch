@@ -1,6 +1,6 @@
 # Code signing / Signature de code
 
-English · [Français](#français)
+[English](SIGNING.md) | [Français](SIGNING.md) | [Español](SIGNING.es.md) | [Deutsch](SIGNING.de.md) | [Русский](SIGNING.ru.md) | [日本語](SIGNING.ja.md) | [Português](SIGNING.pt-BR.md) | [中文](SIGNING.zh-CN.md)
 
 ## Current state / État actuel
 

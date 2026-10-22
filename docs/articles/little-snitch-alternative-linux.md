@@ -1,3 +1,5 @@
+[English](little-snitch-alternative-linux.md) | [Español](little-snitch-alternative-linux.es.md) | [Deutsch](little-snitch-alternative-linux.de.md) | [Русский](little-snitch-alternative-linux.ru.md) | [日本語](little-snitch-alternative-linux.ja.md) | [Português](little-snitch-alternative-linux.pt-BR.md) | [中文](little-snitch-alternative-linux.zh-CN.md)
+
 Your computer talks to hundreds of servers a day. On Linux the classic answers are `tcpdump`, `ss`, `netstat`, or Wireshark — powerful, but they answer "show me packets", not "who is my machine talking to, and should I worry?".
 
 I built [Snitch](https://github.com/aixisstudio/Snitch) for that second question — an open-source (AGPL) real-time network visualizer, and it's fully supported on Linux via Docker or the release binary. Full disclosure: I'm the author, so here's an honest rundown of what exists and where Snitch fits.
@@ -10,9 +12,9 @@ I built [Snitch](https://github.com/aixisstudio/Snitch) for that second question
 | **Wireshark** | Deep packet dissection | Overkill for "who's phoning home" — it's a microscope, not a dashboard |
 | **OpenSnitch** | Application firewall (block/allow prompts) | Minimal visualization — it's block-first, and it's Linux-only |
 | **iftop / nethogs / nload** | Per-interface or per-process bandwidth | No world map, no anomaly detection, no persistence |
-| **Snitch** | Live map of every connection: app → server → country, anomaly detection, 24h history | Doesn't block (by design — it's a visualizer) |
+| **Snitch** | Live map of every connection: app → server → country, anomaly detection, 24h history, opt-in blocking via the OS firewall | OS-rule application is best-effort (needs privileges); not a full interactive firewall |
 
-OpenSnitch and Snitch are complementary, not competitors: OpenSnitch decides *whether* a connection is allowed, Snitch shows you *what* your machine is doing.
+OpenSnitch and Snitch are complementary, not competitors: OpenSnitch is a mature interactive application firewall, Snitch shows you *what* your machine is doing — and since v1.2 can also push rules (`ip`/`cidr`/`domain`/`process`/`port`) into `iptables` plus a lockdown switch, best-effort.
 
 ## What Snitch gives you on Linux
 
@@ -22,11 +24,13 @@ OpenSnitch and Snitch are complementary, not competitors: OpenSnitch decides *wh
 - **Privacy score** + tracker detection from editable suffix lists
 - **Per-app bandwidth**, timeline, 24h SQLite retention, alert suppression rules
 - **Passive LAN scan** via the system ARP table — every device on your network, no packets injected
-- Bilingual EN/FR UI (中文 README too)
+- **Outbound firewall rules + lockdown** — block an IP, CIDR, domain, process or port via the OS-native firewall (`iptables` on Linux), kill/suspend a process, export a forensics bundle (JSON/CSV/STIX)
+- **Opt-in threat intel** — AbuseIPDB / AlienVault OTX / VirusTotal reputation checks with your own API key
+- UI and docs in 8 languages (EN/FR/ES/DE/RU/JA/PT-BR/中文)
 
 ## The privacy part
 
-This is the part Linux users tend to verify first, so: the API binds to **127.0.0.1** and requires a token. There is **no telemetry, no account, no outbound call at all** except an explicitly consent-gated GeoIP database download. Traffic data lives in a local SQLite file you own.
+This is the part Linux users tend to verify first, so: the API binds to **127.0.0.1** and requires a token. There is **no telemetry and no account**, and every outbound call — GeoIP download, update checks, threat-intel lookups, webhooks — is independently opt-in. Traffic data lives in a local SQLite file you own.
 
 ## Install
 

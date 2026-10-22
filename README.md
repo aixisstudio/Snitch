@@ -36,7 +36,7 @@ The entire interface is available in **English, Français, Español, Deutsch, Р
 ### Why Snitch?
 
 - **vs Little Snitch / Lulu** — same idea (per-app outbound visibility + blocking rules), but Snitch is cross-platform, free and open-source. Blocking is orchestrated through the OS-native firewall (`netsh` / `iptables` / `pf`) — Snitch never filters in user-space.
-- **vs GlassWire** — Snitch is free, open-source (AGPL), requires no account and makes **zero outbound calls**; even geolocation is offline.
+- **vs GlassWire** — Snitch is free, open-source (AGPL), requires no account and makes **no outbound calls without opt-in**; even geolocation is offline.
 - **vs Wireshark** — Snitch gives a live, high-level overview anyone can read, instead of raw packet dissection.
 - **vs cloud-based monitors** — everything runs on `127.0.0.1` behind a token; your traffic data never leaves the machine.
 
@@ -244,7 +244,7 @@ Toute l'interface est disponible en **English, Français, Español, Deutsch, Р�
 ### Pourquoi Snitch ?
 
 - **vs Little Snitch / Lulu** — même idée (visibilité par app + règles de blocage sortantes), mais Snitch est multiplateforme, gratuit et open-source. Le blocage est orchestré via le pare-feu natif de l'OS (`netsh` / `iptables` / `pf`) — Snitch ne filtre jamais en user-space.
-- **vs GlassWire** — Snitch est gratuit, open-source (AGPL), sans compte et n'effectue **aucun appel sortant** ; même la géolocalisation est hors ligne.
+- **vs GlassWire** — Snitch est gratuit, open-source (AGPL), sans compte et n'effectue **aucun appel sortant sans opt-in** ; même la géolocalisation est hors ligne.
 - **vs Wireshark** — Snitch offre une vue d'ensemble en direct lisible par tous, plutôt qu'une dissection brute de paquets.
 - **vs les moniteurs cloud** — tout tourne sur `127.0.0.1` derrière un jeton ; vos données de trafic ne quittent jamais la machine.
 

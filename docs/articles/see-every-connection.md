@@ -1,3 +1,5 @@
+[English](see-every-connection.md) | [Español](see-every-connection.es.md) | [Deutsch](see-every-connection.de.md) | [Русский](see-every-connection.ru.md) | [日本語](see-every-connection.ja.md) | [Português](see-every-connection.pt-BR.md) | [中文](see-every-connection.zh-CN.md)
+
 Your computer is talking to the internet right now. Probably dozens of connections — sync, telemetry, update checks, your open tabs, your apps' background chatter. The question "what is my machine actually doing?" sounds basic, but try answering it and you'll find the tooling is either microscopic (Wireshark) or paywalled.
 
 Here's a practical guide to actually seeing it — including the tool I built for it, [Snitch](https://github.com/aixisstudio/Snitch) (open source, AGPL — disclosure, it's mine).
@@ -54,7 +56,9 @@ docker run --network host ghcr.io/aixisstudio/snitch
 SNITCH_DEMO=1 snitch-backend
 ```
 
-Everything stays local — token-authenticated API bound to loopback, zero telemetry, no account. That's not a marketing line; it's an AGPL codebase, you can verify the network code path yourself.
+Everything stays local — token-authenticated API bound to loopback, zero telemetry, no account, and every outbound call (GeoIP download, updates, threat intel, webhooks) is opt-in. That's not a marketing line; it's an AGPL codebase, you can verify the network code path yourself.
+
+And when something looks wrong, you can act on it — since v1.2, Snitch pushes block rules into the OS-native firewall (netsh / iptables / pf), has a one-click lockdown switch, kill/suspend buttons, and a forensics export (JSON/CSV/STIX) for what you caught.
 
 ## Then what?
 

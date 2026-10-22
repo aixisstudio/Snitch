@@ -1,5 +1,7 @@
 # Third-Party Notices / Mentions de tiers
 
+[English](THIRD_PARTY_NOTICES.md) | [Français](THIRD_PARTY_NOTICES.md) | [Español](THIRD_PARTY_NOTICES.es.md) | [Deutsch](THIRD_PARTY_NOTICES.de.md) | [Русский](THIRD_PARTY_NOTICES.ru.md) | [日本語](THIRD_PARTY_NOTICES.ja.md) | [Português](THIRD_PARTY_NOTICES.pt-BR.md) | [中文](THIRD_PARTY_NOTICES.zh-CN.md)
+
 **EN:** Snitch is licensed AGPL-3.0-or-later. Below are the third-party
 components and data sources it uses, with their licenses. We deliberately
 removed GPL-2.0-only code (Scapy) to keep the dependency set AGPL-compatible.

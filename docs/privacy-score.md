@@ -1,5 +1,7 @@
 # Privacy Score — Methodology / Méthodologie
 
+[English](privacy-score.md) | [Français](privacy-score.md) | [Español](privacy-score.es.md) | [Deutsch](privacy-score.de.md) | [Русский](privacy-score.ru.md) | [日本語](privacy-score.ja.md) | [Português](privacy-score.pt-BR.md) | [中文](privacy-score.zh-CN.md)
+
 ## English
 
 The score (A–F, displayed top-right) is computed in

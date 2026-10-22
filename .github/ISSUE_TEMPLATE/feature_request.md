@@ -8,4 +8,4 @@ labels: enhancement
 
 **The feature / La fonctionnalité** :
 
-**Privacy impact / Impact vie privée** : (Snitch makes zero outbound calls — does this feature need one? / Snitch n'émet aucun appel sortant — cette fonctionnalité en nécessite-t-elle un ?)
+**Privacy impact / Impact vie privée** : (every outbound call in Snitch is opt-in — does this feature need a new one? / chaque appel sortant de Snitch est opt-in — cette fonctionnalité en nécessite-t-elle un nouveau ?)

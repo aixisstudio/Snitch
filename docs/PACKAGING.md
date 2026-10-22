@@ -1,6 +1,6 @@
 # Linux packaging / Empaquetage Linux
 
-English · [Français](#français)
+[English](PACKAGING.md) | [Français](PACKAGING.md) | [Español](PACKAGING.es.md) | [Deutsch](PACKAGING.de.md) | [Русский](PACKAGING.ru.md) | [日本語](PACKAGING.ja.md) | [Português](PACKAGING.pt-BR.md) | [中文](PACKAGING.zh-CN.md)
 
 ## Formats shipped
 
