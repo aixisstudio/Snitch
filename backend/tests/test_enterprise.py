@@ -229,8 +229,8 @@ def test_askmode_rollback_mirrors_inserts(monkeypatch):
         ["iptables", "-w", "-I", "OUTPUT", "-j", "NFQUEUE",
          "--queue-num", "7"],
     ])
-    assert calls[0][3] == "-D" and "NFQUEUE" in calls[0]  # EN: jump first / FR: saut d'abord
-    assert calls[1][3] == "-D" and "lo" in calls[1]
+    assert calls[0][2] == "-D" and "NFQUEUE" in calls[0]  # EN: jump first / FR: saut d'abord
+    assert calls[1][2] == "-D" and "lo" in calls[1]
     assert all("-I" not in c for c in calls)
 
 
