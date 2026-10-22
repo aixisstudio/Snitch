@@ -23,6 +23,10 @@ N'ouvrez pas d'issue publique pour les problèmes de sécurité.
 - **Origin allowlist** on the WebSocket handshake (loopback hosts + `null`)
   to block cross-site WebSocket hijacking.
 - **Restricted CORS** — loopback origins only, no credentials.
+- **Per-agent tokens** — `POST /ingest/enroll` issues dedicated `sagt_…`
+  tokens for fleet agents; only the hash is stored and each is revocable
+  (`/ingest/revoke`). Agent tokens may submit events as themselves only —
+  no read access, no impersonation.
 
 **FR :** L'API expose tout votre graphe de trafic — elle est protégée par
 conception :
@@ -34,6 +38,10 @@ conception :
 - **Liste blanche d'Origin** sur le handshake WebSocket (hôtes loopback +
   `null`) pour bloquer le détournement de WebSocket cross-site.
 - **CORS restreint** — origines loopback uniquement, sans identifiants.
+- **Jetons par agent** — `POST /ingest/enroll` émet des jetons dédiés
+  `sagt_…` pour les agents de flotte ; seul le hash est stocké et chacun
+  est révocable (`/ingest/revoke`). Un jeton agent ne peut qu'envoyer des
+  événements en son nom — pas de lecture, pas d'usurpation.
 
 ## Privileges / Privilèges
 
