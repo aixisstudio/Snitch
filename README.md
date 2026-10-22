@@ -80,6 +80,8 @@ Or grab the latest release: **[github.com/aixisstudio/Snitch/releases](https://g
 > **macOS first run / Premier lancement macOS** — Snitch is ad-hoc signed, not notarized (no paid Apple Developer ID). The `brew install --cask` above removes the quarantine flag for you. For the manual zip: right-click → **Open**, or run `xattr -dr com.apple.quarantine /Applications/Snitch.app`. On first launch Snitch asks for your admin password **once** — packet capture requires it, same as tcpdump/Wireshark; the UI itself stays unprivileged.
 >
 > **FR** — Snitch est signé ad-hoc, pas notarisé (pas de Developer ID payant). Le `brew install --cask` ci-dessus retire le drapeau de quarantaine pour vous. Pour le zip manuel : clic droit → **Ouvrir**, ou `xattr -dr com.apple.quarantine /Applications/Snitch.app`. Au premier lancement, Snitch demande le mot de passe admin **une fois** — la capture de paquets l'exige, comme tcpdump/Wireshark ; l'UI reste non privilégiée.
+>
+> **Windows code signing / Signature Windows** — Windows releases will be Authenticode-signed with a free open-source certificate kindly provided by the [SignPath Foundation](https://signpath.org) via [SignPath.io](https://signpath.io) (application submitted, pending approval). Until the first signed build ships, SmartScreen may still warn — click **More info → Run anyway**. / Les builds Windows seront signés Authenticode grâce à un certificat open source offert par la SignPath Foundation (candidature déposée). En attendant, SmartScreen peut encore afficher un avertissement — **Informations complémentaires → Exécuter quand même**.
 
 ### Stack
 
