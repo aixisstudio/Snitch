@@ -1080,9 +1080,16 @@ def test_contain_platform_support():
 def test_contain_rejects_nonexistent(tmp_path):
     """EN: detonating a missing file fails honestly before any exec.
     FR: détoner un fichier absent échoue honnêtement avant tout exec."""
-    from detection.contain import run_sandboxed
+    from detection.contain import available, run_sandboxed
     res = run_sandboxed(str(tmp_path / "nope"), [], 5)
-    assert res["ok"] is False and "executable" in res["error"]
+    # EN: Windows reports "no sandbox on this OS" BEFORE the file check —
+    #     both are honest refusals; only supported OSes reach the
+    #     executable check. / FR: Windows refuse au contrôle de dispo —
+    #     les deux sont des refus honnêtes avant tout exec.
+    if available()[0]:
+        assert res["ok"] is False and "executable" in res["error"]
+    else:
+        assert res["ok"] is False and res["error"]
 
 
 def test_contain_wraps_command(monkeypatch, tmp_path):
