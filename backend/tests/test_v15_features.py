@@ -869,14 +869,18 @@ def test_askmode_exempt_ips_installed_and_removed(monkeypatch):
     am = askmode.AskMode(lambda ctx: None)
     ok, why = am.start(exempt_ips=["1.2.3.4", "5.6.7.8"])
     assert ok, why
-    # EN: both exemptions inserted before the NFQUEUE jump
-    # FR: les deux exemptions insérées avant le saut NFQUEUE
+    # EN: both exemptions inserted before the NFQUEUE jump — argv holds
+    #     the NORMALIZED CIDR form (`1.2.3.4` → `1.2.3.4/32`), which is
+    #     also what breaks the CodeQL argv-injection taint.
+    # FR: les deux exemptions insérées avant le saut NFQUEUE — argv
+    #     porte la forme CIDR NORMALISÉE (`1.2.3.4` → `1.2.3.4/32`), ce
+    #     qui casse aussi le taint CodeQL d'injection d'argv.
     q_idx = next(i for i, c in enumerate(calls) if "NFQUEUE" in c)
-    for ip in ("1.2.3.4", "5.6.7.8"):
+    for ip in ("1.2.3.4/32", "5.6.7.8/32"):
         ins = ["iptables", "-w", "-I", "OUTPUT", "-d", ip, "-j", "RETURN"]
         assert ins in calls[:q_idx]
     am.stop()
-    for ip in ("1.2.3.4", "5.6.7.8"):
+    for ip in ("1.2.3.4/32", "5.6.7.8/32"):
         assert ["iptables", "-w", "-D", "OUTPUT", "-d", ip, "-j",
                 "RETURN"] in calls
 
