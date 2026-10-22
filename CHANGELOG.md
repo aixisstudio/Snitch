@@ -6,6 +6,17 @@ All notable changes to Snitch. / Toutes les modifications notables de Snitch.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/) — EN/FR.
 
+## [1.6.1] — 2026-10-22 — enterprise follow-through / suite entreprise
+
+### Added / Ajouté
+
+- **Rust agent + ingest API / Agent Rust + API d'ingestion** — `agent/` ships a zero-dependency Rust daemon (~1 MB single binary) that diffs the host socket table (`/proc/net/*`, Linux) and pushes new outbound flows to the new authenticated `POST /ingest/events` (contract `snitch-agent/1`, ≤1000 events/request, per-item validation). Events feed the SAME custom-rule detection surface as local packets and accumulate under `agent-host:…` history keys. Honest scope: sockets only — no payloads/SNI, process attribution is a marked TODO, HTTP transport for LAN trust domains. `deploy/systemd/snitch-agent.service` included. / Daemon Rust zéro-dépendance qui diff la table de sockets et pousse les nouveaux flux vers `POST /ingest/events` (contrat `snitch-agent/1`, borné et validé). Mêmes règles custom que les paquets locaux. Périmètre honnête : sockets seulement.
+- **YARA-L export / Export YARA-L** — `GET /alerts/rules/yaral` + `detection/yaral.py`: all custom rules (including Sigma-imported `conds` rules) exported as a YARA-L 2.0 file for Google SecOps/Chronicle, with packet-sensor→UDM field mapping documented inline; untranslatable clauses become `// SKIPPED` comments. Gives a Sigma→YARA-L path for free. / Export unidirectionnel des règles custom en YARA-L 2.0 (mapping UDM documenté, clauses intraduisibles en `// SKIPPED`) — chemin Sigma→YARA-L inclus.
+- **Puppet / Salt / GPO skeletons / Squelettes Puppet / Salt / GPO** — `deploy/puppet/` module + ERB template, `deploy/salt/` state, `deploy/gpo/Install-Snitch.ps1` silent installer (ProgramData config, venv, SYSTEM scheduled task on 127.0.0.1) — all `help wanted` community-maintained. / Module Puppet + template ERB, state Salt, installeur silencieux PowerShell pour GPO/Intune — tous marqués `help wanted`.
+- **Release automation / Automatisation de release** — `.github/workflows/release.yml`: on `v*` tags, builds nfpm `.deb`/`.rpm`, renders + pushes the Homebrew formula to `aixisstudio/homebrew-tap`, submits the winget manifest (winget-releaser) and packs/pushes Chocolatey — all gated on documented secrets (`HOMEBREW_TAP_TOKEN`, `WINGET_TOKEN`, `CHOCO_API_KEY`). Formula/nuspec templates in `packaging/homebrew/` + `packaging/choco/`. / Sur tags `v*` : paquets nfpm, formule Homebrew vers le tap, manifeste winget, push Chocolatey — tout conditionné aux secrets documentés.
+- **Translated INTEGRATIONS docs / Doc INTEGRATIONS traduite** — `docs/INTEGRATIONS.{de,es,ja,pt-BR,ru,zh-CN}.md` generated with a "community translated — PRs welcome" banner. / Variantes traduites avec bandeau « traduction communautaire — PR bienvenues ».
+- **Community badge block / Bloc badges communauté** — README carries a commented Discord/Matrix badge snippet ready to activate once the server invite exists. / Bloc badge Discord/Matrix commenté dans le README, prêt à activer dès que l'invitation existe.
+
 ## [1.6.0] — 2026-10-22 — enterprise layer / couche entreprise
 
 ### Added / Ajouté

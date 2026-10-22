@@ -211,3 +211,92 @@ def test_to_cef_header_pipes_escaped():
     from api.notify import _cef_escape
     assert _cef_escape("a|b", header=True) == "a\\|b"
     assert _cef_escape("a=b") == "a\\=b"
+
+
+# ── YARA-L export / export YARA-L ────────────────────────────────────────────
+
+def test_yaral_single_rule():
+    from detection import yaral
+    out = yaral.export([{"id": "r1", "name": "bad c2", "severity": "critical",
+                         "field": "remote_ip", "op": "cidr",
+                         "value": "10.0.0.0/8"}])
+    assert "rule snitch_r1" in out
+    assert 'net.ip_in_range_cidr($e.target.ip, "10.0.0.0/8")' in out
+    assert 'severity = "CRITICAL"' in out
+
+
+def test_yaral_conds_and():
+    from detection import yaral
+    out = yaral.export([{"id": "s1", "name": "multi", "severity": "warning",
+                         "conds": [
+                             {"field": "remote_port", "op": "eq",
+                              "value": "4444"},
+                             {"field": "host", "op": "contains",
+                              "value": "evil.com"}]}])
+    assert "$e.target.port = 4444" in out and " and\n" in out
+    assert "network.tls.client.server_name" in out
+    assert "network.dns.questions.name" in out
+
+
+def test_yaral_unmappable_skipped_honestly():
+    from detection import yaral
+    out = yaral.export([{"id": "x", "name": "nope", "severity": "info",
+                         "field": "direction", "op": "contains",
+                         "value": "y"}])
+    assert "// SKIPPED rule 'nope'" in out
+    assert "rule snitch_x {" not in out
+
+
+def test_yaral_numeric_fields_unquoted():
+    from detection import yaral
+    out = yaral.export([{"id": "n", "name": "p", "severity": "info",
+                         "field": "remote_port", "op": "gt",
+                         "value": "1024"}])
+    assert "$e.target.port > 1024" in out
+
+
+# ── Agent ingest / ingestion d'agent ─────────────────────────────────────────
+
+def test_ingest_events_endpoint():
+    import pytest
+    pytest.importorskip("httpx")
+    from fastapi.testclient import TestClient
+    from api.main import app
+    from api.security import API_TOKEN
+    c = TestClient(app)
+    r = c.post("/ingest/events",
+               headers={"X-Snitch-Token": API_TOKEN},
+               json={"agent": "snitch-agent/1", "host": "a1",
+                     "events": [{"src_ip": "10.0.0.5", "dst_ip": "93.184.216.34",
+                                 "src_port": 51000, "dst_port": 443,
+                                 "proto": "tcp", "direction": "out"}]})
+    assert r.status_code == 200
+    assert r.json()["accepted"] == 1
+
+
+def test_ingest_events_auth_required():
+    import pytest
+    pytest.importorskip("httpx")
+    from fastapi.testclient import TestClient
+    from api.main import app
+    c = TestClient(app)
+    r = c.post("/ingest/events", json={"events": []})
+    assert r.status_code in (401, 403)
+
+
+def test_ingest_events_bounded_and_validated():
+    import pytest
+    pytest.importorskip("httpx")
+    from fastapi.testclient import TestClient
+    from api.main import app
+    from api.security import API_TOKEN
+    c = TestClient(app)
+    r = c.post("/ingest/events",
+               headers={"X-Snitch-Token": API_TOKEN},
+               json={"agent": "x", "host": "h",
+                     "events": [{"dst_ip": ""},        # EN: dropped / FR: rejeté
+                                "not-a-dict",          # EN: dropped / FR: rejeté
+                                {"dst_ip": "8.8.8.8", "dst_port": "junk"}]})
+    body = r.json()
+    assert body["accepted"] == 1                        # EN: only the valid one / FR: seul le valide
+    assert body["received"] == 3

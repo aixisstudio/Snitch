@@ -1,0 +1,91 @@
+# Snitch — release packaging & submission automation
+# EN: On a v* tag: build the nfpm packages, update the Homebrew tap
+#     formula, and submit winget/choco manifests. Everything is a no-op
+#     until you create the listed secrets — the workflow fails loudly
+#     and explains what's missing instead of silently skipping.
+# FR: Sur tag v* : paquets nfpm, formule Homebrew tap, manifests
+#     winget/choco. Tout est no-op tant que les secrets listés n'existent
+#     pas — le workflow échoue en expliquant ce qui manque plutôt que de
+#     sauter en silence.
+#
+# Required secrets / Secrets requis:
+#   HOMEBREW_TAP_TOKEN — PAT with repo write on aixisstudio/homebrew-tap
+#   WINGET_TOKEN       — PAT for microsoft/winget-pkgs submission
+#   CHOCO_API_KEY      — chocolatey.org push key
+#   (GITHUB_TOKEN is automatic for artifact uploads)
+
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  nfpm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Stage backend + venv-free tree / Arbre staging
+        run: |
+          mkdir -p staging/opt/snitch
+          cp -r backend staging/opt/snitch/
+          rm -rf staging/opt/snitch/backend/env staging/opt/snitch/backend/tests
+      - uses: goreleaser/nfpm-action@v2
+        with:
+          version: latest
+      - name: Build .deb/.rpm
+        run: |
+          V=${GITHUB_REF_NAME#v}
+          sed -i "s/^version:.*/version: \"$V\"/" packaging/nfpm.yaml
+          nfpm package -f packaging/nfpm.yaml -p deb -t dist/
+          nfpm package -f packaging/nfpm.yaml -p rpm -t dist/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-packages
+          path: dist/
+
+  homebrew-tap:
+    needs: nfpm
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Render + push formula / Rendre + pousser la formule
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          V=${GITHUB_REF_NAME#v}
+          SHA=$(curl -sL "https://github.com/aixisstudio/Snitch/archive/refs/tags/${GITHUB_REF_NAME}.tar.gz" | sha256sum | cut -d' ' -f1)
+          sed -e "s|@VERSION@|$V|" -e "s|@SHA256@|$SHA|" \
+              packaging/homebrew/snitch.rb > snitch.rb
+          git clone "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/aixisstudio/homebrew-tap.git" tap
+          mkdir -p tap/Formula
+          cp snitch.rb tap/Formula/snitch.rb
+          cd tap && git add Formula/snitch.rb
+          git -c user.name=snitch-bot -c user.email=bot@aixisstudio.github.io \
+              commit -m "snitch $V" && git push
+
+  winget:
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Submit winget manifest / Soumettre le manifeste winget
+        uses: vedantmgoyal9/winget-releaser@v2
+        with:
+          identifier: aixisstudio.Snitch
+          installers-regex: 'Snitch-Setup-.*\.exe$'
+          token: ${{ secrets.WINGET_TOKEN }}
+
+  chocolatey:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Pack + push choco / Pack + push choco
+        env:
+          CHOCO_API_KEY: ${{ secrets.CHOCO_API_KEY }}
+        run: |
+          choco pack packaging/choco/snitch.nuspec --version ${env:GITHUB_REF_NAME.TrimStart('v')}
+          choco push snitch.*.nupkg --source https://push.chocolatey.org/ --api-key $env:CHOCO_API_KEY

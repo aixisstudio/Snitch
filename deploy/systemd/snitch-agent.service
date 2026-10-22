@@ -1,0 +1,39 @@
+# snitch-agent — systemd unit (remote sensor / capteur distant)
+# EN: The agent only READS /proc/net — it needs zero capabilities and
+#     runs fully unprivileged. Install next to the binary:
+#       install -m755 target/release/snitch-agent /usr/local/bin/
+#       install -m644 deploy/systemd/snitch-agent.service /etc/systemd/system/
+#       systemctl enable --now snitch-agent
+# FR: L'agent ne fait que LIRE /proc/net — zéro capacité, totalement
+#     non privilégié.
+
+[Unit]
+Description=Snitch agent — lightweight socket sensor for a Snitch collector
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+DynamicUser=yes
+ExecStart=/usr/local/bin/snitch-agent
+Restart=on-failure
+RestartSec=5s
+
+# EN: collector endpoint + bearer — put real values in a drop-in:
+#     /etc/systemd/system/snitch-agent.service.d/env.conf
+#     [Service]  Environment=SNITCH_SERVER=…  SNITCH_TOKEN=…
+# FR: endpoint collecteur + bearer — vraies valeurs dans un drop-in.
+Environment=SNITCH_SERVER=127.0.0.1:8000
+Environment=SNITCH_INTERVAL_SECS=5
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+# EN: needs /proc/net — that lives inside /proc, keep it visible.
+# FR: a besoin de /proc/net — laisser /proc visible.
+ProtectProc=default
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target

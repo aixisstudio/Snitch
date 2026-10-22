@@ -17,6 +17,10 @@
 [![Downloads](https://img.shields.io/github/downloads/aixisstudio/Snitch/total?color=brightgreen&style=flat)](https://github.com/aixisstudio/Snitch/releases/latest)
 [![GitHub stars](https://img.shields.io/github/stars/aixisstudio/Snitch?style=flat-square&logo=github)](https://github.com/aixisstudio/Snitch/stargazers)
 [![Star History](https://img.shields.io/badge/⭐-Star%20History-orange)](https://star-history.com/#aixisstudio/Snitch&Date)
+<!-- Community badges — UNCOMMENT once the server exists and paste the
+     real invite URL (channels: #announcements #general #dev #help).
+     [![Discord](https://img.shields.io/badge/Discord-join-5865F2?logo=discord)](https://discord.gg/INVITE_CODE)
+     [![Matrix](https://img.shields.io/badge/Matrix-join-0dbd8b?logo=matrix)](https://matrix.to/#/#snitch:matrix.org) -->
 
 <!-- EN: Live capture of the demo mode (SNITCH_DEMO=1) — synthetic traffic only.
      FR: Capture du mode démo (SNITCH_DEMO=1) — trafic synthétique uniquement. -->

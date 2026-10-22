@@ -1,0 +1,10 @@
+# Snitch — declarative config (rendered by Puppet / rendu par Puppet)
+<% if @syslog_addr -%>
+syslog_addr = "<%= @syslog_addr %>"
+syslog_format = "<%= @syslog_format || 'cef' %>"
+<% end -%>
+ask_enabled = <%= @ask_enabled.nil? ? 'false' : @ask_enabled %>
+kill_switch_enabled = <%= @kill_switch.nil? ? 'true' : @kill_switch %>
+<% if @peers -%>
+gossip_peers = <%= @peers.to_s.gsub("'", '"') %>
+<% end -%>

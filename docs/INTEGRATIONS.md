@@ -99,15 +99,15 @@ See `packaging/snitch.toml.example` for the full vocabulary.
   It installs `/opt/snitch`, the venv, `/etc/snitch/snitch.toml` and the
   hardened systemd unit, then enables `snitch.service`.
 
-- **Puppet / SaltStack** — same three primitives: copy the backend tree,
-  render `snitch.toml`, manage the `snitch.service` unit. The unit file
-  in `deploy/systemd/` is your contract.
+- **Puppet / SaltStack** — community skeletons in `deploy/puppet/` and
+  `deploy/salt/` (label `help wanted`): the same three primitives —
+  copy the backend tree, render `snitch.toml`, manage `snitch.service`.
 
-- **Windows GPO** — deploy a scheduled task running
-  `pythonw -m uvicorn api.main:app --host 127.0.0.1` from a network share,
-  or package the checkout with NSSM (`nssm install Snitch …`) for a real
-  service. Ask-on-connect on Windows additionally needs the signed WFP
-  callout — see `docs/SIGNING.md`.
+- **Windows GPO** — `deploy/gpo/Install-Snitch.ps1` performs the silent
+  install (ProgramData config, venv, SYSTEM scheduled task on 127.0.0.1)
+  for GPO startup scripts or Intune win32 packaging. Ask-on-connect on
+  Windows additionally needs the signed WFP callout — see
+  `docs/SIGNING.md`.
 
 ## 7. Docker & Kubernetes
 
@@ -124,7 +124,7 @@ See `packaging/snitch.toml.example` for the full vocabulary.
       --set config.gossip_peers='["agent-1:8000","agent-2:8000"]'
   ```
 
-## 8. Sigma rules
+## 8. Sigma rules & YARA-L
 
 `POST /alerts/rules/sigma` accepts a Sigma detection YAML and compiles the
 supported subset (field→value selections, `|contains`/`|startswith`/
@@ -133,7 +133,21 @@ into Snitch custom rules — alert-only, `skipped` reasons returned for
 anything outside the subset. Fields map to what a *packet* sensor sees
 (`DestinationIp→remote_ip`, `Image→process_name`, `Domain→host`, …).
 
-## 9. Threat-intel feeds (free)
+YARA-L for Google SecOps/Chronicle: `GET /alerts/rules/yaral` exports all
+custom rules (including Sigma-imported ones) as a `.yar` file — the
+Sigma→YARA-L path is covered transitively.
+
+## 9. Remote agents (snitch-agent/1)
+
+`agent/` ships a zero-dependency Rust daemon (~1 MB single binary) that
+watches the host socket table (`/proc/net/*`, Linux) and pushes newly
+observed outbound flows to `POST /ingest/events`. It observes sockets —
+no payloads/SNI (that's the local capture's job); process attribution is
+a marked TODO. Transport: HTTP + bearer token, same trust-domain model
+as `gossip_peers`. A `snitch-agent.service` unit lives in
+`deploy/systemd/`.
+
+## 10. Threat-intel feeds (free)
 
 `POST /firewall/blocklist` imports both shapes:
 
@@ -149,7 +163,7 @@ audited opt-in fetch (`remote_fetch: true` in the response). Cap at
 Opt-in API providers (AbuseIPDB / OTX / VirusTotal) stay available via
 `ti_provider` + `ti_api_key` — nothing calls out until you set a key.
 
-## 10. Headless / daemon mode
+## 11. Headless / daemon mode
 
 The GUI is optional: the backend is the whole product. Run it bare
 (`uvicorn api.main:app`), under the shipped systemd unit, or in the

@@ -1,0 +1,21 @@
+# Snitch agent — zero-dependency mini-daemon / mini-daemon sans dépendances.
+# EN: `cargo build --release` produces ONE static-ish binary. No crates:
+#     /proc parsing is plain fs, the ingest POST is a raw TcpStream.
+# FR: `cargo build --release` produit UN seul binaire. Zéro crate :
+#     /proc en fs brut, le POST ingest en TcpStream manuel.
+[package]
+name = "snitch-agent"
+version = "1.6.1"
+edition = "2021"
+license = "AGPL-3.0-only"
+description = "Lightweight socket-observation agent for the Snitch collector"
+
+[[bin]]
+name = "snitch-agent"
+path = "src/main.rs"
+
+[profile.release]
+opt-level = "z"        # EN: smallest binary / FR: binaire minimal
+lto = true
+strip = true
+panic = "abort"

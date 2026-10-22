@@ -2967,6 +2967,24 @@ async def alert_rules_sigma(body: dict) -> dict:
             "rules": imported, "skipped": out["skipped"]}
 
 
+@app.get("/alerts/rules/yaral", dependencies=_AUTH,
+         response_class=PlainTextResponse)
+async def alert_rules_yaral() -> PlainTextResponse:
+    """EN: Export every custom rule as a YARA-L 2.0 file for Google
+        SecOps/Chronicle. One-way export — packet-sensor fields map to
+        honest UDM approximations (see detection/yaral.py); rules with
+        no translatable clause come out commented // SKIPPED. Combined
+        with /alerts/rules/sigma this gives a Sigma→YARA-L path.
+    FR: Exporter toutes les règles custom en fichier YARA-L 2.0 pour
+        Google SecOps/Chronicle. Export unidirectionnel — mapping honnête
+        capteur-paquet → UDM ; les règles sans clause traduisible
+        sortent en // SKIPPED. Avec l'import Sigma, chemin Sigma→YARA-L.
+    """
+    import detection.yaral as yaral
+    return PlainTextResponse(yaral.export(custom_rules.serialized()),
+                             media_type="text/plain")
+
+
 @app.post("/alerts/rules/{rule_id}/toggle", dependencies=_AUTH)
 async def alert_rules_toggle(rule_id: str, body: FirewallToggleBody) -> dict:
     """EN: Enable/disable a rule without deleting it.
@@ -3235,6 +3253,114 @@ def _collect_indicators() -> list[str]:
     except Exception:                                # noqa: BLE001
         pass
     return list(dict.fromkeys(out))[:4096]
+
+
+# ── Agent ingestion (snitch-agent/1) / Ingestion d'agents ─────────────────────
+
+_MAX_AGENT_EVENTS = 1000          # EN: per request / FR: par requête
+_MAX_AGENT_FIELD = 253            # EN: chars per string field / FR: caractères
+
+
+class AgentBatchBody(BaseModel):
+    """EN: POST /ingest/events envelope — the documented contract a
+        lightweight agent (Rust daemon, scripted /proc reader, forwarder)
+        speaks. `events` are SOCKET/flow observations, not packets: the
+        backend treats them as detection input (custom rules + history),
+        never as parsed traffic.
+    FR: Enveloppe POST /ingest/events — le contrat documenté qu'un agent
+        léger parle. `events` = observations de sockets/flux, pas des
+        paquets : le backend les traite en entrée de détection (règles
+        custom + historique), jamais comme du trafic parsé."""
+    agent: str = ""                                  # EN: e.g. "snitch-agent/1" / FR: ex.
+    host: str = ""                                   # EN: reporting host / FR: hôte émetteur
+    # EN: untyped on purpose — malformed items are skipped per-item,
+    #     not rejected with a 422 that drops the whole batch.
+    # FR: non typé volontairement — les items malformés sont ignorés
+    #     unitairement, pas rejetés en 422 qui perd tout le lot.
+    events: list = []
+
+
+@app.post("/ingest/events", dependencies=_AUTH)
+async def ingest_events(body: AgentBatchBody) -> dict:
+    """EN: Ingest normalized flow events from remote agents.
+
+        Contract `snitch-agent/1` — each event: {src_ip, dst_ip,
+        src_port?, dst_port?, proto?, direction?, bytes?, process?,
+        pid?, sni?, ts?}. Events are validated, bounded (≤1000/request,
+        ≤253 chars/string, numbers coerced), then fed to the SAME
+        detection machinery as local packets: custom rules can raise
+        CUSTOM_RULE alerts (message prefixed with the agent host) and
+        bytes accumulate into host/process history under
+        `agent:<host>:<ip>`/`agent:<host>:<process>`. Unknown fields are
+        ignored; nothing here trusts the agent beyond the bearer token.
+    FR: Ingérer des événements de flux normalisés d'agents distants.
+        Contrat `snitch-agent/1`. Événements validés et bornés puis
+        injectés dans la MÊME machinerie de détection que les paquets
+        locaux : règles custom → CUSTOM_RULE (préfixé par l'hôte agent)
+        et historique sous `agent:<hôte>:…`. Champs inconnus ignorés.
+    """
+    events = body.events[:_MAX_AGENT_EVENTS]
+    host = str(body.host or "agent")[:_MAX_AGENT_FIELD] or "agent"
+    accepted = alerts = 0
+    minute = db._utcnow_minute()
+
+    class _Ev:                                        # EN: Packet-shaped adapter / FR: adaptateur
+        def __init__(self, e: dict):
+            self.direction = "out" if e.get("direction") != "in" else "in"
+            self.src_ip = str(e.get("src_ip") or "")[:64]
+            self.dst_ip = str(e.get("dst_ip") or "")[:64]
+            try:
+                self.remote_port = int(e.get("dst_port") or 0)
+            except (TypeError, ValueError):
+                self.remote_port = 0
+            self.protocol = str(e.get("proto") or "tcp")[:8].lower()
+            try:
+                self.size = max(0, int(e.get("bytes") or 0))
+            except (TypeError, ValueError):
+                self.size = 0
+            self.process_name = str(e.get("process") or "")[:_MAX_AGENT_FIELD]
+            try:
+                self.pid = int(e.get("pid") or 0)
+            except (TypeError, ValueError):
+                self.pid = 0
+            self.sni = str(e.get("sni") or "")[:_MAX_AGENT_FIELD]
+            self.dns = []
+
+    for raw in events:
+        if not isinstance(raw, dict):
+            continue
+        ev = _Ev(raw)
+        if not ev.dst_ip:
+            continue
+        accepted += 1
+        db.accumulate_history(minute, "host",
+                              f"{host}:{ev.dst_ip}", ev.size)
+        if ev.process_name:
+            db.accumulate_history(minute, "process",
+                                  f"{host}:{ev.process_name}", ev.size)
+        # EN: Same rules, same alert type — the agent's flows get the
+        #     identical detection surface a local packet would.
+        # FR: Mêmes règles, même type d'alerte — les flux de l'agent ont
+        #     la même surface de détection qu'un paquet local.
+        for m in custom_rules.check(ev, None)[:1]:
+            r = m["rule"]
+            a = Alert(
+                type="CUSTOM_RULE", severity=r["severity"],
+                message=f"[{host}] Custom rule matched: {r['name']} "
+                        f"— hit #{m['count']}",
+                node_id=ev.dst_ip,
+                details={"rule": r, "process": ev.process_name,
+                         "agent": host, "direction": ev.direction,
+                         "ip": ev.dst_ip},
+            )
+            ad = a.to_dict()
+            db.log_alert(ad)
+            asyncio.get_running_loop().create_task(_notify(ad))
+            alerts += 1
+    return {"ok": True, "agent": body.agent or "unknown",
+            "received": len(body.events), "accepted": accepted,
+            "alerts": alerts,
+            "truncated": len(body.events) > _MAX_AGENT_EVENTS}
 
 
 @app.get("/remote/ioc_sync", dependencies=_AUTH)

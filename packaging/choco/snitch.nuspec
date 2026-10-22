@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Snitch — Chocolatey package spec (packed by release.yml).
+     The nupkg wraps the checkout + deploy/gpo/Install-Snitch.ps1. -->
+<package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
+  <metadata>
+    <id>snitch</id>
+    <version>0.0.0</version><!-- replaced at pack time -->
+    <title>Snitch</title>
+    <authors>Snitch contributors</authors>
+    <owners>aixisstudio</owners>
+    <licenseUrl>https://github.com/aixisstudio/Snitch/blob/main/LICENSE</licenseUrl>
+    <projectUrl>https://github.com/aixisstudio/Snitch</projectUrl>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <description>Local-first network observability and outbound firewall — headless backend with REST/WebSocket API, Sigma rules, CEF/ECS SIEM output.</description>
+    <summary>Network traffic visualizer + outbound firewall (headless agent)</summary>
+    <tags>network security firewall monitoring edr siem</tags>
+    <packageSourceUrl>https://github.com/aixisstudio/Snitch/tree/main/packaging/choco</packageSourceUrl>
+  </metadata>
+  <files>
+    <file src="tools\**" target="tools" />
+    <file src="..\..\backend\**" target="backend" />
+    <file src="..\..\deploy\gpo\**" target="deploy\gpo" />
+  </files>
+</package>
