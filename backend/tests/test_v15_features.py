@@ -641,7 +641,11 @@ def test_ebpf_enforce_scoped_attach(monkeypatch):
     monkeypatch.setitem(__import__("sys").modules, "bcc",
                         type("B", (), {"BPF": FakeBPF}))
     monkeypatch.setattr(m, "available", lambda: (True, ""))
-    monkeypatch.setattr(m._CGROUP_DIR, "mkdir", lambda **kw: None)
+    # EN: PosixPath instances are slot-based — mkdir must be patched on
+    #     the CLASS, not the instance (read-only attr on Python ≤3.12).
+    # FR: les PosixPath sont à slots — mkdir se patche sur la CLASSE.
+    monkeypatch.setattr(type(m._CGROUP_DIR), "mkdir",
+                        lambda self, **kw: None)
     e = m.EbpfEnforcer()
     ok, why = e.start()
     assert ok, why

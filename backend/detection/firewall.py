@@ -465,7 +465,7 @@ class FirewallManager:
 
     # ── Windows WFP backend / Backend WFP Windows ────────────────────────────
 
-    def _wfp(self):
+    def _wfp_engine(self):
         """EN: Lazy engine open — returns the backend, False when unavailable
         (non-Windows, missing admin, absent dll), and remembers the verdict.
         FR: Ouverture paresseuse du moteur — renvoie le backend, False si
@@ -509,7 +509,7 @@ class FirewallManager:
         WFP can't serve this rule — the caller then falls back to netsh.
         FR: Applique via WFP. Renvoie (ok, err) ou (None, raison) quand
         WFP ne peut pas servir — l'appelant replie alors sur netsh."""
-        wfp = self._wfp()
+        wfp = self._wfp_engine()
         if wfp is None:
             return None, "wfp unavailable"
         if kind == "process":
@@ -529,7 +529,7 @@ class FirewallManager:
         deterministic, unknown ones are simply absent.
         FR: Supprime tous les filtres WFP créés par la règle — les clés
         sont déterministes, les absentes ignorées."""
-        wfp = self._wfp()
+        wfp = self._wfp_engine()
         if wfp is None:
             return
         from detection.wfp import WfpBackend
@@ -743,7 +743,7 @@ class FirewallManager:
                                        "-j", "DROP", "-m", "comment",
                                        "--comment", f"snitch-{rid}"])
                 elif self._platform == "windows":
-                    if self._wfp() is not None:
+                    if self._wfp_engine() is not None:
                         # EN: True delta — per-IP keys mean stale addresses
                         #     are deleted and new ones added atomically.
                         # FR: Vrai delta — les clés par IP suppriment les
@@ -752,7 +752,7 @@ class FirewallManager:
                             "id": r["id"], "kind": "domain",
                             "value": r["value"], "resolved": old})
                         for t in sorted(set(new) - set(old)):
-                            self._wfp().add_block(
+                            self._wfp_engine().add_block(
                                 r["id"], [{"remote": t}])
                     else:
                         # EN: netsh rules are name-keyed, not value-keyed —
