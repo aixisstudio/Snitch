@@ -2467,7 +2467,13 @@ async def list_interfaces() -> dict:
     try:
         devs = await loop.run_in_executor(None, list_devices)
     except PcapError as exc:
-        return {"interfaces": [], "current": None, "error": str(exc)}
+        # EN: log the real cause, return a fixed label — raw exception
+        #     text leaks internal paths/versions to API clients.
+        # FR: logguer la cause réelle, renvoyer un libellé fixe — le
+        #     texte d'exception divulgue chemins/versions internes.
+        logger.warning("pcap interface enumeration failed: %s", exc)
+        return {"interfaces": [], "current": None,
+                "error": "interface enumeration failed"}
     return {
         "interfaces": [
             {"name": d.name, "description": d.description,
@@ -3043,7 +3049,12 @@ async def alert_rules_sigma(body: dict) -> dict:
     try:
         out = sig.convert(text)
     except ValueError as exc:
-        raise HTTPException(400, str(exc))
+        # EN: generic client-facing reason; details stay in the log —
+        #     exception text is internal information (stack-trace exposure).
+        # FR: raison générique côté client ; les détails restent au log —
+        #     le texte d'exception est une info interne (CodeQL).
+        logger.info("sigma import rejected: %s", exc)
+        raise HTTPException(400, "invalid sigma document")
     imported = []
     for r in out["rules"]:
         try:
@@ -3051,7 +3062,8 @@ async def alert_rules_sigma(body: dict) -> dict:
                                     r["severity"], "alert",
                                     conds=r["conds"])
         except ValueError as exc:
-            out["skipped"].append(f"{r['name']}: {exc}")
+            logger.info("sigma rule %s skipped: %s", r["name"], exc)
+            out["skipped"].append(f"{r['name']}: invalid rule")
             continue
         rule["sigma_id"] = r["sigma_id"]
         imported.append(rule)

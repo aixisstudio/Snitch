@@ -26,6 +26,7 @@ import json
 import logging
 import socket as _socket
 import threading
+import urllib.parse
 import urllib.request
 from datetime import datetime
 
@@ -140,9 +141,17 @@ class WebhookNotifier:
             self._send_syslog(syslog_addr, alert, body)
         if not enabled or not url:
             return
-        if "discord.com" in url or "slack.com" in url:
+        # EN: Host-matched provider detection — a substring check would
+        #     misclassify `discord.com.evil.example` as Discord. Compare
+        #     the parsed hostname (+ subdomain suffix), not the raw URL.
+        # FR: Détection du fournisseur par hôte — un test de sous-chaîne
+        #     classerait `discord.com.evil.example` comme Discord. On
+        #     compare le hostname parsé (+ suffixe de sous-domaine).
+        host = (urllib.parse.urlparse(url).hostname or "").lower()
+        if host == "discord.com" or host.endswith(".discord.com") \
+                or host == "slack.com" or host.endswith(".slack.com"):
             payload = {"content": f"**{text}**"}
-        elif "api.telegram.org" in url:
+        elif host == "api.telegram.org":
             payload = {"text": text}
             if chat_id:
                 payload["chat_id"] = chat_id

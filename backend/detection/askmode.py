@@ -127,7 +127,20 @@ class AskMode:
         ok, why = available()
         if not ok:
             return False, why
-        self._exempt = list(exempt_ips or [])[:64]
+        # EN: Exempt IPs end up as `iptables -d <value>` argv — even
+        #     without a shell, a crafted value could smuggle extra
+        #     iptables flags. Only literal addresses/prefixes pass.
+        # FR: Les IP exemptées deviennent `iptables -d <valeur>` — même
+        #     sans shell, une valeur forgée pourrait injecter des options
+        #     iptables. Seules des adresses/préfixes littéraux passent.
+        import ipaddress
+        self._exempt = []
+        for ip in (exempt_ips or [])[:64]:
+            try:
+                ipaddress.ip_network(str(ip), strict=False)
+            except ValueError:
+                continue
+            self._exempt.append(str(ip))
         import subprocess
         from .nfqueue import NfqSocket                        # noqa: PLC0415
         try:

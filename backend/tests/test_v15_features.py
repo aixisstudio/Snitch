@@ -181,7 +181,11 @@ def test_tls_cert_parsed_single_segment():
     assert cert["subject_cn"] == "www.example.com"
     assert cert["issuer_cn"] == "Example CA"
     assert cert["self_signed"] is False
-    assert "example.com" in cert["sans"]
+    # EN: exact SAN list — substring-style `in` is both weaker and a
+    #     CodeQL substring-sanitization false-positive pattern.
+    # FR: liste SAN exacte — le `in` de sous-chaîne est plus faible et
+    #     déclenche un faux positif CodeQL.
+    assert cert["sans"] == ["www.example.com", "example.com"]
     assert cert["not_before"] == "250101000000Z"
 
 

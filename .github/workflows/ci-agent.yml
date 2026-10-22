@@ -10,6 +10,11 @@
 
 name: agent-ci
 
+# EN: read-only checkout + artifact upload — nothing else is needed.
+# FR: checkout lecture seule + upload d'artefacts — rien d'autre.
+permissions:
+  contents: read
+
 on:
   push:
     paths: ["agent/**", ".github/workflows/ci-agent.yml"]
