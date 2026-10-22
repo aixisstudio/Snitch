@@ -6,17 +6,19 @@
 //!     new outbound/established endpoints only — to the collector's
 //!     `POST /ingest/events` endpoint, contract `snitch-agent/1`.
 //!
-//!     Deliberately zero-dependency and honest about scope:
+//!     Deliberately minimal-dependency and honest about scope:
 //!       * it observes SOCKETS, it does not sniff packets — no payloads,
 //!         no SNI, no DNS answers (the collector's own pcap path keeps
 //!         those duties on the host it runs on);
-//!       * pid↔process attribution needs /proc/*/fd walking — marked
-//!         TODO below rather than half-done;
-//!       * HTTP only for the same reason gossip allows http: LAN/trust
-//!         domain; run behind a WireGuard/TLS tunnel on hostile links.
+//!       * pid↔process attribution walks /proc/*/fd (Linux; other OSes
+//!         report pid 0 honestly);
+//!       * transport is plain HTTP by default — set SNITCH_TLS=1 for
+//!         rustls TLS (system-free pure-Rust stack). On hostile links
+//!         either enable it or run behind WireGuard/Tailscale.
 //!
 //!     Config: SNITCH_SERVER="collector:8000"  SNITCH_TOKEN="<bearer>"
 //!             SNITCH_HOST="agent-name"        SNITCH_INTERVAL_SECS=5
+//!             SNITCH_TLS=1                    SNITCH_CA="/path/ca.pem"
 //!
 //! FR: Surveille la table de sockets de l'hôte (/proc/net/*) et pousse
 //!     le DIFF — nouvelles extrémités sortantes/établies — vers le
@@ -28,13 +30,94 @@
 use std::collections::HashSet;
 use std::env;
 use std::fs;
-use std::io::{Read, Write};
+use std::io::{BufReader, Read, Write};
 use std::net::TcpStream;
 use std::process;
+use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const AGENT_ID: &str = "snitch-agent/1";
 const MAX_EVENTS_PER_POST: usize = 1000; // EN: matches backend cap / FR: cap backend
+
+/// EN: Transport abstraction — plain TCP or a rustls TLS session over it.
+///     Both implement Read+Write so post_batch stays transport-agnostic.
+/// FR: Abstraction de transport — TCP brut ou session TLS rustls par-dessus.
+///     Les deux implémentent Read+Write pour que post_batch reste agnostique.
+enum Transport {
+    Plain(TcpStream),
+    Tls(rustls::StreamOwned<rustls::ClientConnection, TcpStream>),
+}
+
+impl Read for Transport {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        match self {
+            Transport::Plain(s) => s.read(buf),
+            Transport::Tls(s) => s.read(buf),
+        }
+    }
+}
+
+impl Write for Transport {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        match self {
+            Transport::Plain(s) => s.write(buf),
+            Transport::Tls(s) => s.write(buf),
+        }
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        match self {
+            Transport::Plain(s) => s.flush(),
+            Transport::Tls(s) => s.flush(),
+        }
+    }
+}
+
+/// EN: Build the root store — the system-free webpki bundle by default,
+///     plus an optional extra CA PEM (SNITCH_CA) for internal collectors
+///     terminating TLS with a private/self-signed certificate.
+/// FR: Construire le magasin de racines — le bundle webpki autonome par
+///     défaut, plus une CA PEM optionnelle (SNITCH_CA) pour les collecteurs
+///     internes terminant TLS avec un certificat privé/auto-signé.
+fn root_store(ca_path: Option<&str>) -> Result<rustls::RootCertStore, String> {
+    let mut roots = rustls::RootCertStore::empty();
+    roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+    if let Some(path) = ca_path {
+        let f = fs::File::open(path).map_err(|e| format!("open CA {path}: {e}"))?;
+        let certs = rustls_pemfile::certs(&mut BufReader::new(f))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| format!("parse CA {path}: {e}"))?;
+        if certs.is_empty() {
+            return Err(format!("no PEM certificates in {path}"));
+        }
+        let (added, _) = roots.add_parsable_certificates(certs);
+        if added == 0 {
+            return Err(format!("CA file {path} added 0 usable roots"));
+        }
+    }
+    Ok(roots)
+}
+
+fn connect(server: &str, use_tls: bool, ca_path: Option<&str>)
+           -> Result<Transport, String> {
+    let stream = TcpStream::connect(server)
+        .map_err(|e| format!("connect {server}: {e}"))?;
+    stream.set_read_timeout(Some(Duration::from_secs(10))).ok();
+    stream.set_write_timeout(Some(Duration::from_secs(10))).ok();
+    if !use_tls {
+        return Ok(Transport::Plain(stream));
+    }
+    // EN: SNI / verification name = the host part of "host:port".
+    // FR: Nom SNI / de vérification = la partie hôte de « host:port ».
+    let host = server.rsplit_once(':').map(|(h, _)| h).unwrap_or(server);
+    let name = rustls::pki_types::ServerName::try_from(host.to_string())
+        .map_err(|e| format!("bad server name {host}: {e}"))?;
+    let config = rustls::ClientConfig::builder()
+        .with_root_certificates(root_store(ca_path)?)
+        .with_no_client_auth();
+    let conn = rustls::ClientConnection::new(Arc::new(config), name)
+        .map_err(|e| format!("tls init: {e}"))?;
+    Ok(Transport::Tls(rustls::StreamOwned::new(conn, stream)))
+}
 
 #[derive(Clone, PartialEq, Eq, Hash)]
 struct Sock {
@@ -131,14 +214,14 @@ fn json_escape(s: &str) -> String {
 }
 
 fn post_batch(server: &str, token: &str, host: &str,
-              events: &[String]) -> Result<(), String> {
-    // EN: Minimal HTTP/1.1 POST, no TLS stack — see module doc for the
-    //     trust-domain reasoning. `sagt_…` tokens are per-agent enrolled
-    //     credentials → `X-Snitch-Agent`; anything else is the master
-    //     API token → `X-Snitch-Token`.
-    // FR: POST HTTP/1.1 minimal, pas de TLS — voir le doc module. Les
-    //     jetons « sagt_… » sont des crédences d'agent enrôlé →
-    //     « X-Snitch-Agent » ; le reste = jeton maître → « X-Snitch-Token ».
+              events: &[String], use_tls: bool, ca_path: Option<&str>)
+              -> Result<(), String> {
+    // EN: Minimal HTTP/1.1 POST over plain TCP or rustls TLS. `sagt_…`
+    //     tokens are per-agent enrolled credentials → `X-Snitch-Agent`;
+    //     anything else is the master API token → `X-Snitch-Token`.
+    // FR: POST HTTP/1.1 minimal sur TCP brut ou TLS rustls. Les jetons
+    //     « sagt_… » sont des crédences d'agent enrôlé → « X-Snitch-Agent » ;
+    //     le reste = jeton maître → « X-Snitch-Token ».
     let auth = if token.starts_with("sagt_") {
         format!("X-Snitch-Agent: {token}")
     } else {
@@ -152,13 +235,20 @@ fn post_batch(server: &str, token: &str, host: &str,
          {auth}\r\nContent-Type: application/json\r\n\
          Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
         body.len());
-    let mut stream = TcpStream::connect(server)
-        .map_err(|e| format!("connect {server}: {e}"))?;
-    stream.set_read_timeout(Some(Duration::from_secs(10))).ok();
-    stream.set_write_timeout(Some(Duration::from_secs(10))).ok();
+    let mut stream = connect(server, use_tls, ca_path)?;
     stream.write_all(req.as_bytes()).map_err(|e| e.to_string())?;
-    let mut resp = String::new();
-    stream.read_to_string(&mut resp).map_err(|e| e.to_string())?;
+    // EN: read the whole response; a TLS peer that drops without
+    //     close_notify must not discard an otherwise complete answer —
+    //     only propagate the error when nothing arrived at all.
+    // FR: lire toute la réponse ; un pair TLS qui coupe sans close_notify
+    //     ne doit pas faire perdre une réponse complète — ne propager
+    //     l'erreur que si rien n'est arrivé.
+    let mut raw = Vec::new();
+    let read_res = stream.read_to_end(&mut raw);
+    if raw.is_empty() {
+        read_res.map_err(|e| e.to_string())?;
+    }
+    let resp = String::from_utf8_lossy(&raw);
     match resp.split(' ').nth(1) {
         Some(code) if code.starts_with('2') => Ok(()),
         _ => Err(format!("ingest rejected: {}",
@@ -236,10 +326,18 @@ fn main() {
         .unwrap_or_else(|_| env::var("HOSTNAME").unwrap_or_else(|_| "agent".into()));
     let interval: u64 = env::var("SNITCH_INTERVAL_SECS")
         .ok().and_then(|v| v.parse().ok()).unwrap_or(5).max(1);
+    // EN: TLS opt-in — anything but empty/"0" enables it. SNITCH_CA points
+    //     at an extra PEM bundle for collectors on a private CA.
+    // FR: TLS opt-in — tout sauf vide/« 0 » l'active. SNITCH_CA pointe vers
+    //     un bundle PEM additionnel pour les collecteurs en CA privée.
+    let use_tls = !matches!(env::var("SNITCH_TLS").as_deref(),
+                            Err(_) | Ok("") | Ok("0"));
+    let ca_path = env::var("SNITCH_CA").ok().filter(|s| !s.is_empty());
 
     let mut seen: HashSet<Sock> = HashSet::new();
     let mut pending: Vec<String> = Vec::new();
-    eprintln!("snitch-agent {AGENT_ID} → {server} as '{host}' every {interval}s");
+    eprintln!("snitch-agent {AGENT_ID} → {server} as '{host}' every {interval}s{}",
+              if use_tls { " (TLS)" } else { "" });
 
     loop {
         let now = socket_table();
@@ -264,7 +362,8 @@ fn main() {
         if !pending.is_empty() {
             let chunk: Vec<String> = pending
                 .drain(..pending.len().min(MAX_EVENTS_PER_POST)).collect();
-            match post_batch(&server, &token, &host, &chunk) {
+            match post_batch(&server, &token, &host, &chunk,
+                             use_tls, ca_path.as_deref()) {
                 Ok(()) => {}
                 Err(e) => {
                     eprintln!("snitch-agent: {e}");

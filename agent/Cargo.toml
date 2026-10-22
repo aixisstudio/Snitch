@@ -1,11 +1,13 @@
-# Snitch agent — zero-dependency mini-daemon / mini-daemon sans dépendances.
-# EN: `cargo build --release` produces ONE static-ish binary. No crates:
-#     /proc parsing is plain fs, the ingest POST is a raw TcpStream.
-# FR: `cargo build --release` produit UN seul binaire. Zéro crate :
-#     /proc en fs brut, le POST ingest en TcpStream manuel.
+# Snitch agent — lightweight mini-daemon / mini-daemon léger.
+# EN: `cargo build --release` produces ONE static-ish binary. Deps are kept
+#     to the TLS stack only (rustls is pure-Rust, no OpenSSL link): /proc
+#     parsing is plain fs, the ingest POST is a hand-built HTTP/1.1 request.
+# FR: `cargo build --release` produit UN seul binaire. Les deps se limitent à
+#     la pile TLS (rustls est pur Rust, sans lien OpenSSL) : /proc en fs brut,
+#     POST ingest en requête HTTP/1.1 manuelle.
 [package]
 name = "snitch-agent"
-version = "1.6.3"
+version = "1.6.4"
 edition = "2021"
 license = "AGPL-3.0-only"
 description = "Lightweight socket-observation agent for the Snitch collector"
@@ -13,6 +15,15 @@ description = "Lightweight socket-observation agent for the Snitch collector"
 [[bin]]
 name = "snitch-agent"
 path = "src/main.rs"
+
+[dependencies]
+# EN: TLS is opt-in at runtime (SNITCH_TLS=1) — collectors bound to
+#     loopback or fronted by a mesh VPN can skip it entirely.
+# FR: Le TLS est opt-in à l'exécution (SNITCH_TLS=1) — les collecteurs sur
+#     loopback ou derrière un VPN mesh peuvent s'en passer.
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+webpki-roots = "1"
+rustls-pemfile = "2"
 
 [profile.release]
 opt-level = "z"        # EN: smallest binary / FR: binaire minimal

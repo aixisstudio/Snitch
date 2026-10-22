@@ -346,6 +346,42 @@ def test_rule_action_defaults_to_block(tmp_path, monkeypatch):
     raise AssertionError("expected ValueError for bogus action")
 
 
+def test_domain_rule_rejects_injection(tmp_path, monkeypatch):
+    """EN: Domain values must be real hostnames — a newline or whitespace
+        would otherwise be written verbatim into the hosts file by the
+        sinkhole path (host-mapping injection).
+    FR: Les valeurs domaine doivent être de vrais noms d'hôte — un newline
+        ou espace serait sinon écrit verbatim dans le fichier hosts par le
+        chemin sinkhole (injection de mappings)."""
+    fw = _fw(tmp_path, monkeypatch)
+    for bad in ("evil.com\n0.0.0.0 bank.example", "evil.com extra",
+                "-bad.com", "ex_ample.com", "", "a" * 254 + ".com"):
+        try:
+            fw.add_rule("domain", bad)
+        except ValueError:
+            continue
+        raise AssertionError(f"domain accepted: {bad!r}")
+    assert fw.add_rule("domain", "good-example.com")["value"] == \
+        "good-example.com"
+
+
+def test_port_rule_validates_range(tmp_path, monkeypatch):
+    """EN: Port values must coerce to 1-65535 — the string reaches iptables
+        /netsh argv, so reject junk at creation.
+    FR: Les valeurs port doivent donner 1-65535 — la chaîne arrive en argv
+        iptables/netsh, donc rejeter le bruit à la création."""
+    fw = _fw(tmp_path, monkeypatch)
+    for bad in ("0", "70000", "abc", "80 -j ACCEPT", "8.8.8.8"):
+        try:
+            fw.add_rule("port", bad)
+        except ValueError:
+            continue
+        raise AssertionError(f"port accepted: {bad!r}")
+    # EN: Normalized — leading zeros collapse to the canonical int form.
+    # FR: Normalisé — les zéros initiaux se replient sur la forme int.
+    assert fw.add_rule("port", "080")["value"] == "80"
+
+
 # ── Integrity watch / Veille d'intégrité ────────────────────────────────────
 
 

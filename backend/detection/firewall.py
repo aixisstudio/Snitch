@@ -51,6 +51,7 @@ from __future__ import annotations
 import ipaddress
 import os
 import platform
+import re
 import shutil
 import socket
 import subprocess
@@ -59,6 +60,15 @@ import time
 import uuid
 from pathlib import Path
 from typing import Optional
+
+# EN: RFC-1034/1123 hostname — labels of ≤63 alnum/dash chars joined by
+#     dots, total ≤253. Anchored so no whitespace/newline can slip through.
+# FR: Nom d'hôte RFC-1034/1123 — labels de ≤63 caractères alnum/tiret joints
+#     par des points, total ≤253. Ancré : aucun espace/newline ne passe.
+_DOMAIN_RE = re.compile(
+    r"(?=.{1,253}\Z)"
+    r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?"
+    r"(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*\Z")
 
 # EN: Cooldown between two BLOCKED_ATTEMPT alerts for the same rule.
 # FR: Cooldown entre deux alertes BLOCKED_ATTEMPT pour une même règle.
@@ -165,6 +175,30 @@ class FirewallManager:
             raise ValueError(f"unknown rule action: {action}")
         if action != "block" and kind in ("process", "port"):
             raise ValueError(f"{action} is not meaningful for kind {kind}")
+        if kind == "domain":
+            # EN: Strict hostname validation — the sinkhole path writes this
+            #     value verbatim into the hosts file, so newlines/whitespace
+            #     or shell chars must be impossible.
+            # FR: Validation stricte du nom d'hôte — le chemin sinkhole
+            #     écrit cette valeur verbatim dans le fichier hosts, donc
+            #     retours à la ligne/espaces/caractères shell impossibles.
+            value = value.lower().rstrip(".")
+            if not _DOMAIN_RE.match(value):
+                raise ValueError(f"invalid domain name: {value[:80]}")
+        if kind == "port":
+            # EN: Ports reach iptables/netsh argv — coerce to a real port
+            #     number so the rule fails here, not silently downstream.
+            # FR: Les ports arrivent en argv iptables/netsh — forcer un
+            #     vrai numéro pour échouer ici, pas silencieusement plus bas.
+            try:
+                port_no = int(value)
+            except ValueError:
+                raise ValueError(f"invalid port: {value[:80]}") from None
+            if not 1 <= port_no <= 65535:
+                raise ValueError(f"port out of range: {port_no}")
+            value = str(port_no)
+        if len(value) > 253:
+            raise ValueError("rule value too long")
         rule = {
             "id": uuid.uuid4().hex[:10],
             "kind": kind,

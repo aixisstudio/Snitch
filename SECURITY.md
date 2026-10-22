@@ -17,9 +17,12 @@ N'ouvrez pas d'issue publique pour les problèmes de sécurité.
 **EN:** The API exposes your full traffic graph — it is protected by design:
 
 - **Token auth** on every REST endpoint and the WebSocket
-  (`X-Snitch-Token` or `?token=`). Generated per launch under Electron,
-  persisted 0600 otherwise.
+  (`X-Snitch-Token` header; `?token=` is honoured on the WebSocket
+  handshake only — it never authenticates REST). Generated per launch
+  under Electron, persisted 0600 otherwise.
 - **Loopback bind** (`127.0.0.1`) in all modes by default.
+- **Brute-force guard** — after 20 failed auth attempts in 5 min the
+  source IP is rejected (HTTP 429 / WS close) for 60 s, loopback included.
 - **Origin allowlist** on the WebSocket handshake (loopback hosts + `null`)
   to block cross-site WebSocket hijacking.
 - **Restricted CORS** — loopback origins only, no credentials.
@@ -27,14 +30,21 @@ N'ouvrez pas d'issue publique pour les problèmes de sécurité.
   tokens for fleet agents; only the hash is stored and each is revocable
   (`/ingest/revoke`). Agent tokens may submit events as themselves only —
   no read access, no impersonation.
+- **Optional TLS** — the collector terminates TLS when `SNITCH_TLS_CERT` +
+  `SNITCH_TLS_KEY` are set; `snitch-agent` speaks TLS with `SNITCH_TLS=1`
+  (rustls, WebPKI roots, `SNITCH_CA` for private CAs). Plain HTTP stays
+  the default for loopback/mesh-VPN deployments.
 
 **FR :** L'API expose tout votre graphe de trafic — elle est protégée par
 conception :
 
 - **Authentification par jeton** sur chaque endpoint REST et le WebSocket
-  (`X-Snitch-Token` ou `?token=`). Généré à chaque lancement sous Electron,
+  (en-tête `X-Snitch-Token` ; `?token=` n'est honoré qu'au handshake
+  WebSocket — jamais pour REST). Généré à chaque lancement sous Electron,
   persisté en 0600 sinon.
 - **Bind loopback** (`127.0.0.1`) par défaut dans tous les modes.
+- **Garde anti-force brute** — après 20 échecs d'auth en 5 min l'IP
+  source est rejetée (HTTP 429 / fermeture WS) pendant 60 s, loopback inclus.
 - **Liste blanche d'Origin** sur le handshake WebSocket (hôtes loopback +
   `null`) pour bloquer le détournement de WebSocket cross-site.
 - **CORS restreint** — origines loopback uniquement, sans identifiants.
@@ -42,6 +52,10 @@ conception :
   `sagt_…` pour les agents de flotte ; seul le hash est stocké et chacun
   est révocable (`/ingest/revoke`). Un jeton agent ne peut qu'envoyer des
   événements en son nom — pas de lecture, pas d'usurpation.
+- **TLS optionnel** — le collecteur termine TLS quand `SNITCH_TLS_CERT` +
+  `SNITCH_TLS_KEY` sont posés ; `snitch-agent` parle TLS avec
+  `SNITCH_TLS=1` (rustls, racines WebPKI, `SNITCH_CA` pour CA privée).
+  HTTP clair reste le défaut sur loopback/VPN mesh.
 
 ## Privileges / Privilèges
 

@@ -96,7 +96,11 @@ def main() -> int:
         # FR: Ouvrir après un court délai pour qu'uvicorn écoute d'abord.
         threading.Timer(1.0, lambda: webbrowser.open(url)).start()
 
-    uvicorn.run(app, host=args.bind, port=port, log_level="warning")
+    # EN: Same optional TLS as run_backend — SNITCH_TLS_CERT/SNITCH_TLS_KEY.
+    # FR: Même TLS optionnel que run_backend — SNITCH_TLS_CERT/SNITCH_TLS_KEY.
+    uvicorn.run(app, host=args.bind, port=port, log_level="warning",
+                ssl_certfile=os.environ.get("SNITCH_TLS_CERT") or None,
+                ssl_keyfile=os.environ.get("SNITCH_TLS_KEY") or None)
     return 0
 
 

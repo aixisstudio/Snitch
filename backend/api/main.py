@@ -251,6 +251,7 @@ _drop_stats = {
 # FR: Plafonds stricts pour qu'une instance longue durée ne fuie pas de mémoire.
 MAX_GRAPH_NODES = 800
 MAX_ENRICHMENT_CACHE = 4096
+MAX_LAN_DEVICES = 1024    # EN: private-peer enumeration can't grow the map / FR: borne la map de pairs privés
 DRAIN_INTERVAL_S = 0.25        # EN: ~4 Hz batch broadcasts / FR: ~4 lots par seconde
 DRAIN_MAX_PACKETS = 2_000      # EN: per tick / FR: par tick
 
@@ -467,18 +468,25 @@ async def broadcast(message: dict) -> None:
     if not connected_clients:
         return
     payload = json.dumps(message)
-    dead = []
-    for ws in connected_clients:
+
+    async def _send(ws: WebSocket) -> Optional[WebSocket]:
         try:
-            await ws.send_text(payload)
+            # EN: Per-client timeout — one stalled client must not hold the
+            #     whole broadcast hostage (slow reader, flaky LAN UI).
+            # FR: Timeout par client — un client bloqué ne doit pas prendre
+            #     en otage toute la diffusion (lecteur lent, UI LAN instable).
+            await asyncio.wait_for(ws.send_text(payload), timeout=5)
+            return None
         except Exception:
-            dead.append(ws)
+            return ws
+
+    dead = await asyncio.gather(*(_send(ws) for ws in list(connected_clients)))
     for ws in dead:
         # EN: the WS handler may have already dropped it — remove() must not
         #     raise on an absent element or the whole packet batch is lost.
         # FR: le handler WS a pu le retirer avant — remove() ne doit pas
         #     lever sur un élément absent sinon tout le batch est perdu.
-        if ws in connected_clients:
+        if ws is not None and ws in connected_clients:
             connected_clients.remove(ws)
 
 
@@ -569,6 +577,16 @@ def _ensure_lan_device(ip: str) -> dict:
             dev["vendor"] = stored["vendor"]
         if stored.get("device_type") and dev["device_type"] == "unknown":
             dev["device_type"] = stored["device_type"]
+        # EN: Bound the map — a host enumerating a large private prefix
+        #     (VPN scan) must not grow lan_devices forever. Evict the
+        #     quietest device when full.
+        # FR: Borner la map — un hôte énumérant un gros préfixe privé
+        #     (scan VPN) ne doit pas faire grossir lan_devices sans fin.
+        #     Évincer l'appareil le plus discret quand c'est plein.
+        if len(lan_devices) >= MAX_LAN_DEVICES:
+            victim = min(lan_devices, key=lambda k: lan_devices[k].get("bytes", 0))
+            edges.pop(f"lan-edge-{lan_devices[victim].get('ip', '')}", None)
+            lan_devices.pop(victim, None)
         lan_devices[key] = dev
         edges[f"lan-edge-{ip}"] = {
             "id": f"lan-edge-{ip}", "source": "local", "target": key,
@@ -1709,6 +1727,14 @@ async def _handle_device(device: Device, is_new: bool) -> None:
                      hostname=node.get("hostname"),
                      private_mac=device.private_mac)
 
+    # EN: Same bound as _ensure_lan_device — the map must stay finite even
+    #     when the ARP scanner runs on a huge broadcast domain.
+    # FR: Même borne que _ensure_lan_device — la map doit rester finie même
+    #     quand le scanner ARP tourne sur un immense domaine broadcast.
+    if node["id"] not in lan_devices and len(lan_devices) >= MAX_LAN_DEVICES:
+        victim = min(lan_devices, key=lambda k: lan_devices[k].get("bytes", 0))
+        edges.pop(f"lan-edge-{lan_devices[victim].get('ip', '')}", None)
+        lan_devices.pop(victim, None)
     lan_devices[node["id"]] = node
 
     edge_id = f"lan-edge-{device.ip}"
@@ -2356,7 +2382,9 @@ async def set_port_filter(body: PortFilterBody) -> dict:
         trafic correspondant. Persisté — le filtre survit aux redémarrages.
     """
     global _port_filter
-    _port_filter = [p for p in body.ports if 1 <= p <= 65535]
+    # EN: Bounded too — an absurd list would only waste memory and log noise.
+    # FR: Bornée aussi — une liste absurde ne ferait que gaspiller mémoire et logs.
+    _port_filter = [p for p in body.ports[:512] if 1 <= p <= 65535]
     db.set_setting("ports", _port_filter)
 
     # EN: Clear graph + detector state — keep only the "local" node.
@@ -2400,7 +2428,7 @@ async def set_process_filter(body: ProcessFilterBody) -> dict:
     """EN: Hide traffic from named processes (persisted).
     FR: Masquer le trafic de processus nommés (persisté)."""
     global _excluded_processes
-    _excluded_processes = {str(p) for p in body.excluded}
+    _excluded_processes = {str(p)[:256] for p in body.excluded[:512]}
     db.set_setting("excluded_processes", sorted(_excluded_processes))
 
     await broadcast({
@@ -2424,7 +2452,18 @@ async def set_ip_whitelist(body: WhitelistBody) -> dict:
         whitelist fonctionne ensuite correctement.
     """
     global _whitelisted_ips
-    _whitelisted_ips = {str(ip) for ip in body.ips}
+    # EN: Validate every entry — whitelist strings feed askmode's exempt_ips
+    #     which reach iptables argv (validated there too, but failing here
+    #     gives the user an immediate 400 instead of a deferred error).
+    # FR: Valider chaque entrée — la whitelist alimente exempt_ips d'askmode
+    #     qui arrive en argv iptables (validé là aussi, mais échouer ici
+    #     donne un 400 immédiat au lieu d'une erreur différée).
+    import ipaddress
+    try:
+        _whitelisted_ips = {str(ipaddress.ip_address(str(ip).strip()))
+                            for ip in body.ips[:512]}
+    except ValueError:
+        raise HTTPException(400, "whitelist entries must be valid IP addresses") from None
     db.set_setting("whitelisted_ips", sorted(_whitelisted_ips))
 
     removed_ids = [ip for ip in _whitelisted_ips

@@ -107,10 +107,21 @@ if __name__ == '__main__':
     #     est honoré en dernière priorité — env et argv gagnent toujours.
     import storage.db as _db
     _lan_bind = _db.get_setting("lan_bind", "") or ""
+    # EN: Optional TLS termination — set SNITCH_TLS_CERT + SNITCH_TLS_KEY to
+    #     PEM paths (e.g. for remote collectors receiving snitch-agent posts
+    #     over SNITCH_TLS=1). Off by default: loopback serving needs no TLS.
+    # FR: Terminaison TLS optionnelle — poser SNITCH_TLS_CERT +
+    #     SNITCH_TLS_KEY vers des PEM (ex. collecteur distant recevant des
+    #     posts snitch-agent en SNITCH_TLS=1). Off par défaut : loopback n'en
+    #     a pas besoin.
+    _tls_cert = os.environ.get('SNITCH_TLS_CERT') or None
+    _tls_key = os.environ.get('SNITCH_TLS_KEY') or None
     uvicorn.run(
         app,
         host=(os.environ.get('SNITCH_BIND') or argv_bind
               or _lan_bind or '127.0.0.1'),
         port=int(os.environ.get('SNITCH_PORT') or argv_port or '8000'),
         log_level='warning',
+        ssl_certfile=_tls_cert,
+        ssl_keyfile=_tls_key,
     )

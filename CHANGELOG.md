@@ -6,9 +6,54 @@ All notable changes to Snitch. / Toutes les modifications notables de Snitch.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/) — EN/FR.
 
-## [Unreleased] — docs & pipeline sync / synchro docs & pipeline
+## [Unreleased] — security & efficiency hardening / durcissement sécurité & efficacité
+
+### Security / Sécurité
+
+- EN: **Agent↔collector TLS** — `snitch-agent` gains opt-in rustls
+  transport (`SNITCH_TLS=1`, WebPKI roots, `SNITCH_CA` for private CAs);
+  the collector terminates TLS when `SNITCH_TLS_CERT`/`SNITCH_TLS_KEY`
+  are set. The `sagt_…` token and flow metadata no longer travel in
+  cleartext on hostile links.
+  FR: **TLS agent↔collecteur** — `snitch-agent` gagne un transport rustls
+  opt-in (`SNITCH_TLS=1`, racines WebPKI, `SNITCH_CA` pour CA privée) ;
+  le collecteur termine TLS avec `SNITCH_TLS_CERT`/`SNITCH_TLS_KEY`. Le
+  jeton `sagt_…` et les métadonnées ne transitent plus en clair.
+- EN: **hosts-file injection closed** — `domain` firewall rules are now
+  validated against a strict RFC-1034 hostname regex before any
+  sinkhole write, and `port` rules must be an integer 1–65535 (both
+  reached argv/hosts verbatim before).
+  FR: **Injection hosts colmatée** — les règles `domain` sont validées
+  par regex RFC-1034 stricte avant toute écriture sinkhole, et les
+  règles `port` exigent un entier 1–65535.
+- EN: **`?token=` restricted to the WebSocket** — REST endpoints only
+  accept the `X-Snitch-Token` header, so the credential can no longer
+  leak into browser history or access logs via API URLs.
+  FR: **`?token=` réservé au WebSocket** — les endpoints REST
+  n'acceptent que l'en-tête `X-Snitch-Token`.
+- EN: **Per-IP brute-force ban** — 20 failed auth attempts in 5 min →
+  HTTP 429 / WS close for 60 s (loopback included).
+  FR: **Bannissement anti-force brute par IP** — 20 échecs en 5 min →
+  HTTP 429 / fermeture WS pendant 60 s (loopback inclus).
+- EN: `SNITCH_PRINT_TOKEN=0` suppresses the one-time stdout token
+  print for hardened deployments (api_token.txt stays readable, 0600).
+  FR: `SNITCH_PRINT_TOKEN=0` supprime l'affichage stdout du jeton.
+- EN: IP whitelist entries are validated (real addresses only, ≤512);
+  port/process filter lists bounded to 512 entries.
+  FR: Les entrées whitelist sont validées (vraies adresses, ≤512) ;
+  filtres de ports/processus bornés à 512.
 
 ### Changed / Modifié
+
+- EN: **Non-blocking WebSocket broadcast** — each client send has a 5 s
+  timeout and runs concurrently, so one stalled UI can no longer delay
+  the packet feed for every other client.
+  FR: **Diffusion WebSocket non bloquante** — chaque envoi client a un
+  timeout de 5 s et tourne en parallèle.
+- EN: `lan_devices` is now bounded (1024 entries, quietest-eviction) —
+  private-prefix enumeration can't grow the map forever.
+  FR: `lan_devices` est désormais bornée (1024 entrées, éviction de la
+  plus discrète).
 
 - EN: **All project surfaces synced to v1.6.3** — README (Rust agent,
   enrollment, `ti_feeds`, `.rpm`, `snitchd` formula), ROADMAP (v1.5.x/
