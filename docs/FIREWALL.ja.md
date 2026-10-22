@@ -82,3 +82,10 @@ OS ネイティブファイアウォールへ best-effort で適用されます:
 0–100 のスコアを算出: 種別カウント、高リスク国との接触、未解決
 ホスト、ファイアウォール姿勢 — 平易な言葉の推奨付き。*検出レポート*
 であり、認定ではありません。
+
+### v1.2 の新機能 / Nouveautés v1.2
+
+- **`sinkhole` アクション** — `domain`/`ip` ルールはブロックの代わりに loopback へリダイレクト可能：ドメインは hosts ファイル内の `# snitch-sinkhole` マーカー付きブロックで（全 OS）、IP/CIDR は iptables `DNAT` で（Linux のみ）。`process`/`port` への `sinkhole` は拒否、非対応 OS では正直に `applied=False`。
+- **ドメイン再解決** — `domain` ルールは約10分ごとに再解決され、IP 差分が OS ごとに適用されるため、CDN ローテーションで名前のブロックが外れません。
+- **整合性監視**（デフォルト有効・読み取り専用・ローカル） — ネットワーク使用実行ファイルの SHA-256 ベースライン（`BINARY_CHANGED`）、名前/exe 不一致（`NAME_MISMATCH`）、Linux のみ `rwxp` スキャン（`MEM_RWX`、既知 JIT アプリは info レベル）。`GET /security/integrity`、`POST /security/integrity/check`。
+- **アラート説明** — `GET /security/explain?type=X` が手書きの二言語（EN/FR）説明を返します；決定的でオフライン動作 — モデルではありません。UI の「なぜ？」ボタンから表示。

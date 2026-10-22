@@ -84,3 +84,10 @@ bekommen `{alert, source, text}`. Fehler werden geloggt, nie fatal.
 Alarmen und dem Live-Graphen: Zählungen pro Typ, Kontakte in
 Risikoländer, unaufgelöste Hosts, Firewall-Haltung — plus Empfehlungen
 in Klartext. Ein *Befundbericht*, keine Zertifizierung.
+
+### Neu in v1.2 / Nouveautés v1.2
+
+- **Aktion `sinkhole`** — `domain`-/`ip`-Regeln können auf Loopback umleiten statt blockieren: Domains über einen markierten `# snitch-sinkhole`-Block in der hosts-Datei (alle OS), IPs/CIDRs über iptables-`DNAT` (nur Linux). `sinkhole` bei `process`/`port` wird abgelehnt; nicht unterstützte Plattformen → ehrliches `applied=False`.
+- **Domain-Re-Auflösung** — `domain`-Regeln werden alle ~10 Min neu aufgelöst; das IP-Delta wird je OS angewendet, damit CDN-Rotation einen Namen nicht stillschweigend freigibt.
+- **Integritätswache** (standardmäßig an, schreibgeschützt, lokal) — SHA-256-Baselines vernetzter Executables (`BINARY_CHANGED`), Name/Exe-Mismatches (`NAME_MISMATCH`), `rwxp`-Scan nur Linux (`MEM_RWX`, Info-Stufe für bekannte JIT-Apps). `GET /security/integrity`, `POST /security/integrity/check`.
+- **Alert-Erklärungen** — `GET /security/explain?type=X` liefert handgeschriebene zweisprachige (EN/FR) Erklärungen; deterministisch und offline — kein Modell. Die UI zeigt sie hinter der „Warum?“-Schaltfläche.

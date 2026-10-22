@@ -1,9 +1,9 @@
 {
   "name": "snitch-frontend",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "private": true,
   "license": "AGPL-3.0-or-later",
-  "description": "Snitch UI — React + D3.js / Interface React + D3.js",
+  "description": "Snitch UI \u2014 React + D3.js / Interface React + D3.js",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

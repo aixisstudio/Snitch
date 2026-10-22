@@ -53,13 +53,13 @@ un second artefact binaire :
 - **eBPF probes (Linux)** — `sys_enter_connect`/`accept` kernel-space capture, bypass-resistant; needs a compiled BPF program + root / sondes eBPF — capture noyau in-contournable ; exige un programme BPF compilé + root
 - **WFP callout (Windows)** — real kernel packet filtering instead of `netsh` rule orchestration; needs a signed kernel driver / callout WFP — filtrage noyau réel au lieu de l'orchestration `netsh` ; exige un driver signé
 - **NetworkExtension (macOS)** — `NEFilterProvider` for per-bundle filtering; needs Apple Developer ID + entitlements / `NEFilterProvider` pour filtrer par bundle ; exige Developer ID + entitlements
-- **Memory/flow correlation** — unsigned-DLL / `PAGE_EXECUTE_READWRITE` inspection crossed with suspicious connections / corrélation mémoire/flux — inspection des régions exécutables croisée avec les connexions
+- **Memory/flow correlation** — *partially shipped*: RWX memory scan (Linux `/proc/<pid>/maps`) + name/exe mismatch + exe hash watch are live; unsigned-DLL / full memory forensics stay here / *partiellement livré* : scan mémoire RWX + mismatch nom/exe + veille de hash sont actifs ; inspection DLL complète reste ici
 - **Dynamic Taint Analysis** — prove exfiltration byte-for-byte; heavy research / analyse de teinture dynamique — prouver l'exfiltration octet par octet ; recherche lourde
-- **Local SecOps SLM** — a 1–3 B param model explaining alerts in natural language / SLM SecOps local — un modèle 1–3 Md paramètres expliquant les alertes en langage naturel
+- **Local SecOps SLM** — a 1–3 B param model explaining alerts in natural language; *deterministic bilingual explanations ship today* (`/security/explain`), the model stays research / SLM SecOps local — modèle 1–3 Md ; *des explications déterministes bilingues sont livrées* (`/security/explain`), le modèle reste en recherche
 - **ZKP fleet intel** — share detections across a peer fleet without revealing endpoints / intel de flotte en ZKP — partager les détections sans révéler les endpoints
 - **PMU/hardware counters** — ransomware tells below the OS (speculation, crypto bursts) / compteurs matériels PMU — signaux de ransomware sous l'OS
-- **Merkle integrity of loaded modules** — detect hot-patched DLLs before first packet / intégrité Merkle des modules chargés — détecter les DLL patchées avant le premier paquet
-- **Sinkholing / micro-containment** — redirect a suspicious flow to a local honeypot instead of killing it / sinkholing / micro-confinement — rediriger un flux suspect vers un honeypot local au lieu de le tuer
+- **Merkle integrity of loaded modules** — *partially shipped*: executable SHA-256 baselines detect on-disk replacement (`BINARY_CHANGED`); full module-tree verification stays here / *partiellement livré* : les baselines SHA-256 d'exécutables détectent le remplacement sur disque (`BINARY_CHANGED`) ; la vérification complète des modules reste ici
+- **Sinkholing / micro-containment** — *partially shipped*: `sinkhole` rule action redirects domains (hosts) and IPs (iptables DNAT, Linux) to loopback; a real honeypot responder and micro-VM containment stay here / *partiellement livré* : l'action `sinkhole` redirige domaines (hosts) et IP (DNAT iptables, Linux) vers loopback ; un vrai honeypot répondeur et le confinement micro-VM restent ici
 - **PCAP export** stays in scope above / l'export PCAP reste dans le périmètre ci-dessus
 
 ## 🚫 Out of scope / hors périmètre

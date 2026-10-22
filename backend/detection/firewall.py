@@ -13,10 +13,20 @@ EN: Firewall orchestration — Snitch does NOT filter packets in user-space;
 
     Rule kinds:  "ip"      single remote IP
                  "cidr"    network (e.g. 185.0.0.0/8)
-                 "domain"  resolved to IPs at apply time (best effort)
+                 "domain"  resolved to IPs at apply time AND re-resolved
+                          periodically (refresh_domains) so CDN rotation
+                          and DNS changes don't silently unblock a name
                  "process" process name/path (netsh `program=` on Windows,
                           owner match on Linux — name resolved to PIDs)
                  "port"    remote port
+    Rule actions: "block"    drop the traffic (default)
+                  "sinkhole" redirect instead of dropping — domains go to
+                          127.0.0.1 via a marked block in the hosts file
+                          (all OSes), IPs/CIDRs via iptables DNAT in the
+                          nat OUTPUT chain (Linux only; other platforms
+                          report applied=False honestly). Sinkholing keeps
+                          the connection "answered" by localhost so an
+                          analyst can watch what the malware expects.
     "lockdown" drops ALL outbound traffic to non-private destinations —
     loopback and LAN stay up so the UI remains reachable.
 
@@ -37,7 +47,6 @@ import os
 import platform
 import socket
 import subprocess
-import tempfile
 import threading
 import time
 import uuid
@@ -120,19 +129,26 @@ class FirewallManager:
 
     # ── Public rule ops / Opérations publiques ───────────────────────────────
 
-    def add_rule(self, kind: str, value: str) -> dict:
-        """EN: Create + apply a rule. `value` depends on kind (see module doc).
-        Returns the persisted rule dict including its apply result.
-        FR: Créer + appliquer une règle. Retourne la règle persistée avec le
-        résultat d'application."""
+    def add_rule(self, kind: str, value: str, action: str = "block") -> dict:
+        """EN: Create + apply a rule. `value` depends on kind (see module doc),
+        `action` is "block" (default) or "sinkhole". Returns the persisted
+        rule dict including its apply result.
+        FR: Créer + appliquer une règle. `action` = « block » (défaut) ou
+        « sinkhole ». Retourne la règle persistée avec le résultat."""
         kind = kind.lower().strip()
         value = str(value).strip()
+        action = (action or "block").lower().strip()
         if kind not in ("ip", "cidr", "domain", "process", "port"):
             raise ValueError(f"unknown rule kind: {kind}")
+        if action not in ("block", "sinkhole"):
+            raise ValueError(f"unknown rule action: {action}")
+        if action == "sinkhole" and kind in ("process", "port"):
+            raise ValueError(f"sinkhole is not meaningful for kind {kind}")
         rule = {
             "id": uuid.uuid4().hex[:10],
             "kind": kind,
             "value": value,
+            "action": action,
             "enabled": True,
             "applied": False,
             "error": None,
@@ -275,6 +291,10 @@ class FirewallManager:
             rule["applied"], rule["error"] = True, None
             return
         kind, value, rid = rule["kind"], rule["value"], rule["id"]
+        action = rule.get("action", "block")
+        if action == "sinkhole":
+            rule["applied"], rule["error"] = self._sinkhole_apply(rule)
+            return
         targets = rule.get("resolved") if kind == "domain" else [value]
         if kind == "domain" and not targets:
             rule["applied"], rule["error"] = False, "domain did not resolve"
@@ -314,8 +334,147 @@ class FirewallManager:
             return self._pf_apply()
         return False, f"unsupported platform {self._platform}"
 
+    # ── Sinkhole / Trou noir ─────────────────────────────────────────────────
+
+    def _hosts_path(self) -> Optional[Path]:
+        """EN: Platform hosts file — where domain sinkholes are written.
+        FR: Fichier hosts de la plateforme — là où vont les sinkholes domaine."""
+        if self._platform in ("linux", "darwin"):
+            return Path("/etc/hosts")
+        if self._platform == "windows":
+            root = os.environ.get("SystemRoot", r"C:\Windows")
+            return Path(root) / "System32" / "drivers" / "etc" / "hosts"
+        return None
+
+    def _sinkhole_apply(self, rule: dict) -> tuple[bool, str]:
+        """EN: Redirect instead of drop. Domains land in the hosts file
+        between `# snitch-sinkhole <id>` markers (removal = strip the block);
+        IP/CIDR targets get an iptables DNAT rule to 127.0.0.1 on Linux.
+        FR: Rediriger plutôt que dropper. Les domaines vont dans le fichier
+        hosts entre marqueurs `# snitch-sinkhole <id>` ; les IP/CIDR reçoivent
+        une règle DNAT iptables vers 127.0.0.1 sous Linux."""
+        kind, value, rid = rule["kind"], rule["value"], rule["id"]
+        if kind == "domain":
+            hosts = self._hosts_path()
+            if hosts is None:
+                return False, f"no hosts file path on {self._platform}"
+            # EN: Cover the bare name + www + wildcard-ish parents.
+            # FR: Couvrir le nom nu + www + parents type wildcard.
+            names = {value, f"www.{value}"}
+            lines = [f"# snitch-sinkhole {rid} begin"]
+            lines += [f"127.0.0.1 {n}" for n in sorted(names)]
+            lines += [f"::1 {n}" for n in sorted(names)]
+            lines.append(f"# snitch-sinkhole {rid} end")
+            try:
+                with open(hosts, "a", encoding="utf-8") as f:
+                    f.write("\n".join(lines) + "\n")
+                return True, ""
+            except OSError as e:
+                return False, f"hosts file not writable: {e}"
+        # EN: ip/cidr sinkhole — DNAT to loopback, Linux nat table only.
+        # FR: sinkhole ip/cidr — DNAT vers loopback, table nat Linux seulement.
+        if self._platform != "linux":
+            return False, "ip sinkhole needs iptables (linux only)"
+        return self._run(["iptables", "-w", "-t", "nat", "-I", "OUTPUT",
+                          "-d", value, "-j", "DNAT",
+                          "--to-destination", "127.0.0.1",
+                          "-m", "comment", "--comment", f"snitch-sinkhole-{rid}"])
+
+    def _sinkhole_remove(self, rule: dict) -> None:
+        """EN: Undo a sinkhole — strip the marked hosts block or delete the
+        DNAT rule. Best-effort, never raises.
+        FR: Défaire un sinkhole — retirer le bloc hosts marqué ou supprimer
+        la règle DNAT. Au mieux, ne lève jamais."""
+        kind, rid, value = rule["kind"], rule["id"], rule["value"]
+        if kind == "domain":
+            hosts = self._hosts_path()
+            if hosts is None:
+                return
+            try:
+                lines = hosts.read_text(encoding="utf-8",
+                                        errors="replace").splitlines()
+                out, skip = [], False
+                for line in lines:
+                    if line.strip() == f"# snitch-sinkhole {rid} begin":
+                        skip = True
+                        continue
+                    if line.strip() == f"# snitch-sinkhole {rid} end":
+                        skip = False
+                        continue
+                    if not skip:
+                        out.append(line)
+                hosts.write_text("\n".join(out) + "\n", encoding="utf-8")
+            except OSError:
+                pass
+        elif self._platform == "linux":
+            self._run(["iptables", "-w", "-t", "nat", "-D", "OUTPUT",
+                       "-d", value, "-j", "DNAT",
+                       "--to-destination", "127.0.0.1",
+                       "-m", "comment", "--comment", f"snitch-sinkhole-{rid}"])
+
+    # ── Domain re-resolution / Re-résolution des domaines ───────────────────
+
+    def refresh_domains(self) -> int:
+        """EN: Re-resolve every enabled domain rule and apply the delta —
+        stale IPs removed, new IPs added. Called periodically from the flush
+        loop so CDN rotation can't silently unblock a name. Returns the
+        number of rules whose resolution changed.
+        FR: Re-résoudre chaque règle domaine active et appliquer le delta —
+        IP périmées retirées, nouvelles ajoutées. Appelé périodiquement
+        depuis la boucle de flush pour que la rotation CDN ne débloque pas
+        silencieusement un nom. Retourne le nombre de règles modifiées."""
+        with self._lock:
+            rules = [r for r in self._rules
+                     if r.get("enabled", True) and r["kind"] == "domain"]
+        changed = 0
+        for r in rules:
+            new = self._resolve_domain(r["value"])
+            old = list(r.get("resolved") or [])
+            if set(new) == set(old):
+                continue
+            changed += 1
+            # EN: Sinkhole domains redirect through the hosts file (by name) —
+            #     re-resolution only refreshes packet-matching visibility,
+            #     no OS-level delta needed.
+            # FR: Les domaines sinkhole redirigent via le fichier hosts (par
+            #     nom) — la re-résolution ne sert qu'à la visibilité du
+            #     matching, pas de delta OS nécessaire.
+            if r.get("action", "block") == "sinkhole":
+                r["resolved"] = new
+                continue
+            if not self._demo:
+                if self._platform == "linux":
+                    rid = r["id"]
+                    for t in sorted(set(old) - set(new)):
+                        self._run(["iptables", "-w", "-D", "OUTPUT", "-d", t,
+                                   "-j", "DROP", "-m", "comment",
+                                   "--comment", f"snitch-{rid}"])
+                    for t in sorted(set(new) - set(old)):
+                        self._run(["iptables", "-w", "-I", "OUTPUT", "-d", t,
+                                   "-j", "DROP", "-m", "comment",
+                                   "--comment", f"snitch-{rid}"])
+                elif self._platform == "windows":
+                    # EN: netsh rules are name-keyed, not value-keyed —
+                    #     cheapest correct delta = delete + recreate.
+                    # FR: Les règles netsh sont indexées par nom — le delta
+                    #     correct le plus simple = supprimer + recréer.
+                    self._remove(r)
+                    r["resolved"] = new
+                    self._apply(r)
+                    continue
+                elif self._platform == "darwin":
+                    r["resolved"] = new
+                    self._pf_apply()      # EN: anchor is regenerated whole
+                                          # FR: l'ancre est régénérée entière
+                    continue
+            r["resolved"] = new
+        return changed
+
     def _remove(self, rule: dict) -> None:
         if self._demo:
+            return
+        if rule.get("action", "block") == "sinkhole":
+            self._sinkhole_remove(rule)
             return
         rid, kind = rule["id"], rule["kind"]
         if self._platform == "windows":

@@ -401,6 +401,36 @@ export function SettingsPanel({ onClose, lang, setLang, watchlist = [], onWatchl
           <div style={{ ...hint, marginTop: 4 }}>{t('wh_privacy')}</div>
         </div>
 
+        {/* Integrity watch / Veille d'intégrité */}
+        <div style={{ ...row, display: 'block' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <div style={label}>{t('iw_title')}</div>
+              <div style={hint}>{t('iw_hint')}</div>
+            </div>
+            <button
+              onClick={() => {
+                const v = settings?.integrity_watch === false
+                setSettings(s => ({ ...s, integrity_watch: v }))
+                save('integrity_watch', v)
+              }}
+              role="switch" aria-checked={settings?.integrity_watch !== false}
+              style={{
+                width: 36, height: 20, borderRadius: 10, border: 'none',
+                background: settings?.integrity_watch !== false ? '#3b82f6' : 'var(--bg)',
+                outline: '1px solid var(--border)', cursor: 'pointer',
+                position: 'relative', flexShrink: 0,
+              }}>
+              <div style={{
+                width: 14, height: 14, borderRadius: '50%', background: 'var(--text)',
+                position: 'absolute', top: 3, left: settings?.integrity_watch !== false ? 19 : 3,
+                transition: 'left 0.15s',
+              }} />
+            </button>
+          </div>
+          <div style={{ ...hint, marginTop: 4 }}>{t('iw_privacy')}</div>
+        </div>
+
         {/* Updates (Electron only) / Mises à jour (Electron seul) */}
         {window.snitch?.getUpdateStatus && (
           <div style={{ ...row, display: 'block' }}>

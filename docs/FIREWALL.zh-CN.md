@@ -75,3 +75,10 @@ Snitch **不**在用户态过滤数据包。规则会被尽力下发到操作系
 `GET /security/audit` 基于最近 500 条告警和实时图计算 0–100 分：
 按类型计数、与高风险国家的接触、未解析主机、防火墙姿态——并
 返回通俗语言的建议。这是一份*发现报告*，而非认证。
+
+### v1.2 新功能 / Nouveautés v1.2
+
+- **`sinkhole` 动作** — `domain`/`ip` 规则可重定向到 loopback 而非阻断：域名通过 hosts 文件中带 `# snitch-sinkhole` 标记的块（所有 OS），IP/CIDR 通过 iptables `DNAT`（仅 Linux）。`process`/`port` 的 `sinkhole` 被拒绝；不支持的平台如实返回 `applied=False`。
+- **域名重解析** — `domain` 规则每约 10 分钟重新解析，按 OS 应用 IP 差值，CDN 轮换不会静默放行域名。
+- **完整性监视**（默认开启，只读，本地） — 联网可执行文件的 SHA-256 基线（`BINARY_CHANGED`）、名称/exe 不匹配（`NAME_MISMATCH`）、仅 Linux `rwxp` 扫描（`MEM_RWX`，已知 JIT 应用为 info 级）。`GET /security/integrity`、`POST /security/integrity/check`。
+- **告警解释** — `GET /security/explain?type=X` 返回手写的双语（EN/FR）解释；确定性、完全离线 — 非模型。UI 中每条告警的「为什么？」按钮显示。

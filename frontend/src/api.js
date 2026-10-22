@@ -24,7 +24,11 @@
  *       4. window.prompt()           — saisie manuelle en dernier recours
  *     La promesse résolue est mise en cache — une SEULE invite peut apparaître.
  */
-const isElectron = window.location.protocol === 'file:'
+// EN: `typeof window` guard — Vitest (Node) imports this module without a
+//     DOM; everything that touches `window` lazily stays inside functions.
+// FR: Garde `typeof window` — Vitest (Node) importe ce module sans DOM ;
+//     tout ce qui touche `window` paresseusement reste dans des fonctions.
+const isElectron = typeof window !== 'undefined' && window.location.protocol === 'file:'
 
 // EN: Backend port — Electron picks a FREE port at launch and exposes it via
 //     the preload bridge (window.snitch.getPort()). Browsers/Docker use the
@@ -49,7 +53,7 @@ export function getApiPort() {
 //     must not attempt a plaintext ws://.
 // FR: ws/wss suit le schéma de la page — un déploiement derrière un proxy
 //     HTTPS ne doit pas tenter un ws:// en clair.
-const wsScheme = window.location.protocol === 'https:' ? 'wss' : 'ws'
+const wsScheme = (typeof window !== 'undefined' && window.location.protocol === 'https:') ? 'wss' : 'ws'
 
 export async function apiBase() {
   if (isElectron) return `http://127.0.0.1:${await getApiPort()}`
@@ -64,7 +68,9 @@ export async function wsBase() {
 export const API_BASE = isElectron ? 'http://127.0.0.1:8000' : ''
 export const WS_URL   = isElectron
   ? `${wsScheme}://127.0.0.1:8000/ws`
-  : `${wsScheme}://${window.location.host}/ws`
+  : typeof window !== 'undefined'
+    ? `${wsScheme}://${window.location.host}/ws`
+    : ''
 
 let _tokenPromise = null
 

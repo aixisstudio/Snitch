@@ -18,8 +18,16 @@ applied to the OS-native firewall, best-effort:
 | Linux | `iptables -A OUTPUT -j DROP` (dedicated `SNITCH_LOCK` chain for lockdown) |
 | macOS | generated `pf` anchor loaded with `pfctl` |
 
-Rule kinds: `ip`, `cidr`, `domain` (resolved once at apply time), `process`,
-`port`. Rules persist in `snitch.db` and are re-applied at startup.
+Rule kinds: `ip`, `cidr`, `domain`, `process`, `port`. Rules persist in
+`snitch.db` and are re-applied at startup. `domain` rules are re-resolved
+every ~10 minutes — the resolved IP delta is applied so CDN rotation can't
+silently unblock a name.
+
+Rule actions: `block` (default) drops the traffic; `sinkhole` redirects it
+to loopback instead — domains via a marked `# snitch-sinkhole` block in the
+hosts file (all OSes), IPs/CIDRs via iptables `DNAT` in the nat OUTPUT chain
+(Linux only). A sinkholed destination keeps "answering" from 127.0.0.1 so an
+analyst can watch what the process expects instead of severing the call.
 
 **Honest limits:**
 
@@ -29,8 +37,9 @@ Rule kinds: `ip`, `cidr`, `domain` (resolved once at apply time), `process`,
   rule raise `BLOCKED_ATTEMPT` alerts with per-rule counters.
 - macOS `pf` can't match a *process* — process rules on macOS are
   visibility-only by design.
-- `domain` rules resolve the name once when created; a CDN moving IPs
-  outruns the rule until it is re-created.
+- IP/CIDR `sinkhole` is Linux-only (needs the nat table); other platforms
+  record `applied=False` with the reason. `sinkhole` on `process`/`port`
+  is rejected — redirecting by process/port is not meaningful.
 - **Lockdown** drops outbound traffic to *public* IPs only — loopback and
   LAN stay up so the UI remains reachable.
 
@@ -79,8 +88,36 @@ fatal.
   inter-arrival times) works even for tiny keep-alive traffic.
 - `BLOCKED_ATTEMPT`, `LOCKDOWN`, `THREAT_HIT` — alert types added by the
   modules above.
+- `BINARY_CHANGED`, `NAME_MISMATCH`, `MEM_RWX` — emitted by the integrity
+  watch below.
 
-### Security audit
+### Process integrity watch
+
+`Settings → Integrity watch` (on by default — read-only local inspection)
+checks each PID that shows network activity, once per process lifetime:
+
+- **Exe hash watch** — SHA-256 of the executable on disk; the first hash
+  per path becomes a persisted baseline (`integrity_baselines`). A changed
+  file under a live PID raises `BINARY_CHANGED` (critical).
+- **Name/exe mismatch** — process name vs executable basename (tolerates
+  `.exe` and version suffixes) → `NAME_MISMATCH` (warning), the classic
+  masquerading tell.
+- **RWX maps scan** — Linux only: `rwxp` regions in `/proc/<pid>/maps` ≥
+  64 KiB → `MEM_RWX`. Known JIT apps (browsers, node, java, electron) are
+  reported at *info* — their RWX pages are by design.
+
+Honest limits: the hash compares on-disk file states — detecting true
+in-memory tampering (hollowing, reflective injection that never touches
+the file) needs kernel/memory tooling and stays on the research roadmap.
+`GET /security/integrity` reports capabilities + findings;
+`POST /security/integrity/check` forces a re-check on one PID.
+
+### Alert explanations
+
+`GET /security/explain?type=<ALERT_TYPE>` returns a hand-written bilingual
+(EN/FR) explanation — what the alert means, why it matters, concrete next
+steps. Deterministic templates, fully offline — **not** a language model;
+the UI shows it behind the "Why?" button on every alert.
 
 `GET /security/audit` computes a 0–100 score from the last 500 alerts plus
 the live graph: alert-type counts, contacts to high-risk countries,
@@ -106,9 +143,17 @@ appliquées au pare-feu natif de l'OS, au mieux :
 | Linux | `iptables -A OUTPUT -j DROP` (chaîne dédiée `SNITCH_LOCK` pour le lockdown) |
 | macOS | ancre `pf` générée chargée avec `pfctl` |
 
-Types de règles : `ip`, `cidr`, `domain` (résolu une fois à l'application),
-`process`, `port`. Les règles persistent dans `snitch.db` et sont
-réappliquées au démarrage.
+Types de règles : `ip`, `cidr`, `domain`, `process`, `port`. Les règles
+persistent dans `snitch.db` et sont réappliquées au démarrage. Les règles
+`domain` sont re-résolues toutes les ~10 min — le delta d'IP est appliqué
+pour que la rotation CDN ne débloque pas un nom en silence.
+
+Actions : `block` (défaut) droppe le trafic ; `sinkhole` le redirige vers
+loopback — domaines via un bloc marqué `# snitch-sinkhole` dans le fichier
+hosts (tous OS), IP/CIDR via `DNAT` iptables dans la table nat OUTPUT
+(Linux seulement). Une destination sinkholée continue de « répondre »
+depuis 127.0.0.1 : l'analyste observe ce que le processus attend au lieu
+de couper l'appel.
 
 **Limites honnêtes :**
 
@@ -118,8 +163,9 @@ réappliquées au démarrage.
   règle lèvent des alertes `BLOCKED_ATTEMPT` avec compteurs par règle.
 - `pf` sur macOS ne peut pas matcher un *processus* — les règles processus
   y sont par conception de la visibilité seule.
-- Les règles `domain` résolvent le nom une fois à la création ; un CDN qui
-  change d'IP échappe à la règle jusqu'à sa recréation.
+- Le `sinkhole` IP/CIDR est Linux-only (besoin de la table nat) ; les autres
+  plateformes enregistrent `applied=False` avec la raison. `sinkhole` sur
+  `process`/`port` est rejeté — rediriger par processus/port n'a pas de sens.
 - **Lockdown** ne coupe le trafic sortant que vers les IP *publiques* —
   loopback et LAN restent actifs pour garder l'UI joignable.
 
@@ -168,8 +214,40 @@ sont journalisés, jamais fatals.
   inter-arrivées) même pour un trafic minime.
 - `BLOCKED_ATTEMPT`, `LOCKDOWN`, `THREAT_HIT` — types d'alertes ajoutés
   par les modules ci-dessus.
+- `BINARY_CHANGED`, `NAME_MISMATCH`, `MEM_RWX` — émis par la veille
+  d'intégrité ci-dessous.
 
-### Audit de sécurité
+### Veille d'intégrité des processus
+
+*Réglages → Veille d'intégrité* (activée par défaut — inspection locale
+en lecture seule) contrôle chaque PID avec activité réseau, une fois par
+durée de vie du processus :
+
+- **Surveillance du hash exe** — SHA-256 de l'exécutable sur disque ; le
+  premier hash par chemin devient une baseline persistée
+  (`integrity_baselines`). Un fichier modifié sous un PID actif lève
+  `BINARY_CHANGED` (critique).
+- **Mismatch nom/exe** — nom du processus vs basename de l'exécutable
+  (tolère `.exe` et les suffixes de version) → `NAME_MISMATCH` (warning),
+  le signe classique de masquage.
+- **Scan maps RWX** — Linux seulement : régions `rwxp` de
+  `/proc/<pid>/maps` ≥ 64 Kio → `MEM_RWX`. Les apps à JIT connues
+  (navigateurs, node, java, electron) sont signalées en *info* — leurs
+  pages RWX sont prévues.
+
+Limites honnêtes : le hash compare les états sur disque — détecter une
+altération en mémoire vive (hollowing, injection réflexive sans toucher
+au fichier) exige un outillage noyau/mémoire, à la roadmap.
+`GET /security/integrity` rapporte capacités + constats ;
+`POST /security/integrity/check` force une re-vérification sur un PID.
+
+### Explications d'alertes
+
+`GET /security/explain?type=<TYPE>` renvoie une explication bilingue
+(EN/FR) écrite à la main — ce que signifie l'alerte, pourquoi elle compte,
+les étapes concrètes. Gabarits déterministes, 100 % hors-ligne — **pas**
+un modèle de langage ; l'UI l'affiche derrière le bouton « Pourquoi ? »
+de chaque alerte.
 
 `GET /security/audit` calcule un score 0–100 depuis les 500 dernières
 alertes et le graphe : comptes par type, contacts vers pays à risque,

@@ -46,6 +46,7 @@ export function FirewallPanel({ onClose, onLockdownChange }) {
   const [status, setStatus] = useState(null)
   const [kind, setKind] = useState('ip')
   const [value, setValue] = useState('')
+  const [action, setAction] = useState('block')
   const [err, setErr] = useState('')
   const [audit, setAudit] = useState(null)
 
@@ -93,7 +94,7 @@ export function FirewallPanel({ onClose, onLockdownChange }) {
     if (!v) return
     setErr('')
     try {
-      await post('/firewall/rules', { kind, value: v })
+      await post('/firewall/rules', { kind, value: v, action })
       setValue('')
       refresh()
     } catch (ex) { setErr(String(ex.message || ex)) }
@@ -204,9 +205,15 @@ export function FirewallPanel({ onClose, onLockdownChange }) {
 
         {/* Add rule / Ajouter une règle */}
         <form onSubmit={addRule} style={{ display: 'flex', gap: 6, margin: '10px 0 4px' }}>
-          <select value={kind} onChange={e => setKind(e.target.value)} aria-label={t('fw_kind')} style={{ ...input, maxWidth: 110 }}>
+          <select value={kind} onChange={e => { setKind(e.target.value); if (e.target.value === 'process' || e.target.value === 'port') setAction('block') }} aria-label={t('fw_kind')} style={{ ...input, maxWidth: 110 }}>
             {RULE_KINDS.map(k => <option key={k} value={k}>{t(`fw_kind_${k}`)}</option>)}
           </select>
+          {(kind === 'ip' || kind === 'domain') && (
+            <select value={action} onChange={e => setAction(e.target.value)} aria-label={t('fw_action')} style={{ ...input, maxWidth: 90 }}>
+              <option value="block">{t('fw_action_block')}</option>
+              <option value="sinkhole">{t('fw_action_sinkhole')}</option>
+            </select>
+          )}
           <input value={value} onChange={e => setValue(e.target.value)}
             placeholder={t(`fw_ph_${kind}`)} aria-label={t('fw_value')}
             style={{ ...input, flex: 1 }} />
@@ -230,6 +237,13 @@ export function FirewallPanel({ onClose, onLockdownChange }) {
                   color: r.enabled ? 'var(--blue-text)' : 'var(--text-faint)',
                   background: 'var(--bg)', borderRadius: 4, padding: '1px 5px',
                 }}>{r.kind}</span>
+                {r.action === 'sinkhole' && (
+                  <span style={{
+                    fontSize: 9, fontWeight: 700, textTransform: 'uppercase',
+                    color: '#a855f7', background: 'var(--bg)', borderRadius: 4,
+                    padding: '1px 5px',
+                  }}>{t('fw_action_sinkhole')}</span>
+                )}
                 <span style={{ fontSize: 11, color: r.enabled ? 'var(--text)' : 'var(--text-faint)', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {r.value}
                 </span>

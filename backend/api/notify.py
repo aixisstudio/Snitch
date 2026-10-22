@@ -23,7 +23,6 @@ import json
 import logging
 import threading
 import urllib.request
-from typing import Optional
 
 logger = logging.getLogger("snitch.notify")
 

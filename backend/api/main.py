@@ -90,6 +90,8 @@ from scanner.arp_scanner import ARPScanner, Device, default_gateway as _default_
 from scanner.arp_scanner import READ_STATS as _arp_stats
 from detection.anomaly import AnomalyDetector, Alert
 from detection.firewall import FirewallManager
+from detection.integrity import IntegrityWatcher
+from detection import explain as alert_explain
 from detection.threatintel import ThreatIntel
 from api.notify import notifier
 from paths import data_dir
@@ -116,6 +118,11 @@ detector = AnomalyDetector()
 #     des réglages persistés au démarrage (voir _load_settings).
 fw = FirewallManager(data_dir())
 ti = ThreatIntel()
+# EN: Read-only process integrity watch — exe hash baselines, name/exe
+#     mismatch, Linux RWX maps. All local inspection, bounded state.
+# FR: Veille d'intégrité des processus en lecture seule — baselines de hash
+#     d'exes, mismatch nom/exe, maps RWX Linux. Inspection locale, état borné.
+integrity = IntegrityWatcher()
 _loop: asyncio.AbstractEventLoop | None = None
 _sniffer: PacketSniffer | None = None
 _scanner: ARPScanner | None = None
@@ -195,11 +202,17 @@ class IgnoreBody(BaseModel):
 
 
 class FirewallRuleBody(BaseModel):
-    """EN: /firewall/rules payload — block an IP, domain suffix or process.
-    FR: Charge utile de /firewall/rules — bloquer une IP, un suffixe de
-    domaine ou un processus."""
+    """EN: /firewall/rules payload — block or sinkhole an IP, domain suffix
+    or process. `action` defaults to "block"; "sinkhole" redirects the
+    destination to loopback (hosts file for domains, iptables DNAT on
+    Linux for IPs).
+    FR: Charge utile de /firewall/rules — bloquer ou trou-noircir une IP,
+    un suffixe de domaine ou un processus. `action` = « block » (défaut) ;
+    « sinkhole » redirige vers loopback (hosts pour les domaines, DNAT
+    iptables sous Linux pour les IP)."""
     kind: str
     value: str
+    action: str = "block"
 
 
 class FirewallToggleBody(BaseModel):
@@ -684,6 +697,11 @@ def _process_batch(packets: list[Packet]) -> None:
     touched_devices: dict[str, dict] = {}
     out_packets: list[dict] = []
     out_alerts: list[dict] = []
+    # EN: (pid, name) pairs seen outbound this batch — handed to the
+    #     integrity watcher once per tick (it dedups per process lifetime).
+    # FR: Couples (pid, nom) sortants du lot — transmis à la veille
+    #     d'intégrité une fois par tick (elle déduplique par processus).
+    seen_pids: dict[int, str] = {}
 
     for pkt in packets:
         if pkt.process_name and pkt.process_name in _excluded_processes:
@@ -870,6 +888,13 @@ def _process_batch(packets: list[Packet]) -> None:
                 db.log_alert(ad)
                 out_alerts.append(ad)
 
+        # EN: Outbound packets with attribution feed the integrity watch —
+        #     the watcher itself is bounded (one inspection per pid lifetime).
+        # FR: Les paquets sortants attribués alimentent la veille d'intégrité —
+        #     bornée en interne (une inspection par durée de vie du pid).
+        if pkt.direction == "out" and pkt.pid and pkt.pid > 3:
+            seen_pids[pkt.pid] = pkt.process_name or ""
+
         touched_nodes[node_id] = node
         touched_edges[edge_id] = edge
         out_packets.append({
@@ -881,6 +906,14 @@ def _process_batch(packets: list[Packet]) -> None:
             "timestamp": pkt.timestamp,
         })
 
+    # EN: Integrity checks run AFTER the batch — hashing exe files and
+    #     reading /proc maps would stall the 4 Hz drain if done inline.
+    # FR: Les contrôles d'intégrité tournent APRÈS le lot — hasher des exes
+    #     et lire /proc maps bloquerait le drain 4 Hz en ligne.
+    if seen_pids and integrity.enabled:
+        asyncio.get_running_loop().create_task(
+            _integrity_scan(list(seen_pids.items())))
+
     return {
         "type": "batch",
         "nodes": list(touched_nodes.values()),
@@ -889,6 +922,38 @@ def _process_batch(packets: list[Packet]) -> None:
         "packets": out_packets,
         "alerts": out_alerts,
     }
+
+
+async def _integrity_scan(items: list[tuple[int, str]]) -> None:
+    """
+    EN: Background integrity pass for the new PIDs of one drain tick —
+        psutil/file-hash/maps reads run in an executor; each finding becomes
+        a logged + broadcast alert (and webhook notification when eligible).
+    FR: Passage d'intégrité en fond pour les nouveaux PID d'un tick —
+        psutil/hash/maps tournent dans un executor ; chaque constat devient
+        une alerte journalisée + diffusée (et notification webhook).
+    """
+    loop = asyncio.get_running_loop()
+    try:
+        findings = await loop.run_in_executor(None, integrity.check_many, items)
+    except Exception as exc:
+        logger.debug("integrity scan failed: %s", exc)
+        return
+    for f in findings:
+        proc = f.get("process") or f.get("pid")
+        alert = Alert(
+            type=f["type"],
+            severity=f.get("severity", "warning"),
+            message=f"Integrity: {f['type'].replace('_', ' ').title()} — "
+                    f"{proc}: {f.get('detail', '')}",
+            node_id=None,
+            details=f,
+        )
+        d = alert.to_dict()
+        db.log_alert(d)
+        await broadcast({"type": "alert", "alert": d})
+        if f.get("severity") != "info":
+            await _notify(d)
 
 
 async def _drain_loop() -> None:
@@ -1070,8 +1135,10 @@ def _on_media_change(state: MediaState) -> None:
 def _flush_loop() -> None:
     """EN: Periodically flush the traffic accumulator to SQLite.
     FR: Vider périodiquement l'accumulateur de trafic vers SQLite."""
+    ticks = 0
     while not _shutdown:
         time.sleep(10)
+        ticks += 1
         try:
             db.flush()
             # EN: Snapshot learned process baselines — they power the
@@ -1079,8 +1146,24 @@ def _flush_loop() -> None:
             # FR: Sauvegarder les baselines de processus apprises — elles
             #     alimentent les alertes de déviation entre redémarrages.
             db.set_setting("app_baselines", detector.dump_baselines())
+            db.set_setting("integrity_baselines", integrity.dump_baselines())
         except Exception as exc:
             logger.error("db flush failed: %s", exc)
+        # EN: Domain rules re-resolve every ~10 min — CDNs rotate IPs, and a
+        #     stale resolution would silently stop matching the name.
+        # FR: Les règles domaine se re-résolvent toutes les ~10 min — les CDN
+        #     font tourner leurs IP et une résolution périmée cesserait de
+        #     matcher le nom sans bruit.
+        if ticks % 60 == 0:
+            try:
+                changed = fw.refresh_domains()
+                if changed:
+                    rules, _lockdown = fw.serialized()
+                    db.set_setting("firewall_rules", rules)
+                    logger.info("firewall: %d domain rule(s) re-resolved",
+                                changed)
+            except Exception as exc:
+                logger.debug("domain refresh failed: %s", exc)
 
 
 def _cleanup_loop() -> None:
@@ -1206,6 +1289,12 @@ def _load_settings() -> None:
     ti.configure(db.get_setting("ti_provider", "none") or "none",
                  db.get_setting("ti_api_key", "") or "")
     detector.load_baselines(db.get_setting("app_baselines", {}) or {})
+    # EN: Integrity watch is ON by default — it is read-only local
+    #     inspection, so it follows the "safe unless told otherwise" rule.
+    # FR: La veille d'intégrité est ON par défaut — inspection locale en
+    #     lecture seule, donc « sûr sauf indication contraire ».
+    integrity.configure(bool(db.get_setting("integrity_watch", True)))
+    integrity.load_baselines(db.get_setting("integrity_baselines", {}) or {})
     notifier.configure(db.get_setting("webhook_url", "") or "",
                        bool(db.get_setting("webhook_enabled", False)),
                        db.get_setting("telegram_chat_id", "") or "")
@@ -1381,6 +1470,8 @@ async def post_settings(body: SettingsBody) -> dict:
             notifier.configure(db.get_setting("webhook_url", "") or "",
                                bool(db.get_setting("webhook_enabled", False)),
                                db.get_setting("telegram_chat_id", "") or "")
+        if key == "integrity_watch":
+            integrity.configure(bool(value))
     return {"ok": True}
 
 @app.get("/capture/status", dependencies=_AUTH)
@@ -1892,7 +1983,8 @@ async def firewall_add_rule(body: FirewallRuleBody) -> dict:
     FR: Créer une règle {kind: ip|domain|process, value}. Persistée."""
     loop = asyncio.get_running_loop()
     try:
-        rule = await loop.run_in_executor(None, fw.add_rule, body.kind, body.value)
+        rule = await loop.run_in_executor(
+            None, fw.add_rule, body.kind, body.value, body.action)
     except ValueError as exc:
         raise HTTPException(400, str(exc))
     rules, lockdown = fw.serialized()
@@ -2018,6 +2110,56 @@ async def threat_check(body: ThreatCheckBody) -> dict:
     return {"verdict": verdict, "config": ti.config()}
 
 
+@app.get("/security/integrity", dependencies=_AUTH)
+async def integrity_status() -> dict:
+    """EN: Integrity-watch capability + recent findings report. Honest about
+        platform support — RWX scan is Linux-only, hash watch everywhere.
+    FR: Rapport de capacité + constats de la veille d'intégrité. Honnête sur
+        le support plateforme — scan RWX Linux seulement, hash partout."""
+    return integrity.status()
+
+
+@app.post("/security/integrity/check", dependencies=_AUTH)
+async def integrity_check(body: PidBody) -> dict:
+    """EN: Manual on-demand integrity check for one PID — hash, name/exe
+        match, RWX maps. Runs the checks even if the pid was already seen
+        (clears its dedup entry first), so analysts can force a re-check.
+    FR: Contrôle d'intégrité manuel à la demande pour un PID — hash,
+        correspondance nom/exe, maps RWX. Force la vérification même si le
+        pid a déjà été vu (purge son entrée de dédup d'abord)."""
+    import psutil
+    if body.pid <= 3 or body.pid == os.getpid():
+        raise HTTPException(400, "refusing to check a system/critical pid")
+    loop = asyncio.get_running_loop()
+
+    def _do() -> list[dict]:
+        # EN: Drop the dedup key so a manual check always re-inspects.
+        # FR: Retirer la clé de dédup pour qu'un contrôle manuel ré-inspecte.
+        with integrity._lock:                        # noqa: SLF001 — same service
+            for k in [k for k in integrity._checked if k[0] == body.pid]:
+                integrity._checked.pop(k, None)
+        try:
+            name = psutil.Process(body.pid).name()
+        except psutil.NoSuchProcess:
+            return []
+        return integrity.check(body.pid, name)
+
+    findings = await loop.run_in_executor(None, _do)
+    return {"pid": body.pid, "findings": findings}
+
+
+@app.get("/security/explain", dependencies=_AUTH)
+async def security_explain(type: str = "") -> dict:
+    """EN: Plain-language, bilingual explanation for one alert type —
+        deterministic templates, works fully offline (no model involved).
+    FR: Explication bilingue en langage clair pour un type d'alerte —
+        gabarits déterministes, 100 % hors-ligne (aucun modèle)."""
+    rec = alert_explain.explain(type)
+    if rec is None:
+        raise HTTPException(404, f"no explanation for alert type {type!r}")
+    return {"type": type.upper(), **rec}
+
+
 @app.get("/security/audit", dependencies=_AUTH)
 async def security_audit() -> dict:
     """EN: Hardening report computed from the last 500 alerts + live graph:
@@ -2076,6 +2218,11 @@ async def security_audit() -> dict:
             "platform": fw.status().get("platform"),
         },
         "threat_intel": ti.config(),
+        "integrity": {
+            "enabled": integrity.enabled,
+            "checked": integrity.status().get("checked", 0),
+            "findings": integrity.status().get("findings", [])[-10:],
+        },
         "recommendations": _audit_recommendations(
             counts, risky, unlabeled, active_rules, lockdown),
     }

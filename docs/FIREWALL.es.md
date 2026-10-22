@@ -85,3 +85,10 @@ loguean, nunca son fatales.
 alertas y el grafo: conteos por tipo, contactos con países de riesgo,
 hosts sin resolver, postura del firewall — y devuelve recomendaciones en
 lenguaje claro. Es un *informe de hallazgos*, no una certificación.
+
+### Novedades v1.2 / Nouveautés v1.2
+
+- **Acción `sinkhole`** — las reglas `domain`/`ip` pueden redirigir a loopback en lugar de bloquear: dominios vía un bloque marcado `# snitch-sinkhole` en el archivo hosts (todos los SO), IP/CIDR vía `DNAT` iptables (solo Linux). `sinkhole` en `process`/`port` se rechaza; plataformas no soportadas → `applied=False` honesto.
+- **Re-resolución de dominios** — las reglas `domain` se re-resuelven cada ~10 min y el delta de IP se aplica por SO, para que la rotación CDN no desbloquee un nombre en silencio.
+- **Vigilancia de integridad** (activada por defecto, solo lectura, local) — baselines SHA-256 de ejecutables en red (`BINARY_CHANGED`), nombres/exe divergentes (`NAME_MISMATCH`), scan `rwxp` solo Linux (`MEM_RWX`, nivel info para apps JIT conocidas). `GET /security/integrity`, `POST /security/integrity/check`.
+- **Explicaciones de alertas** — `GET /security/explain?type=X` devuelve explicaciones bilingües (EN/FR) escritas a mano; deterministas y offline — no es un modelo. La UI las muestra tras el botón "¿Por qué?".

@@ -19,8 +19,10 @@ import {
   Bell, Info, AlertTriangle, AlertCircle, X,
   Globe, WifiOff, Wifi, ScanLine,
   Activity, Unlock, TrendingUp, Camera, ShieldAlert,
+  FileWarning, Fingerprint, Cpu, HelpCircle,
 } from 'lucide-react'
 import { useT } from '../i18n'
+import { apiBase, authHeaders } from '../api'
 
 // EN: Visual style per severity. / FR: Style visuel par sévérité.
 const SEVERITY_STYLES = {
@@ -48,6 +50,39 @@ const TYPE_ICONS = {
   CLEARTEXT:          Unlock,
   BASELINE_DEVIATION: Activity,
   LOCKDOWN:           AlertTriangle,
+  BINARY_CHANGED:     FileWarning,
+  NAME_MISMATCH:      Fingerprint,
+  MEM_RWX:            Cpu,
+}
+
+/**
+ * EN: On-demand bilingual explanation for one alert type — fetched from
+ *     GET /security/explain (deterministic templates, offline-capable).
+ *     Picks the <field>_<lang> variant, English fallback.
+ * FR: Explication bilingue à la demande pour un type d'alerte — récupérée
+ *     depuis GET /security/explain (gabarits déterministes, hors-ligne).
+ *     Choisit la variante <champ>_<lang>, retombe sur l'anglais.
+ */
+function useExplanation(type, open) {
+  const { lang } = useT()
+  const [rec, setRec] = useState(null)
+  useEffect(() => {
+    if (!open || rec) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const base = await apiBase()
+        const headers = await authHeaders()
+        const r = await fetch(`${base}/security/explain?type=${encodeURIComponent(type)}`, { headers })
+        if (r.ok && !cancelled) setRec(await r.json())
+      } catch { /* explanation is a nicety — failure stays silent */ }
+    })()
+    return () => { cancelled = true }
+  }, [open, type]) // eslint-disable-line react-hooks/exhaustive-deps
+  if (!rec) return null
+  const pick = (k) => rec[`${k}_${lang}`] || rec[`${k}_en`]
+  const actions = rec[`actions_${lang}`] || rec.actions_en || []
+  return { title: pick('title'), what: pick('what'), why: pick('why'), actions }
 }
 
 export function AlertBell({ unread, onClick }) {
@@ -161,6 +196,8 @@ function AlertRow({ alert, onIgnore }) {
   const sev      = SEVERITY_STYLES[alert.severity] || SEVERITY_STYLES.info
   const TypeIcon = TYPE_ICONS[alert.type] || Info
   const SevIcon  = sev.Icon
+  const [showWhy, setShowWhy] = useState(false)
+  const expl = useExplanation(alert.type, showWhy)
   // EN: Translate the type if a key exists, else show the raw type.
   // FR: Traduire le type si une clé existe, sinon afficher le type brut.
   const typeLabel = t(`alert_${alert.type}`) !== `alert_${alert.type}` ? t(`alert_${alert.type}`) : alert.type
@@ -186,15 +223,43 @@ function AlertRow({ alert, onIgnore }) {
                 {Object.entries(alert.details).filter(([, v]) => v).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`).join(' · ')}
               </div>
             )}
-            {!alert._grouped && onIgnore && (
-              <button onClick={() => onIgnore(alert)} style={{
-                marginTop: 5, background: 'none', border: '1px solid var(--border)',
-                borderRadius: 4, padding: '2px 8px', fontSize: 9,
-                color: 'var(--text-muted)', cursor: 'pointer',
+            {showWhy && expl && (
+              <div style={{
+                marginTop: 5, padding: '6px 8px', fontSize: 10, lineHeight: 1.5,
+                background: 'var(--bg)', border: '1px solid var(--border)',
+                borderRadius: 6, color: 'var(--text-muted)',
               }}>
-                {t('ignore_alert')}
-              </button>
+                <div style={{ fontWeight: 700, color: 'var(--text)', marginBottom: 2 }}>{expl.title}</div>
+                <div>{expl.what}</div>
+                <div style={{ marginTop: 3 }}>{expl.why}</div>
+                {expl.actions.length > 0 && (
+                  <ul style={{ margin: '4px 0 0', paddingLeft: 14 }}>
+                    {expl.actions.map((a, i) => <li key={i}>{a}</li>)}
+                  </ul>
+                )}
+              </div>
             )}
+            <div style={{ display: 'flex', gap: 6, marginTop: 5 }}>
+              {!alert._grouped && (
+                <button onClick={() => setShowWhy(v => !v)} title={t('alert_why')} style={{
+                  background: 'none', border: '1px solid var(--border)',
+                  borderRadius: 4, padding: '2px 6px', fontSize: 9,
+                  color: 'var(--text-muted)', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', gap: 3,
+                }}>
+                  <HelpCircle size={10} /> {t('alert_why')}
+                </button>
+              )}
+              {!alert._grouped && onIgnore && (
+                <button onClick={() => onIgnore(alert)} style={{
+                  background: 'none', border: '1px solid var(--border)',
+                  borderRadius: 4, padding: '2px 8px', fontSize: 9,
+                  color: 'var(--text-muted)', cursor: 'pointer',
+                }}>
+                  {t('ignore_alert')}
+                </button>
+              )}
+            </div>
           </div>
         </div>
         <span style={{ fontSize: 9, color: 'var(--text-faint)', flexShrink: 0, marginTop: 2 }}>
