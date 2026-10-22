@@ -194,3 +194,4 @@ Objectif : un seul fichier à télécharger et lancer par OS. Livré via la rele
 - ⏳ **winget PR #455520** — toujours ouverte, attente Microsoft
 - ⏳ **AppImage PR #10605** — toujours ouverte, suivi v1.0.7 posté
 - ⏳ **HN** — 12 pts, aucun nouveau commentaire à traiter
+- ✅ **Thème clair NATIF en v1.0.8** — remplace l'inversion v1.0.7 par un système de tokens CSS complet : ~280 couleurs en dur → variables sémantiques (`--bg`, `--surface`, `--text`…), palette claire choisie à la main, `.attr`→`.style` en D3 pour résoudre `var()` en SVG, aurora WebGL re-sondée via hook `useTheme()` ; release **publiée automatiquement par la CI** (12 assets, le fix du job release fonctionne) ; tap Homebrew mis à jour 1.0.8 ; note postée sur PR #10605
