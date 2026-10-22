@@ -21,6 +21,7 @@ geschützt:
 - **Origin-Allowlist** beim WebSocket-Handshake (Loopback-Hosts + `null`),
   um Cross-Site-WebSocket-Hijacking zu blockieren.
 - **Restriktives CORS** — nur Loopback-Origins, keine Credentials.
+- **Tokens pro Agent** — `POST /ingest/enroll` stellt dedizierte `sagt_…`-Tokens für Flotten-Agents aus; nur der Hash wird gespeichert, jedes ist via `/ingest/revoke` widerrufbar. Agent-Tokens dürfen nur eigene Events senden — kein Lesezugriff, kein Identitätswechsel.
 
 ## Privilegien
 

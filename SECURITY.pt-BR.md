@@ -19,6 +19,7 @@ A API expõe todo o seu grafo de tráfego — é protegida por design:
 - **Allowlist de Origin** no handshake WebSocket (hosts loopback + `null`)
   para bloquear sequestro de WebSocket cross-site.
 - **CORS restrito** — apenas origens loopback, sem credenciais.
+- **Tokens por agente** — `POST /ingest/enroll` emite tokens `sagt_…` dedicados para agentes da frota; só o hash é armazenado e cada um é revogável (`/ingest/revoke`). Um token de agente só pode enviar eventos em seu nome — sem leitura, sem personificação.
 
 ## Privilégios
 
