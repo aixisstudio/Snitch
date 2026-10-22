@@ -36,3 +36,4 @@ logs/
 .DS_Store
 *.log
 .env
+staging/

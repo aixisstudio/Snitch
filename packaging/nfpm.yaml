@@ -34,18 +34,13 @@ contents:
     type: config|noreplace
 overrides:
   rpm:
-    dependencies:
+    depends:
       - python3
       - libpcap
   deb:
-    dependencies:
+    depends:
       - python3
       - python3-venv
       - libpcap0.8
 scripts:
-  postinstall: |
-    #!/bin/sh
-    id snitch >/dev/null 2>&1 || \
-        useradd --system --no-create-home --shell /usr/sbin/nologin snitch
-    systemctl daemon-reload >/dev/null 2>&1 || true
-    echo "Enable with: systemctl enable --now snitch"
+  postinstall: packaging/postinstall.sh
