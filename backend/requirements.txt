@@ -11,7 +11,7 @@
 #     (capture/pcap.py, capture/parser.py). dnspython est parti aussi — les
 #     réponses DNS sont analysées par notre parseur.
 
-fastapi==0.143.0          # EN: REST + WebSocket API framework / FR: framework API REST + WebSocket
+fastapi==0.149.0          # EN: REST + WebSocket API framework / FR: framework API REST + WebSocket
 uvicorn[standard]==0.54.0 # EN: ASGI server / FR: serveur ASGI
 websockets==17.2        # EN: WebSocket support / FR: support WebSocket
 maxminddb==3.2.0          # EN: raw .mmdb reader — GeoLite2 AND DB-IP Lite / FR: lecteur .mmdb brut — GeoLite2 ET DB-IP Lite
