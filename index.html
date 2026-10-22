@@ -124,11 +124,11 @@ if (navigator.language.startsWith('fr')) toggleLang();
 
 // EN: OS-aware download button — detects the visitor's platform and points
 //     to the right artifact. Every OS has a one-click installer since
-//     v1.0.6: macOS app zip, Windows NSIS installer, Linux AppImage.
+//     v1.0.7: macOS app zip, Windows NSIS installer, Linux AppImage.
 //     Asset names are versionless so these links never rot.
 // FR: Bouton de téléchargement adapté à l'OS — détecte la plateforme du
 //     visiteur et pointe vers le bon artefact. Chaque OS a un installeur en
-//     un clic depuis la v1.0.6 : zip macOS, NSIS Windows, AppImage Linux.
+//     un clic depuis la v1.0.7 : zip macOS, NSIS Windows, AppImage Linux.
 //     Les noms d'assets sont sans version — ces liens ne périment jamais.
 const detectedOS = /Win/i.test(navigator.platform + ' ' + navigator.userAgent) ? 'win'
                  : /Linux|Android|X11/i.test(navigator.platform + ' ' + navigator.userAgent) ? 'linux'
