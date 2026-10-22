@@ -175,6 +175,8 @@ jobs:
             dist/installer/*.deb
             dist/installer/*.dmg
             dist/installer/*.zip
+            dist/installer/*.yml
+            dist/installer/*.zsync
             !dist/installer/*-unpacked
       # EN: Code signing/notarization placeholders — disabled until you set the
       #     repository VARIABLE `ENABLE_CODESIGNING=true` and the secrets below.
@@ -266,8 +268,7 @@ jobs:
               Snitch-Lite-Setup*) mv "$f" "$(dirname "$f")/Snitch-Lite-Setup-windows.exe" ;;
               *-arm64.dmg)        mv "$f" "$(dirname "$f")/Snitch-macos-arm64.dmg" ;;
               *-arm64-mac.zip)    mv "$f" "$(dirname "$f")/Snitch-macos-arm64.zip" ;;
-              *.AppImage)         mv "$f" "$(dirname "$f")/Snitch-x86_64.AppImage" ;;
-              *_amd64.deb)        mv "$f" "$(dirname "$f")/snitch-linux-amd64.deb" ;;
+              *amd64.deb)         mv "$f" "$(dirname "$f")/snitch-linux-amd64.deb" ;;
             esac
           done
           find artifacts -type f -name "*" | sort
