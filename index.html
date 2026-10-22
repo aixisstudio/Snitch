@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Snitch — Real-time network traffic visualizer</title>
-<meta name="description" content="See every connection your computer makes — live node graph + world map, 100% local, no telemetry. EN/FR. Free & open-source (AGPL).">
+<meta name="description" content="See every connection your computer makes — live node graph + world map, 100% local, no telemetry. 8 languages. Free & open-source (AGPL).">
 <meta property="og:title" content="Snitch — Track every hidden flow">
-<meta property="og:description" content="Privacy-first real-time network traffic visualizer. 100% local, bilingual EN/FR, open-source.">
+<meta property="og:description" content="Privacy-first real-time network traffic visualizer. 100% local, 8 languages, open-source.">
 <meta property="og:image" content="https://raw.githubusercontent.com/aixisstudio/Snitch/main/docs/assets/social-preview.png">
 <link rel="icon" href="https://raw.githubusercontent.com/aixisstudio/Snitch/main/icon.png">
 <style>
@@ -55,7 +55,11 @@
     <nav>
       <a href="https://github.com/aixisstudio/Snitch">GitHub</a>
       <a href="https://github.com/aixisstudio/Snitch/blob/main/README.md" data-i18n="docs">Docs</a>
-      <button class="lang" onclick="toggleLang()" id="langBtn">FR</button>
+      <select class="lang" id="langSel" onchange="setLang(this.value)" aria-label="Language">
+        <option value="en">EN</option><option value="fr">FR</option><option value="es">ES</option>
+        <option value="de">DE</option><option value="ru">RU</option><option value="ja">日本語</option>
+        <option value="pt-BR">PT</option><option value="zh-CN">中文</option>
+      </select>
     </nav>
   </header>
 
@@ -78,9 +82,9 @@
 
   <div class="grid">
     <div class="card"><span class="badge">LIVE</span><h3 data-i18n="f1t">Force graph + world map</h3><p data-i18n="f1d">Your machine at the center, LAN devices inside their perimeter, every remote host geolocated on an interactive globe.</p></div>
-    <div class="card"><span class="badge">LOCAL</span><h3 data-i18n="f2t">Privacy by design</h3><p data-i18n="f2d">Loopback-only API behind a token, offline GeoIP, SQLite on-device storage. Zero outbound calls, zero telemetry.</p></div>
-    <div class="card"><span class="badge">SMART</span><h3 data-i18n="f3t">Anomaly detection</h3><p data-i18n="f3d">Port scans, beaconing, possible exfiltration — flagged in real time with per-process attribution.</p></div>
-    <div class="card"><span class="badge">EN/FR</span><h3 data-i18n="f4t">Fully bilingual</h3><p data-i18n="f4d">Complete English/French interface, docs, and code comments — one click to switch.</p></div>
+    <div class="card"><span class="badge">LOCAL</span><h3 data-i18n="f2t">Privacy by design</h3><p data-i18n="f2d">Loopback-only API behind a token, offline GeoIP, SQLite on-device storage. No outbound calls without your opt-in.</p></div>
+    <div class="card"><span class="badge">SMART</span><h3 data-i18n="f3t">Anomaly detection + firewall</h3><p data-i18n="f3d">Port scans, beaconing, exfiltration — flagged in real time, blocked via the OS firewall.</p></div>
+    <div class="card"><span class="badge">8 LANGS</span><h3 data-i18n="f4t">8 languages</h3><p data-i18n="f4d">Interface and docs in English, French, Spanish, German, Russian, Japanese, Portuguese and Chinese.</p></div>
   </div>
 
   <section>
@@ -93,36 +97,93 @@ SNITCH_DEMO=1 python backend/run_backend.py   # safe preview, no root</pre>
     <p style="color:var(--dim);font-size:13px" data-i18n="plat">macOS · Windows 10/11 (installer, Npcap) · Linux (AppImage / .deb / Docker). AGPL-3.0.</p>
   </section>
 
-  <footer data-i18n="foot">Développé par <a href="https://aixis.fr/">aiXis</a> · AGPL-3.0 · <a href="https://github.com/aixisstudio/Snitch">github.com/aixisstudio/Snitch</a></footer>
+  <footer data-i18n="foot">Built by <a href="https://aixis.fr/">aiXis</a> · AGPL-3.0 · <a href="https://github.com/aixisstudio/Snitch">github.com/aixisstudio/Snitch</a></footer>
 </div>
 
 <script>
+// EN: 8-language i18n — English is the markup default, the 7 other locales
+//     live below. Persisted in localStorage, auto-detected from the browser.
+// FR: i18n 8 langues — l'anglais est le texte du markup, les 7 autres locales
+//     sont ci-dessous. Choix persisté en localStorage, détecté via le navigateur.
 const i18n = {
   fr: { h1:'Traquez chaque <span>flux masqué</span>.', sub:'Voyez chaque connexion que votre ordinateur établit — à qui il parle, où ils sont, et quelle app est responsable. 100 % local. Zéro télémétrie.',
         star:'⭐ Star sur GitHub', install:"Guide d'installation", docs:'Docs',
         f1t:'Graphe + carte du monde', f1d:'Votre machine au centre, les appareils LAN dans leur périmètre, chaque hôte distant géolocalisé sur un globe interactif.',
-        f2t:'Privacy by design', f2d:'API en loopback derrière un jeton, GeoIP hors ligne, stockage SQLite local. Zéro appel sortant, zéro télémétrie.',
-        f3t:"Détection d'anomalies", f3d:"Scans de ports, balisage, exfiltration possible — signalés en temps réel avec attribution par processus.",
-        f4t:'Entièrement bilingue', f4d:"Interface, docs et commentaires de code en anglais et français — un clic pour basculer.",
+        f2t:'Privacy by design', f2d:'API en loopback derrière un jeton, GeoIP hors ligne, stockage SQLite local. Aucun appel sortant sans votre consentement.',
+        f3t:"Détection d'anomalies + pare-feu", f3d:"Scans de ports, balisage, exfiltration — signalés en temps réel, bloqués via le pare-feu de l'OS.",
+        f4t:'8 langues', f4d:'Interface et documentation en anglais, français, espagnol, allemand, russe, japonais, portugais et chinois.',
         sign:'Les builds Windows seront signés par la <a href="https://signpath.org">SignPath Foundation</a> — candidature en cours.',
         inst:'Installer en quelques secondes', plat:'macOS · Windows 10/11 (installeur, Npcap) · Linux (AppImage / .deb / Docker). AGPL-3.0.',
         foot:'Développé par <a href="https://aixis.fr/">aiXis</a> · AGPL-3.0 · <a href="https://github.com/aixisstudio/Snitch">github.com/aixisstudio/Snitch</a>' },
-  en: { /* default text already in markup */ }
+  es: { h1:'Rastrea cada <span>flujo oculto</span>.', sub:'Ve cada conexión que hace tu ordenador — con quién habla, dónde están y qué app es responsable. 100 % local. Sin telemetría. Nunca.',
+        star:'⭐ Estrella en GitHub', install:'Guía de instalación', docs:'Docs',
+        f1t:'Grafo dinámico + mapa mundial', f1d:'Tu máquina en el centro, dispositivos LAN dentro de su perímetro, cada host remoto geolocalizado en un globo interactivo.',
+        f2t:'Privacidad por diseño', f2d:'API solo loopback tras un token, GeoIP sin conexión, almacenamiento SQLite local. Sin llamadas salientes sin tu consentimiento.',
+        f3t:'Detección de anomalías + firewall', f3d:'Escaneos de puertos, balizamiento, exfiltración — señalados en tiempo real y bloqueados con el firewall del sistema.',
+        f4t:'8 idiomas', f4d:'Interfaz y documentación en inglés, francés, español, alemán, ruso, japonés, portugués y chino.',
+        sign:'Las builds de Windows estarán firmadas por la <a href="https://signpath.org">SignPath Foundation</a> — solicitud en curso.',
+        inst:'Instala en segundos', plat:'macOS · Windows 10/11 (instalador, Npcap) · Linux (AppImage / .deb / Docker). AGPL-3.0.',
+        foot:'Desarrollado por <a href="https://aixis.fr/">aiXis</a> · AGPL-3.0 · <a href="https://github.com/aixisstudio/Snitch">github.com/aixisstudio/Snitch</a>' },
+  de: { h1:'Verfolge jeden <span>versteckten Flow</span>.', sub:'Sieh jede Verbindung deines Computers — mit wem er spricht, wo die Gegenstelle ist und welche App verantwortlich ist. 100 % lokal. Keine Telemetrie. Nie.',
+        star:'⭐ Star auf GitHub', install:'Installationsanleitung', docs:'Docs',
+        f1t:'Force-Graph + Weltkarte', f1d:'Dein Rechner im Zentrum, LAN-Geräte innerhalb ihres Perimeters, jeder Remote-Host auf einem interaktiven Globus geolokalisiert.',
+        f2t:'Privacy by Design', f2d:'Loopback-API hinter einem Token, Offline-GeoIP, lokaler SQLite-Speicher. Keine ausgehenden Verbindungen ohne dein Opt-in.',
+        f3t:'Anomalieerkennung + Firewall', f3d:'Portscans, Beaconing, Exfiltration — in Echtzeit erkannt und über die OS-Firewall blockiert.',
+        f4t:'8 Sprachen', f4d:'Oberfläche und Dokumentation auf Englisch, Französisch, Spanisch, Deutsch, Russisch, Japanisch, Portugiesisch und Chinesisch.',
+        sign:'Windows-Builds werden von der <a href="https://signpath.org">SignPath Foundation</a> signiert — Antrag läuft.',
+        inst:'In Sekunden installiert', plat:'macOS · Windows 10/11 (Installer, Npcap) · Linux (AppImage / .deb / Docker). AGPL-3.0.',
+        foot:'Entwickelt von <a href="https://aixis.fr/">aiXis</a> · AGPL-3.0 · <a href="https://github.com/aixisstudio/Snitch">github.com/aixisstudio/Snitch</a>' },
+  ru: { h1:'Отслеживайте каждый <span>скрытый поток</span>.', sub:'Видьте каждое соединение вашего компьютера — с кем он общается, где находятся узлы и какое приложение отвечает. 100 % локально. Без телеметрии.',
+        star:'⭐ Звезда на GitHub', install:'Инструкция по установке', docs:'Доки',
+        f1t:'Граф связей + карта мира', f1d:'Ваша машина в центре, устройства LAN внутри периметра, каждый удалённый хост геолокирован на интерактивном глобусе.',
+        f2t:'Приватность по умолчанию', f2d:'API только на loopback за токеном, офлайн-GeoIP, локальное хранилище SQLite. Никаких исходящих запросов без вашего согласия.',
+        f3t:'Обнаружение аномалий + файрвол', f3d:'Сканирование портов, биконинг, эксфильтрация — фиксируются в реальном времени и блокируются файрволом ОС.',
+        f4t:'8 языков', f4d:'Интерфейс и документация на английском, французском, испанском, немецком, русском, японском, португальском и китайском.',
+        sign:'Сборки Windows будут подписаны <a href="https://signpath.org">SignPath Foundation</a> — заявка на рассмотрении.',
+        inst:'Установка за секунды', plat:'macOS · Windows 10/11 (установщик, Npcap) · Linux (AppImage / .deb / Docker). AGPL-3.0.',
+        foot:'Разработано <a href="https://aixis.fr/">aiXis</a> · AGPL-3.0 · <a href="https://github.com/aixisstudio/Snitch">github.com/aixisstudio/Snitch</a>' },
+  ja: { h1:'すべての<span>隠れたフロー</span>を追跡。', sub:'コンピューターのすべての接続を可視化 — 誰と通信し、どこにいて、どのアプリが原因か。100% ローカル。テレメトリなし。',
+        star:'⭐ GitHub でスター', install:'インストールガイド', docs:'ドキュメント',
+        f1t:'フォースグラフ + 世界地図', f1d:'あなたのマシンが中心、LAN デバイスはペリメータ内、すべてのリモートホストがインタラクティブな地球儀に表示。',
+        f2t:'プライバシー重視の設計', f2d:'トークン保護のループバック専用 API、オフライン GeoIP、SQLite ローカル保存。オプトインなしの外部通信ゼロ。',
+        f3t:'異常検知 + ファイアウォール', f3d:'ポートスキャン、ビーコニング、情報流出 — リアルタイムで検知し OS ファイアウォールでブロック。',
+        f4t:'8 言語対応', f4d:'英語・フランス語・スペイン語・ドイツ語・ロシア語・日本語・ポルトガル語・中国語の UI とドキュメント。',
+        sign:'Windows ビルドは <a href="https://signpath.org">SignPath Foundation</a> により署名予定 — 申請中。',
+        inst:'数秒でインストール', plat:'macOS · Windows 10/11（インストーラー、Npcap）· Linux（AppImage / .deb / Docker）。AGPL-3.0。',
+        foot:'開発：<a href="https://aixis.fr/">aiXis</a> · AGPL-3.0 · <a href="https://github.com/aixisstudio/Snitch">github.com/aixisstudio/Snitch</a>' },
+  'pt-BR': { h1:'Rastreie cada <span>fluxo oculto</span>.', sub:'Veja todas as conexões do seu computador — com quem ele fala, onde estão e qual app é responsável. 100% local. Sem telemetria. Nunca.',
+        star:'⭐ Estrela no GitHub', install:'Guia de instalação', docs:'Docs',
+        f1t:'Grafo dinâmico + mapa-múndi', f1d:'Sua máquina no centro, dispositivos LAN dentro do perímetro, cada host remoto geolocalizado num globo interativo.',
+        f2t:'Privacidade por design', f2d:'API apenas loopback atrás de token, GeoIP offline, armazenamento SQLite local. Nenhuma chamada externa sem seu consentimento.',
+        f3t:'Detecção de anomalias + firewall', f3d:'Varreduras de porta, beaconing, exfiltração — sinalizados em tempo real e bloqueados pelo firewall do sistema.',
+        f4t:'8 idiomas', f4d:'Interface e documentação em inglês, francês, espanhol, alemão, russo, japonês, português e chinês.',
+        sign:'Builds do Windows serão assinados pela <a href="https://signpath.org">SignPath Foundation</a> — candidatura em andamento.',
+        inst:'Instale em segundos', plat:'macOS · Windows 10/11 (instalador, Npcap) · Linux (AppImage / .deb / Docker). AGPL-3.0.',
+        foot:'Desenvolvido por <a href="https://aixis.fr/">aiXis</a> · AGPL-3.0 · <a href="https://github.com/aixisstudio/Snitch">github.com/aixisstudio/Snitch</a>' },
+  'zh-CN': { h1:'追踪每一个<span>隐藏流量</span>。', sub:'查看计算机的每一个连接 — 与谁通信、对方在哪里、哪个应用负责。100% 本地运行。零遥测。',
+        star:'⭐ 在 GitHub 上点星', install:'安装指南', docs:'文档',
+        f1t:'力导向图 + 世界地图', f1d:'你的机器位于中心，局域网设备在边界内，每个远程主机都定位在交互式地球上。',
+        f2t:'隐私优先设计', f2d:'仅回环 API + 令牌认证、离线 GeoIP、SQLite 本地存储。未经你同意绝无任何外联。',
+        f3t:'异常检测 + 防火墙', f3d:'端口扫描、信标回连、数据外泄 — 实时标记并经系统防火墙阻断。',
+        f4t:'8 种语言', f4d:'界面与文档支持英语、法语、西班牙语、德语、俄语、日语、葡萄牙语和中文。',
+        sign:'Windows 版本将由 <a href="https://signpath.org">SignPath Foundation</a> 签名 — 申请审核中。',
+        inst:'几秒完成安装', plat:'macOS · Windows 10/11（安装程序、Npcap）· Linux（AppImage / .deb / Docker）。AGPL-3.0。',
+        foot:'由 <a href="https://aixis.fr/">aiXis</a> 开发 · AGPL-3.0 · <a href="https://github.com/aixisstudio/Snitch">github.com/aixisstudio/Snitch</a>' }
 };
-let fr = false;
+let lang = 'en';
 const orig = {};
-function toggleLang() {
-  fr = !fr;
-  document.getElementById('langBtn').textContent = fr ? 'EN' : 'FR';
+function setLang(l) {
+  lang = l;
+  try { localStorage.setItem('snitch-lang', l); } catch(e) {}
+  document.getElementById('langSel').value = l;
   document.querySelectorAll('[data-i18n]').forEach(el => {
     const k = el.dataset.i18n;
     if (!(k in orig)) orig[k] = el.innerHTML;
-    el.innerHTML = fr ? (i18n.fr[k] || orig[k]) : orig[k];
+    el.innerHTML = (i18n[l] && i18n[l][k]) || orig[k];
   });
-  document.documentElement.lang = fr ? 'fr' : 'en';
+  document.documentElement.lang = l;
   applyDl();
 }
-if (navigator.language.startsWith('fr')) toggleLang();
 
 // EN: OS-aware download button — detects the visitor's platform and points
 //     to the right artifact. Every OS has a one-click installer since
@@ -136,26 +197,60 @@ const detectedOS = /Win/i.test(navigator.platform + ' ' + navigator.userAgent) ?
                  : /Linux|Android|X11/i.test(navigator.platform + ' ' + navigator.userAgent) ? 'linux'
                  : 'mac';
 const DL = {
-  mac:   { en: '⬇ Download for macOS',            fr: '⬇ Télécharger pour macOS',
-           href: 'https://github.com/aixisstudio/Snitch/releases/latest/download/Snitch-macos-arm64.zip',
-           hintEn: 'Apple Silicon · or: brew install --cask aixisstudio/tap/snitch',
-           hintFr: 'Apple Silicon · ou : brew install --cask aixisstudio/tap/snitch' },
-  win:   { en: '⬇ Download for Windows',          fr: '⬇ Télécharger pour Windows',
-           href: 'https://github.com/aixisstudio/Snitch/releases/latest/download/Snitch-Setup-windows.exe',
-           hintEn: 'one-click installer · UAC prompt at launch · needs Npcap',
-           hintFr: 'installeur en un clic · prompt UAC au lancement · nécessite Npcap' },
-  linux: { en: '⬇ Download for Linux',            fr: '⬇ Télécharger pour Linux',
-           href: 'https://github.com/aixisstudio/Snitch/releases/latest/download/Snitch-x86_64.AppImage',
-           hintEn: 'AppImage — or .deb / Docker on the releases page',
-           hintFr: 'AppImage — ou .deb / Docker sur la page des releases' },
+  mac:   { href: 'https://github.com/aixisstudio/Snitch/releases/latest/download/Snitch-macos-arm64.zip',
+           label: { en:'⬇ Download for macOS', fr:'⬇ Télécharger pour macOS', es:'⬇ Descargar para macOS',
+                    de:'⬇ Für macOS laden', ru:'⬇ Скачать для macOS', ja:'⬇ macOS 版をダウンロード',
+                    'pt-BR':'⬇ Baixar para macOS', 'zh-CN':'⬇ 下载 macOS 版' },
+           hint:  { en:'Apple Silicon · or: brew install --cask aixisstudio/tap/snitch',
+                    fr:'Apple Silicon · ou : brew install --cask aixisstudio/tap/snitch',
+                    es:'Apple Silicon · o: brew install --cask aixisstudio/tap/snitch',
+                    de:'Apple Silicon · oder: brew install --cask aixisstudio/tap/snitch',
+                    ru:'Apple Silicon · или: brew install --cask aixisstudio/tap/snitch',
+                    ja:'Apple Silicon · または：brew install --cask aixisstudio/tap/snitch',
+                    'pt-BR':'Apple Silicon · ou: brew install --cask aixisstudio/tap/snitch',
+                    'zh-CN':'Apple Silicon · 或：brew install --cask aixisstudio/tap/snitch' } },
+  win:   { href: 'https://github.com/aixisstudio/Snitch/releases/latest/download/Snitch-Setup-windows.exe',
+           label: { en:'⬇ Download for Windows', fr:'⬇ Télécharger pour Windows', es:'⬇ Descargar para Windows',
+                    de:'⬇ Für Windows laden', ru:'⬇ Скачать для Windows', ja:'⬇ Windows 版をダウンロード',
+                    'pt-BR':'⬇ Baixar para Windows', 'zh-CN':'⬇ 下载 Windows 版' },
+           hint:  { en:'one-click installer · UAC prompt at launch · needs Npcap',
+                    fr:'installeur en un clic · prompt UAC au lancement · nécessite Npcap',
+                    es:'instalador en un clic · prompt UAC al iniciar · requiere Npcap',
+                    de:'Ein-Klick-Installer · UAC-Abfrage beim Start · benötigt Npcap',
+                    ru:'установщик в один клик · запрос UAC при запуске · нужен Npcap',
+                    ja:'ワンクリックインストーラー · 起動時に UAC プロンプト · Npcap が必要',
+                    'pt-BR':'instalador em um clique · prompt UAC ao iniciar · requer Npcap',
+                    'zh-CN':'一键安装程序 · 启动时 UAC 提示 · 需要 Npcap' } },
+  linux: { href: 'https://github.com/aixisstudio/Snitch/releases/latest/download/Snitch-x86_64.AppImage',
+           label: { en:'⬇ Download for Linux', fr:'⬇ Télécharger pour Linux', es:'⬇ Descargar para Linux',
+                    de:'⬇ Für Linux laden', ru:'⬇ Скачать для Linux', ja:'⬇ Linux 版をダウンロード',
+                    'pt-BR':'⬇ Baixar para Linux', 'zh-CN':'⬇ 下载 Linux 版' },
+           hint:  { en:'AppImage — or .deb / Docker on the releases page',
+                    fr:'AppImage — ou .deb / Docker sur la page des releases',
+                    es:'AppImage — o .deb / Docker en la página de releases',
+                    de:'AppImage — oder .deb / Docker auf der Releases-Seite',
+                    ru:'AppImage — или .deb / Docker на странице релизов',
+                    ja:'AppImage — またはリリースページの .deb / Docker',
+                    'pt-BR':'AppImage — ou .deb / Docker na página de releases',
+                    'zh-CN':'AppImage — 或发布页面上的 .deb / Docker' } },
 };
 function applyDl() {
   const d = DL[detectedOS];
   const b = document.getElementById('dlBtn');
-  b.textContent = fr ? d.fr : d.en;
+  b.textContent = d.label[lang] || d.label.en;
   b.href = d.href;
-  document.getElementById('osHint').textContent = fr ? d.hintFr : d.hintEn;
+  document.getElementById('osHint').textContent = d.hint[lang] || d.hint.en;
 }
+// Auto-detect: saved choice wins, then browser language, then English.
+let detected = 'en';
+try { detected = localStorage.getItem('snitch-lang') || 'en'; } catch(e) {}
+if (detected === 'en') {
+  const nav = (navigator.language || 'en').toLowerCase();
+  detected = nav.startsWith('fr') ? 'fr' : nav.startsWith('es') ? 'es' : nav.startsWith('de') ? 'de'
+           : nav.startsWith('ru') ? 'ru' : nav.startsWith('ja') ? 'ja' : nav.startsWith('pt') ? 'pt-BR'
+           : nav.startsWith('zh') ? 'zh-CN' : 'en';
+}
+setLang(detected);
 applyDl();
 </script>
 </body>
