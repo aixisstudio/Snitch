@@ -1,5 +1,7 @@
 # Code of Conduct / Code de conduite
 
+[English](CODE_OF_CONDUCT.md) | [Français](CODE_OF_CONDUCT.md) | [Español](CODE_OF_CONDUCT.es.md) | [Deutsch](CODE_OF_CONDUCT.de.md) | [Русский](CODE_OF_CONDUCT.ru.md) | [日本語](CODE_OF_CONDUCT.ja.md) | [Português](CODE_OF_CONDUCT.pt-BR.md) | [中文](CODE_OF_CONDUCT.zh-CN.md)
+
 ## English
 
 This project follows the [Contributor Covenant v2.1](https://www.contributor-covenant.org/version/2/1/code_of_conduct/).

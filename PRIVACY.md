@@ -1,5 +1,7 @@
 # Privacy / Confidentialité
 
+[English](PRIVACY.md) | [Français](PRIVACY.md) | [Español](PRIVACY.es.md) | [Deutsch](PRIVACY.de.md) | [Русский](PRIVACY.ru.md) | [日本語](PRIVACY.ja.md) | [Português](PRIVACY.pt-BR.md) | [中文](PRIVACY.zh-CN.md)
+
 ## English
 
 Snitch is a privacy tool — it must never leak the very data it helps you monitor.

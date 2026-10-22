@@ -1,5 +1,7 @@
 # Contributing / Contribuer
 
+[English](CONTRIBUTING.md) | [Français](CONTRIBUTING.md) | [Español](CONTRIBUTING.es.md) | [Deutsch](CONTRIBUTING.de.md) | [Русский](CONTRIBUTING.ru.md) | [日本語](CONTRIBUTING.ja.md) | [Português](CONTRIBUTING.pt-BR.md) | [中文](CONTRIBUTING.zh-CN.md)
+
 ## English
 
 Thanks for your interest! Snitch is a bilingual (EN/FR) project — code

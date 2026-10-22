@@ -1,5 +1,7 @@
 # Security features / Fonctionnalités de sécurité
 
+[English](FIREWALL.md) | [Français](FIREWALL.md) | [Español](FIREWALL.es.md) | [Deutsch](FIREWALL.de.md) | [Русский](FIREWALL.ru.md) | [日本語](FIREWALL.ja.md) | [Português](FIREWALL.pt-BR.md) | [中文](FIREWALL.zh-CN.md)
+
 ## English
 
 Snitch ships a threat-hunting layer on top of passive observation. **What it

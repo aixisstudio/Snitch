@@ -1,5 +1,7 @@
 # Security Policy / Politique de sécurité
 
+[English](SECURITY.md) | [Français](SECURITY.md) | [Español](SECURITY.es.md) | [Deutsch](SECURITY.de.md) | [Русский](SECURITY.ru.md) | [日本語](SECURITY.ja.md) | [Português](SECURITY.pt-BR.md) | [中文](SECURITY.zh-CN.md)
+
 ## Reporting / Signalement
 
 **EN:** Please report vulnerabilities privately via GitHub's "Report a

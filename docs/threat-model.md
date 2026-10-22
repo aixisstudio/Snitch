@@ -1,5 +1,7 @@
 # Threat Model / Modèle de menace
 
+[English](threat-model.md) | [Français](threat-model.md) | [Español](threat-model.es.md) | [Deutsch](threat-model.de.md) | [Русский](threat-model.ru.md) | [日本語](threat-model.ja.md) | [Português](threat-model.pt-BR.md) | [中文](threat-model.zh-CN.md)
+
 *EN first, FR below — both describe the same system.*
 
 ## English

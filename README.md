@@ -4,7 +4,7 @@
 
 **Track every hidden flow. / Traquez chaque flux masqué.**
 
-[English](#english) | [Français](#français) | [中文](README.zh-CN.md)
+[English](#english) | [Français](#français) | [Español](README.es.md) | [Deutsch](README.de.md) | [Русский](README.ru.md) | [日本語](README.ja.md) | [Português](README.pt-BR.md) | [中文](README.zh-CN.md)
 
 ⭐ **If Snitch helps you, a star means a lot! / Si Snitch vous aide, une étoile compte beaucoup !** ⭐
 

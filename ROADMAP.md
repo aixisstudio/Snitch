@@ -1,5 +1,7 @@
 # Roadmap / Feuille de route
 
+[English](ROADMAP.md) | [Français](ROADMAP.md) | [Español](ROADMAP.es.md) | [Deutsch](ROADMAP.de.md) | [Русский](ROADMAP.ru.md) | [日本語](ROADMAP.ja.md) | [Português](ROADMAP.pt-BR.md) | [中文](ROADMAP.zh-CN.md)
+
 > 🇬🇧 Suggest or vote on features in [GitHub Discussions](https://github.com/aixisstudio/Snitch/discussions) — category *Ideas*. For concrete bugs, use [Issues](https://github.com/aixisstudio/Snitch/issues).
 >
 > 🇫🇷 Proposez ou votez pour des fonctionnalités dans les [Discussions GitHub](https://github.com/aixisstudio/Snitch/discussions) — catégorie *Ideas*. Pour les bugs concrets, utilisez les [Issues](https://github.com/aixisstudio/Snitch/issues).
