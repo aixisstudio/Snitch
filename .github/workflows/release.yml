@@ -28,9 +28,16 @@ jobs:
           mkdir -p staging/opt/snitch
           cp -r backend staging/opt/snitch/
           rm -rf staging/opt/snitch/backend/env staging/opt/snitch/backend/tests
-      - uses: goreleaser/nfpm-action@v2
-        with:
-          version: latest
+      - name: Install nfpm / Installer nfpm
+        # EN: goreleaser/nfpm-action does not exist — install the pinned
+        #     binary straight from the project's GitHub releases.
+        # FR: goreleaser/nfpm-action n'existe pas — binaire épinglé pris
+        #     directement dans les releases GitHub du projet.
+        run: |
+          NFPM_VER=2.48.0
+          curl -sfL "https://github.com/goreleaser/nfpm/releases/download/v${NFPM_VER}/nfpm_${NFPM_VER}_Linux_x86_64.tar.gz" \
+            | sudo tar -xz -C /usr/local/bin nfpm
+          nfpm --version
       - name: Build .deb/.rpm
         run: |
           V=${GITHUB_REF_NAME#v}

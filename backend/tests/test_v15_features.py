@@ -22,7 +22,6 @@ FR: Couverture : parsing de payload ICMP (type/code→flags, tête→app_head),
 
 import socket
 import struct
-import time
 
 import pytest
 
