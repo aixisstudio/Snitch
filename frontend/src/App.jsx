@@ -13,7 +13,7 @@
  *     vue, panneaux) vit ici.
  */
 import { useState, useMemo } from 'react'
-import { Hexagon, Globe, Wifi, Smartphone, Monitor, Cpu, ShieldCheck, Radio, Zap, HelpCircle, AlertTriangle, Square, Play, Filter, Mic, Camera, Download, ShieldOff, AppWindow } from 'lucide-react'
+import { Hexagon, Globe, Wifi, Smartphone, Monitor, Cpu, ShieldCheck, Radio, Zap, HelpCircle, AlertTriangle, Square, Play, Filter, Mic, Camera, Download, ShieldOff, AppWindow, Sun, Moon } from 'lucide-react'
 import ForceGraph from './graph/ForceGraph'
 import AuroraCurtain from './components/AuroraCurtain'
 import MapView from './map/MapView'
@@ -191,6 +191,7 @@ export default function App() {
             display: 'flex', alignItems: 'center', gap: 8,
           }}>
             <MediaBadge media={media} />
+            <ThemeToggle />
             <LangToggle />
             <ViewToggle view={view} onChange={setView} />
             <ExportButton nodes={nodes} edges={edges} lanDevices={lanDevices} alerts={alerts} />
@@ -713,6 +714,35 @@ function CaptureToggle({ capturing, onToggle }) {
     }}>
       <Icon size={11} />
       {label}
+    </button>
+  )
+}
+
+/** EN: Light/dark theme toggle — persists to localStorage and flips the
+ *     data-theme attribute read by the CSS in index.html. The boot script
+ *     there already honours the OS preference when no choice is saved.
+ *  FR: Bascule de thème clair/sombre — persistée dans localStorage et agit
+ *     sur l'attribut data-theme lu par le CSS d'index.html. Le script de
+ *     démarrage respecte déjà la préférence OS sans choix sauvegardé. */
+function ThemeToggle() {
+  const { t } = useT()
+  const [theme, setTheme] = useState(
+    () => document.documentElement.dataset.theme || 'dark')
+  const toggle = () => {
+    const next = theme === 'dark' ? 'light' : 'dark'
+    document.documentElement.dataset.theme = next
+    try { localStorage.setItem('snitch_theme', next) } catch (e) { /* ignore */ }
+    setTheme(next)
+  }
+  const Icon = theme === 'dark' ? Sun : Moon
+  return (
+    <button onClick={toggle} title={t('theme_toggle')} style={{
+      background: '#0f0f0f', border: '1px solid #2a2a2a', borderRadius: 20,
+      cursor: 'pointer', color: '#64748b',
+      padding: '5px 10px', display: 'flex', alignItems: 'center',
+      transition: 'background 0.15s',
+    }}>
+      <Icon size={13} />
     </button>
   )
 }

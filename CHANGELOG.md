@@ -4,6 +4,16 @@ All notable changes to Snitch. / Toutes les modifications notables de Snitch.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/) — EN/FR.
 
+## [1.0.7] — 2026-10-22
+
+### Added / Ajouté
+
+- **Light theme / Thème clair** — honours `prefers-color-scheme` out of the box and can be overridden with the sun/moon toggle in the toolbar; the choice is persisted in `localStorage`. Implemented as a hue-preserving invert of the authored dark palette, so graphs, map and aurora stay coherent. / Respecte `prefers-color-scheme` par défaut et se remplace via le bouton soleil/lune de la barre d'outils ; le choix est persisté. Réalisé par inversion préservant la teinte de la palette sombre, donc graphe, carte et aurore restent cohérents.
+
+### Fixed / Corrigé
+
+- **AppImage catalog compliance / conformité au catalogue AppImage** — the Linux asset is now named `Snitch-x86_64.AppImage` (proper architecture naming) and electron-builder publishes GitHub update metadata (`latest-linux.yml` + `.zsync`), enabling auto-update through AppImageUpdate-compatible tools. / L'asset Linux est désormais nommé `Snitch-x86_64.AppImage` (nommage d'architecture correct) et electron-builder publie les métadonnées de mise à jour GitHub (`latest-linux.yml` + `.zsync`), permettant l'auto-mise à jour via les outils compatibles AppImageUpdate.
+
 ## [1.0.6] — 2026-10-21
 
 ### Added / Ajouté
