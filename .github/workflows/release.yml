@@ -1,18 +1,13 @@
 # Snitch — release packaging & submission automation
 # EN: On a v* tag: build the nfpm packages, update the Homebrew tap
-#     formula, and submit winget/choco manifests. Everything is a no-op
-#     until you create the listed secrets — the workflow fails loudly
-#     and explains what's missing instead of silently skipping.
+#     formula, and submit winget/choco manifests. Jobs whose secret is
+#     absent SKIP cleanly (no red run) — set the secrets below to enable:
+#       HOMEBREW_TAP_TOKEN — PAT with repo write on aixisstudio/homebrew-tap
+#       WINGET_TOKEN       — PAT for microsoft/winget-pkgs submission
+#       CHOCO_API_KEY      — chocolatey.org push key
 # FR: Sur tag v* : paquets nfpm, formule Homebrew tap, manifests
-#     winget/choco. Tout est no-op tant que les secrets listés n'existent
-#     pas — le workflow échoue en expliquant ce qui manque plutôt que de
-#     sauter en silence.
-#
-# Required secrets / Secrets requis:
-#   HOMEBREW_TAP_TOKEN — PAT with repo write on aixisstudio/homebrew-tap
-#   WINGET_TOKEN       — PAT for microsoft/winget-pkgs submission
-#   CHOCO_API_KEY      — chocolatey.org push key
-#   (GITHUB_TOKEN is automatic for artifact uploads)
+#     winget/choco. Les jobs dont le secret manque SAUTENT proprement
+#     (pas de run rouge) — créer les secrets ci-dessus pour activer.
 
 name: release
 
@@ -28,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Stage backend + venv-free tree / Arbre staging
+      - name: Stage backend tree / Arbre staging
         run: |
           mkdir -p staging/opt/snitch
           cp -r backend staging/opt/snitch/
@@ -48,13 +43,16 @@ jobs:
           path: dist/
 
   homebrew-tap:
-    needs: nfpm
     runs-on: ubuntu-latest
+    env:
+      HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
     steps:
       - uses: actions/checkout@v4
+      - name: Skip when the secret is absent / Sauter si secret absent
+        if: env.HOMEBREW_TAP_TOKEN == ''
+        run: echo "::notice::HOMEBREW_TAP_TOKEN not set — skipping tap update"
       - name: Render + push formula / Rendre + pousser la formule
-        env:
-          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        if: env.HOMEBREW_TAP_TOKEN != ''
         run: |
           V=${GITHUB_REF_NAME#v}
           SHA=$(curl -sL "https://github.com/aixisstudio/Snitch/archive/refs/tags/${GITHUB_REF_NAME}.tar.gz" | sha256sum | cut -d' ' -f1)
@@ -68,11 +66,16 @@ jobs:
               commit -m "snitch $V" && git push
 
   winget:
-    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: windows-latest
+    env:
+      WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
     steps:
       - uses: actions/checkout@v4
+      - name: Skip when the secret is absent / Sauter si secret absent
+        if: env.WINGET_TOKEN == ''
+        run: echo "::notice::WINGET_TOKEN not set — skipping manifest submission"
       - name: Submit winget manifest / Soumettre le manifeste winget
+        if: env.WINGET_TOKEN != ''
         uses: vedantmgoyal9/winget-releaser@v2
         with:
           identifier: aixisstudio.Snitch
@@ -81,11 +84,15 @@ jobs:
 
   chocolatey:
     runs-on: windows-latest
+    env:
+      CHOCO_API_KEY: ${{ secrets.CHOCO_API_KEY }}
     steps:
       - uses: actions/checkout@v4
+      - name: Skip when the secret is absent / Sauter si secret absent
+        if: env.CHOCO_API_KEY == ''
+        run: echo "::notice::CHOCO_API_KEY not set — skipping choco push"
       - name: Pack + push choco / Pack + push choco
-        env:
-          CHOCO_API_KEY: ${{ secrets.CHOCO_API_KEY }}
+        if: env.CHOCO_API_KEY != ''
         run: |
           choco pack packaging/choco/snitch.nuspec --version ${env:GITHUB_REF_NAME.TrimStart('v')}
           choco push snitch.*.nupkg --source https://push.chocolatey.org/ --api-key $env:CHOCO_API_KEY
