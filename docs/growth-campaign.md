@@ -1,5 +1,6 @@
 # Snitch — Campagne growth vers GitHub Trending & 10K ⭐
 
+[English](growth-campaign.md) | [Français](growth-campaign.md) | [Español](growth-campaign.es.md) | [Deutsch](growth-campaign.de.md) | [Русский](growth-campaign.ru.md) | [日本語](growth-campaign.ja.md) | [Português](growth-campaign.pt-BR.md) | [中文](growth-campaign.zh-CN.md)
 > **Objectif : 100–300⭐ en 24h le jour J → entrée GitHub Trending → boucle auto-alimentée.**
 > Règle d'or : tout le traffic doit converger le MÊME jour sur le repo GitHub.
 

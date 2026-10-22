@@ -1,5 +1,6 @@
 # Launch day — Product Hunt (20 oct., 09:01 FR)
 
+[English](launch-day.md) | [Français](launch-day.md) | [Español](launch-day.es.md) | [Deutsch](launch-day.de.md) | [Русский](launch-day.ru.md) | [日本語](launch-day.ja.md) | [Português](launch-day.pt-BR.md) | [中文](launch-day.zh-CN.md)
 > Objectif : concentrer tout le trafic le même jour pour maximiser
 > la vélocité d'étoiles GitHub (c'est ce qui déclenche le Trending).
 > Publier entre 09h et 10h, juste après le passage en homepage PH.

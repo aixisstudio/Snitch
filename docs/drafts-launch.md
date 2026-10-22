@@ -1,5 +1,6 @@
 # Drafts launch-day — tout copiable-collable
 
+[English](drafts-launch.md) | [Français](drafts-launch.md) | [Español](drafts-launch.es.md) | [Deutsch](drafts-launch.de.md) | [Русский](drafts-launch.ru.md) | [日本語](drafts-launch.ja.md) | [Português](drafts-launch.pt-BR.md) | [中文](drafts-launch.zh-CN.md)
 ## Show HN repost — le vrai package « buzz »
 
 **Timing : mardi 14h30-15h00 Paris** (= 8h30-9h New York, mardi ouvré = le meilleur créneau de la semaine). PAS avant : il faut que la front page US soit active.

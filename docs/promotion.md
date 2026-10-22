@@ -1,5 +1,6 @@
 # Promotion kit / Kit de promotion
 
+[English](promotion.md) | [Français](promotion.md) | [Español](promotion.es.md) | [Deutsch](promotion.de.md) | [Русский](promotion.ru.md) | [日本語](promotion.ja.md) | [Português](promotion.pt-BR.md) | [中文](promotion.zh-CN.md)
 Ready-to-paste drafts for sharing Snitch. Post these from your own accounts —
 the order below maximises traction (HN first for timing, Reddit next, then
 evergreen listings).
