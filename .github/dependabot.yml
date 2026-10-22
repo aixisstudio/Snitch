@@ -24,3 +24,12 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+
+  # EN: Rust agent — kept zero-dependency today, but if Cargo.lock ever
+  #     gains entries dependabot watches them like everything else.
+  # FR: Agent Rust — zéro dépendance aujourd'hui, mais si Cargo.lock
+  #     gagne des entrées dependabot les surveille comme le reste.
+  - package-ecosystem: "cargo"
+    directory: "/agent"
+    schedule:
+      interval: "weekly"
