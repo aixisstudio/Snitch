@@ -174,3 +174,12 @@ Objectif : un seul fichier à télécharger et lancer par OS. Livré via la rele
 - Backend tarballs embarquent désormais `frontend_dist` (l'UI n'était jamais servie avant)
 - Job `release` ajouté à la CI : publie automatiquement tous les artefacts sur la release du tag
 - Npcap jamais embarqué (licence gratuite interdit la redistribution) — détection + lien officiel dans les 2 installeurs
+
+## 📥 Catalogue AppImage (22 oct.)
+
+`@probonopd` a soumis Snitch à [appimage.github.io](https://github.com/AppImage/appimage.github.io/pull/10605) — test bot **passed**. Points traités :
+
+- ✅ Nommage corrigé : `Snitch-linux-x64.AppImage` → `Snitch-x86_64.AppImage` (convention catalogue, sans token OS) — asset v1.0.6 renommé + site + CI alignés
+- ✅ Update info : `publish: github` ajouté à electron-builder → `latest-linux.yml` + `.zsync` embarqués dès la prochaine release (AppImageUpdate)
+- 🎨 Thème sombre assumé pour l'instant ; le thème clair reste à la roadmap (respectera le thème système)
+- Réponse postée sur la PR
