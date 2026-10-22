@@ -118,3 +118,19 @@ Todas estão **desativadas por padrão ou autolimitadas**, degradam honestamente
 - **Modelo embutido** — `slm_mode=embedded` carrega um `.gguf` do usuário via `llama-cpp-python` — zero rede.
 - **Esqueletos nativos** — `contrib/wfp-callout/` (callout WFP em C + assinatura) e `contrib/macos-filter/` (`NEFilterDataProvider` Swift + entitlements): scaffolding de pesquisa, não distribuídos.
 - **ASN** — com `GeoLite2-ASN.mmdb`/`dbip-asn-lite.mmdb`, os nós carregam `asn` além de `org`.
+
+## v1.5 — Inspeção passiva, vereditos em kernel e sincronização de frota
+
+- **Inspeção passiva do certificado TLS** — remontagem TCP limitada (≤16 KiB/fluxo, TTL 30 s) lê a mensagem `Certificate`: CN+O emissor/sujeito, autoassinado, SANs, validade, `san_mismatch` → `TLS_CERT`. **TLS 1.3 permanece opaco** — honestamente inobservável em vez de adivinhado.
+- **Guarda de alta entropia** — payloads ≥48 B em canais não TLS com ≥4,7 bits/byte → `HIGH_ENTROPY`; cooldown de 10 min por host.
+- **Heurística de túnel ICMP** — tipos echo com ≥24 B de payload, ≥3× em 5 min → `ICMP_TUNNEL`.
+- **Anomalia ML de fluxo** — isolation forest em Python puro (64 árvores, zero deps) sobre seus próprios resumos; inerte <384 fluxos, `ML_ANOMALY` a 0,62. Desvio de baseline, **não** um classificador.
+- **Ask-on-connect (Linux, opt-in)** — `ask_enabled` + root + `python-netfilterqueue`: novos fluxos de saída retidos na NFQUEUE 7 até `POST /security/ask/verdict`; timeout 15 s, fail-closed (`ask_failopen=1` inverte). Windows/macOS precisam dos esqueletos assinados em `contrib/`.
+- **Enforcement eBPF cgroup (Linux, opt-in)** — `POST /security/ebpf/isolate {pid}` + `/security/ebpf/block {ip}`: programa attach ao cgroup snitch — drops em kernel SÓ para processos isolados.
+- **Check de hollowing (Linux)** — `POST /security/hollow {pid}` compara páginas executáveis file-backed de `/proc/<pid>/mem` com o disco.
+- **Sincronização IOC entre pares (opt-in)** — `gossip_peers` ≤32 + `gossip_enabled`: pacotes Merkle a cada 5 min via HTTP(S) autenticado — sem discovery, não é ZK.
+- **Syslog (opt-in)** — `syslog_addr` (`host:porta` UDP ou `tcp://`) → RFC 3164 `local4`.
+- **Contenção Firejail** — `firejail --net=none` preferido, `unshare` como fallback.
+- **Backend nftables** — tabela `inet snitch` dedicada em vez de iptables onde existe `nft`.
+- **Alertas acionáveis** — `actions` estruturadas (bloquear IP, matar/suspender, veredito ask) como botões de um clique.
+- **`asn`/`country` em regras custom** — base geo local, combinável com `action=block` como geo-fence.

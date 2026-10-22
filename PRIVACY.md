@@ -51,8 +51,10 @@ webhook switch.
 of explicit Snitch backend URLs you control) lets `POST /remote/ioc_sync`
 push your salted-Merkle proof pack to those peers' authenticated import
 endpoint — and ONLY that pack (hash commitments, never raw indicators,
-never hostnames or paths). Peers must be operator-listed; there is no
-discovery and nothing is ever sent to an unlisted address.
+never hostnames or paths). Setting `gossip_enabled` additionally pushes
+the same pack automatically every 5 minutes. Peers must be
+operator-listed; there is no discovery and nothing is ever sent to an
+unlisted address.
 
 **Passive TLS certificate reading stays on the wire.** The handshake
 watcher reads the *server's own* Certificate message in cleartext —
@@ -176,8 +178,10 @@ l'interrupteur webhook.
 contrôlez) permet à `POST /remote/ioc_sync` de pousser votre paquet
 Merkle salé vers l'endpoint d'import authentifié de ces pairs — et
 UNIQUEMENT ce paquet (engagements de hash, jamais d'indicateurs en
-clair, jamais de noms d'hôte ni de chemins). Les pairs doivent être
-listés par l'opérateur ; aucune découverte, rien n'est jamais envoyé
+clair, jamais de noms d'hôte ni de chemins). `gossip_enabled` pousse en
+plus le même paquet automatiquement toutes les 5 minutes. Les pairs
+doivent être listés par l'opérateur ; aucune découverte, rien n'est
+jamais envoyé
 à une adresse non listée.
 
 **La lecture passive des certificats TLS reste sur le fil.** L'observateur

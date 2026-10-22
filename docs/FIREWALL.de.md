@@ -116,3 +116,19 @@ Alle sind **standardmäßig aus oder selbstlimitierend**, degradieren ehrlich un
 - **Eingebettetes Modell** — `slm_mode=embedded` lädt ein Nutzer-`.gguf` via `llama-cpp-python` — null Netzwerk.
 - **Native Skelette** — `contrib/wfp-callout/` (WFP-Callout in C + Signierung) und `contrib/macos-filter/` (`NEFilterDataProvider` Swift + Entitlements): Forschungs-Scaffolding, nicht ausgeliefert.
 - **ASN** — mit `GeoLite2-ASN.mmdb`/`dbip-asn-lite.mmdb` tragen Knoten `asn` neben `org`.
+
+## v1.5 — Passive Inspektion, Kernel-Verdicts & Flotten-Sync
+
+- **Passive TLS-Zertifikatsinspektion** — begrenzte TCP-Reassembly (≤16 KiB/Flow, 30 s TTL) liest die `Certificate`-Nachricht: Issuer/Subject CN+O, Self-Signed, SANs, Validität, `san_mismatch` → `TLS_CERT`. **TLS 1.3 bleibt opak** — ehrlich unbeobachtbar statt geraten.
+- **High-Entropy-Wache** — Payloads ≥48 B auf Nicht-TLS-Kanälen mit ≥4,7 Bit/Byte → `HIGH_ENTROPY`; 10-Min-Cooldown pro Host.
+- **ICMP-Tunnel-Heuristik** — Echo-Typen mit ≥24 B Payload, ≥3× in 5 Min → `ICMP_TUNNEL`.
+- **ML-Flow-Anomalie** — Isolation Forest pur Python (64 Bäume, null Deps) über eigene Flow-Summaries; inert <384 Flows, `ML_ANOMALY` ab 0,62. Baseline-Abweichung, **kein** Malware-Klassifikator.
+- **Ask-on-Connect (Linux, opt-in)** — `ask_enabled` + root + `python-netfilterqueue`: neue Ausgangsflüsse werden auf NFQUEUE 7 gehalten bis `POST /security/ask/verdict`; Timeout 15 s, fail-closed (`ask_failopen=1` umgekehrt). Windows/macOS brauchen die signierten Callout-/NetworkExtension-Skelette aus `contrib/`.
+- **eBPF-Cgroup-Enforcement (Linux, opt-in)** — `POST /security/ebpf/isolate {pid}` + `/security/ebpf/block {ip}`: Programm an den snitch-Cgroup attachiert — Kernel-Drops gelten NUR für isolierte Prozesse.
+- **Hollowing-Check (Linux)** — `POST /security/hollow {pid}` diff't ausführbare file-backed Seiten aus `/proc/<pid>/mem` gegen Disk.
+- **IOC-Peer-Sync (opt-in)** — `gossip_peers` ≤32 + `gossip_enabled`: Merkle-Proof-Pakete alle 5 Min per authentifiziertem HTTP(S) — kein Discovery, kein ZK-Protokoll.
+- **Syslog (opt-in)** — `syslog_addr` (`host:port` UDP oder `tcp://`) → RFC 3164 `local4`.
+- **Firejail-Containment** — `firejail --net=none` bevorzugt, `unshare` als Fallback.
+- **nftables-Backend** — eigene `inet snitch`-Tabelle statt iptables, wo `nft` existiert.
+- **Actionable Alerts** — strukturierte `actions` (Block IP, Kill/Suspend, Ask-Verdict) als Ein-Klick-Buttons.
+- **`asn`/`country` in Custom Rules** — lokale Geo-DB, kombinierbar mit `action=block` als Geo-Fence.

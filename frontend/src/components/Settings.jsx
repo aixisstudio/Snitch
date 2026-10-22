@@ -47,17 +47,20 @@ export function SettingsPanel({ onClose, lang, setLang, watchlist = [], onWatchl
   const [pairing, setPairing] = useState(null)
   const [sbPath, setSbPath] = useState('')
   const [sbResult, setSbResult] = useState(null)
+  const [askStatus, setAskStatus] = useState(null)
 
   useEffect(() => {
     ;(async () => {
       const base = await apiBase()
       const headers = await authHeaders()
       try {
-        const [s, g, i, p] = await Promise.all([
+        const [s, g, i, p, a] = await Promise.all([
           fetch(`${base}/settings`, { headers }).then(r => r.json()),
           fetch(`${base}/geo/status`, { headers }).then(r => r.json()),
           fetch(`${base}/capture/interfaces`, { headers }).then(r => r.json()),
           fetch(`${base}/remote/pairing`, { headers }).then(r => r.json()),
+          fetch(`${base}/security/ask`, { headers }).then(r => r.json())
+            .catch(() => null),
         ])
         setSettings(s.settings || {})
         setRetention(s.settings?.retention_hours ?? 24)
@@ -65,6 +68,7 @@ export function SettingsPanel({ onClose, lang, setLang, watchlist = [], onWatchl
         setGeoStatus(g)
         setIfaces(i.interfaces || [])
         setPairing(p)
+        setAskStatus(a)
       } catch { setSettings({}) }
       if (window.snitch?.getAutoLaunch) {
         setAutoLaunch(await window.snitch.getAutoLaunch())
@@ -447,6 +451,143 @@ export function SettingsPanel({ onClose, lang, setLang, watchlist = [], onWatchl
             }}>{t('save')}</button>
           </form>
           <div style={{ ...hint, marginTop: 4 }}>{t('wh_privacy')}</div>
+        </div>
+
+        {/* Syslog output / Sortie syslog */}
+        <div style={{ ...row, display: 'block' }}>
+          <div style={label}>{t('sl_title')}</div>
+          <div style={hint}>{t('sl_hint')}</div>
+          <form onSubmit={e => {
+            e.preventDefault()
+            save('syslog_addr', e.target.elements.sladdr.value.trim())
+          }} style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+            <input
+              name="sladdr"
+              defaultValue={settings?.syslog_addr ?? ''}
+              placeholder={t('sl_ph')}
+              aria-label={t('sl_title')}
+              style={{ flex: 1, background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', padding: '6px 10px', fontSize: 11, outline: 'none' }}
+            />
+            <button type="submit" style={{
+              background: 'var(--bg)', border: '1px solid var(--border)',
+              borderRadius: 6, color: 'var(--text-dim)', padding: '6px 12px',
+              fontSize: 10, cursor: 'pointer',
+            }}>{t('save')}</button>
+          </form>
+        </div>
+
+        {/* Ask-on-connect (NFQUEUE) / Ask-on-connect (NFQUEUE) */}
+        <div style={{ ...row, display: 'block' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <div style={label}>{t('ask_title')}</div>
+              <div style={hint}>{t('ask_hint')}</div>
+            </div>
+            <button
+              onClick={() => {
+                const v = !settings?.ask_enabled
+                setSettings(s => ({ ...s, ask_enabled: v }))
+                save('ask_enabled', v)
+              }}
+              role="switch" aria-checked={!!settings?.ask_enabled}
+              style={{
+                width: 36, height: 20, borderRadius: 10, border: 'none',
+                background: settings?.ask_enabled ? '#3b82f6' : 'var(--bg)',
+                outline: '1px solid var(--border)', cursor: 'pointer',
+                position: 'relative', flexShrink: 0,
+              }}>
+              <div style={{
+                width: 14, height: 14, borderRadius: '50%', background: 'var(--text)',
+                position: 'absolute', top: 3, left: settings?.ask_enabled ? 19 : 3,
+                transition: 'left 0.15s',
+              }} />
+            </button>
+          </div>
+          {settings?.ask_enabled && (
+            <div style={{ display: 'flex', gap: 8, marginTop: 8, alignItems: 'center' }}>
+              <select
+                value={settings?.ask_timeout ?? 15}
+                onChange={e => {
+                  const v = +e.target.value
+                  setSettings(s => ({ ...s, ask_timeout: v }))
+                  save('ask_timeout', v)
+                }}
+                aria-label={t('ask_timeout')}
+                style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', padding: '4px 8px', fontSize: 11 }}
+              >
+                {[10, 15, 30, 60].map(v => (
+                  <option key={v} value={v}>{t('ask_timeout')}: {v}s</option>
+                ))}
+              </select>
+              <label style={{ ...hint, display: 'flex', gap: 5, alignItems: 'center', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={!!settings?.ask_failopen}
+                  onChange={e => {
+                    setSettings(s => ({ ...s, ask_failopen: e.target.checked }))
+                    save('ask_failopen', e.target.checked)
+                  }}
+                />
+                {t('ask_failopen')}
+              </label>
+            </div>
+          )}
+          {askStatus && !askStatus.available && (
+            <div style={{ ...hint, marginTop: 4 }}>{t('ask_unavailable')}: {askStatus.reason}</div>
+          )}
+          {askStatus?.available && askStatus?.running === false && settings?.ask_enabled && (
+            <div style={{ ...hint, marginTop: 4 }}>{t('ask_not_running')}</div>
+          )}
+        </div>
+
+        {/* IOC peer sync / Sync IOC entre pairs */}
+        <div style={{ ...row, display: 'block' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <div style={label}>{t('gs_title')}</div>
+              <div style={hint}>{t('gs_hint')}</div>
+            </div>
+            <button
+              onClick={() => {
+                const v = !settings?.gossip_enabled
+                setSettings(s => ({ ...s, gossip_enabled: v }))
+                save('gossip_enabled', v)
+              }}
+              role="switch" aria-checked={!!settings?.gossip_enabled}
+              style={{
+                width: 36, height: 20, borderRadius: 10, border: 'none',
+                background: settings?.gossip_enabled ? '#3b82f6' : 'var(--bg)',
+                outline: '1px solid var(--border)', cursor: 'pointer',
+                position: 'relative', flexShrink: 0,
+              }}>
+              <div style={{
+                width: 14, height: 14, borderRadius: '50%', background: 'var(--text)',
+                position: 'absolute', top: 3, left: settings?.gossip_enabled ? 19 : 3,
+                transition: 'left 0.15s',
+              }} />
+            </button>
+          </div>
+          <form onSubmit={e => {
+            e.preventDefault()
+            const peers = e.target.elements.gpeers.value
+              .split(/[\s,]+/).map(s => s.trim()).filter(Boolean).slice(0, 32)
+            setSettings(s => ({ ...s, gossip_peers: peers }))
+            save('gossip_peers', peers)
+          }} style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+            <input
+              name="gpeers"
+              defaultValue={(settings?.gossip_peers || []).join(', ')}
+              placeholder={t('gs_peers_ph')}
+              aria-label={t('gs_title')}
+              style={{ flex: 1, background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', padding: '6px 10px', fontSize: 11, outline: 'none' }}
+            />
+            <button type="submit" style={{
+              background: 'var(--bg)', border: '1px solid var(--border)',
+              borderRadius: 6, color: 'var(--text-dim)', padding: '6px 12px',
+              fontSize: 10, cursor: 'pointer',
+            }}>{t('save')}</button>
+          </form>
+          <div style={{ ...hint, marginTop: 4 }}>{t('gs_privacy')}</div>
         </div>
 
         {/* Integrity watch / Veille d'intégrité */}

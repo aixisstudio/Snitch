@@ -6,6 +6,23 @@ Todas as mudanças notáveis do Snitch.
 
 O formato segue o [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.5.0] — 2026-10-22
+
+### Adicionado
+
+- **Inspeção passiva do certificado TLS** — `capture/tlscert.py` remonta a mensagem `Certificate` do servidor através de segmentos TCP (limite 16 KiB/fluxo) e lê o DER folha: emissor/sujeito, flag autoassinado, SANs, validade → `TLS_CERT` se autoassinado ou mismatch SAN/SNI. TLS 1.3 é reportado honestamente como inobservável — sem MITM, sem decriptação.
+- **Heurística de túnel ICMP** — ecos repetidos com payloads grandes (≥24 B, 3+ em 5 min) → `ICMP_TUNNEL` (assinatura ptunnel/icmpsh).
+- **Detecção de alta entropia** — cabeças de payload quase aleatórias (≥4,7 bits/byte) em sockets em claro → `HIGH_ENTROPY` (indício de cripto encoberta/estego).
+- **Isolation Forest (Python puro)** — `detection/iforest.py` + `mlflow.py` pontuam fluxos de saída em 6 features; `ML_ANOMALY` a partir de score 0,62, inerte abaixo de 384 fluxos aprendidos.
+- **Ask-on-connect (Linux NFQUEUE, opt-in)** — `ask_enabled` retém novos fluxos de saída na fila 7 até `POST /security/ask/verdict` — veredito real, timeout dropa por padrão.
+- **Enforcement eBPF de egress** — `detection/ebpf_enforce.py` + `POST /security/ebpf/isolate|block` — drops em kernel apenas para processos no cgroup snitch.
+- **Prova de hollowing** — `POST /security/hollow` compara páginas executáveis em RAM com o ficheiro em disco (Linux, `/proc`).
+- **Sincronização IOC entre pares** — `gossip_peers` + `gossip_enabled`: pacotes Merkle com sal a cada 5 min para pares explicitamente listados — só compromissos hash, sem discovery.
+- **Syslog** — `syslog_addr` (UDP ou `tcp://`) encaminha alertas warning/críticos como RFC 3164 — caminho SIEM/Wazuh.
+- **Regras geo + auto-bloqueio** — regras custom com `asn`/`country` (mmdb local) e `action:"block"` instalam regras de firewall reais por IP correspondido.
+- **Alertas acionáveis + UI de ajustes** — Bloquear IP / Matar / Suspender / Permitir-Negar por alerta; novos controles nos ajustes (syslog, ask, pares).
+- **Backend nftables + firejail** — `nft` quando falta iptables (tabela `inet snitch` dedicada); `firejail --net=none` como fallback de sandbox.
+
 ## [Unreleased]
 
 ### Adicionado

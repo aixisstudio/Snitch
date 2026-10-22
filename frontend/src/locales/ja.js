@@ -436,4 +436,18 @@ export default {
   ar_action: 'アクション',
   ar_action_alert: 'アラートのみ',
   ar_action_block: 'アラート+ブロック',
+
+  sl_title: 'Syslog出力',
+  sl_hint: '警告/重大アラートをsyslogコレクターへ転送（RFC 3164、UDPまたはtcp://）。オプトイン — アドレス未設定では送信しません。',
+  sl_ph: 'host:port または tcp://host:port',
+  ask_title: 'Ask-on-Connect',
+  ask_hint: '新規送信フローを許可/拒否まで保留 — Little Snitch式プロンプト。Linux + NFQUEUE + root が必要。',
+  ask_timeout: 'タイムアウト',
+  ask_failopen: 'フェイルオープン（タイムアウト時に許可 — 安全性低下）',
+  ask_unavailable: 'このシステムではAskモードは利用できません',
+  ask_not_running: 'Askモードは有効ですが動作していません — バックエンドログを確認',
+  gs_title: 'IOCピア同期',
+  gs_hint: '塩付きMerkleプルーフパックを明示的にペアリングしたSnitchインスタンスへ5分毎にプッシュ — ハッシュコミットメントのみ、生インジケーターは送信しません。',
+  gs_peers_ph: 'host:port（カンマ区切り）',
+  gs_privacy: 'オプトインのフリート共有 — パックはここに列挙したピアにのみ送信されます。',
 }

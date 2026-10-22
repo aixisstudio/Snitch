@@ -6,6 +6,23 @@
 
 Формат следует [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.5.0] — 2026-10-22
+
+### Добавлено
+
+- **Пассивная инспекция TLS-сертификата** — `capture/tlscert.py` собирает сообщение `Certificate` сервера из TCP-сегментов (лимит 16 КиБ/поток) и читает DER листа: издатель/субъект, флаг самоподписи, SAN, срок → `TLS_CERT` при самоподписи или mismatch SAN/SNI. TLS 1.3 честно помечается ненаблюдаемым — без MITM и расшифровки.
+- **Эвристика ICMP-туннеля** — повторные объёмные echo-пayloads (≥24 Б, 3+ за 5 мин) → `ICMP_TUNNEL` (сигнатура ptunnel/icmpsh).
+- **Детект высокой энтропии** — почти случайные головы payload (≥4,7 бит/байт) на открытых сокетах → `HIGH_ENTROPY` (признак скрытого шифрования/стего).
+- **Isolation Forest (чистый Python)** — `detection/iforest.py` + `mlflow.py` скорят исходящие потоки по 6 признакам; `ML_ANOMALY` при score ≥0,62, неактивно до 384 выученных потоков.
+- **Ask-on-connect (Linux NFQUEUE, opt-in)** — `ask_enabled` удерживает новые исходящие потоки в очереди 7 до `POST /security/ask/verdict` — настоящий вердикт, таймаут по умолчанию дропает.
+- **eBPF egress-эндфорсмент** — `detection/ebpf_enforce.py` + `POST /security/ebpf/isolate|block` — дропы в ядре только для процессов в cgroup snitch.
+- **Доказательство hollowing** — `POST /security/hollow` сравнивает исполняемые страницы в RAM с файлом на диске (Linux, `/proc`).
+- **Синхронизация IOC с пирами** — `gossip_peers` + `gossip_enabled`: солёные Merkle-пакеты каждые 5 мин явно перечисленным пирам — только хеш-коммитменты, без discovery.
+- **Syslog** — `syslog_addr` (UDP или `tcp://`) пересылает алерты warning/critical как RFC 3164 — путь в SIEM/Wazuh.
+- **Гео-правила + автоблок** — свои правила с `asn`/`country` (локальная mmdb) и `action:"block"` ставят настоящие правила фаервола на каждый совпавший IP.
+- **Действующие алерты + UI настроек** — Блок IP / Убить / Приостановить / Разрешить-Запретить на каждый алерт; новые элементы в настройках (syslog, ask, пиры).
+- **Backend nftables + firejail** — `nft` при отсутствии iptables (отдельная таблица `inet snitch`); `firejail --net=none` как фолбэк песочницы.
+
 ## [Unreleased]
 
 ### Добавлено

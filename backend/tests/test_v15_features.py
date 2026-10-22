@@ -312,19 +312,30 @@ def test_flow_ml_inert_then_scores():
     from detection.mlflow import FlowAnomaly, _TRAIN_MIN
     m = FlowAnomaly()
     t = time.time()
-    # EN: Learn a boring baseline — same proc, same port, regular.
-    # FR: Une baseline monotone — même processus, même port, régulier.
-    for i in range(_TRAIN_MIN + 60):
-        m.observe("firefox", f"93.184.{i % 250}.{(i // 250)}",
-                  443, "out", 1200, t + i)
+    # EN: Learn a realistic baseline — a small stable set of destinations
+    #     (intervals + fanout stay meaningful), boring web ports/sizes.
+    # FR: Baseline réaliste — petit ensemble stable de destinations
+    #     (intervalles + fanout significatifs), ports/tailles web banals.
+    import random as _r
+    rng = _r.Random(0)
+    ips = [f"93.184.216.{i}" for i in range(20)]
+    for i in range(_TRAIN_MIN + 100):
+        m.observe("firefox", ips[i % 20],
+                  443 if rng.random() < 0.7 else 80, "out",
+                  400 + rng.randrange(2400), t + i * 2)
     # EN: Score still available after training; an insane flow (weird
     #     port, giant packet, odd hour vs learned) should score higher.
+    #     Seeded forest → deterministic split points, no flaky runs.
     # FR: Un flux aberrant doit scorer plus haut qu'un flux normal.
-    m._forest.fit(list(m._window))
-    m._fitted = True
-    normal_score = m._forest.score(
-        [443 / 65535.0, 1200 / 65535.0, 0.5, 0.5, 0.5, 1.0])
-    weird_score = m._forest.score(
+    #     Forêt seedée → splits déterministes, pas de run flaky.
+    from detection.iforest import IsolationForest
+    forest = IsolationForest(seed=7)
+    forest.fit(list(m._window))
+    # EN: Typical point — 40 s interval (20 IPs round-robin), 20/512 fanout.
+    # FR: Point typique — intervalle 40 s (20 IPs round-robin), fanout 20/512.
+    normal_score = forest.score(
+        [443 / 65535.0, 1200 / 65535.0, 0.45, 20 / 512.0, 0.52, 1.0])
+    weird_score = forest.score(
         [31337 / 65535.0, 65535 / 65535.0, 0.0, 1.0, 0.999, 1.0])
     assert weird_score > normal_score
 
@@ -581,3 +592,53 @@ def test_explain_covers_new_types():
         assert rec is not None, t
         assert rec["what_en"] and rec["what_fr"]
         assert rec["actions_en"] and rec["actions_fr"]
+
+
+def test_askmode_configure_clamps():
+    """EN: Live configure clamps timeout to [3,120] s and applies failopen
+    without restarting. / FR: configure borne le timeout à [3,120] s et
+    applique failopen sans redémarrage."""
+    from detection.askmode import AskMode
+    am = AskMode(lambda ctx: None)
+    am.configure(timeout=1, failopen=True)
+    assert am._timeout == 3.0 and am._failopen is True
+    am.configure(timeout=999, failopen=False)
+    assert am._timeout == 120.0 and am._failopen is False
+    am.configure(timeout="garbage")
+    assert am._timeout == 120.0          # EN: bad input keeps last value
+    st = am.status()
+    assert st["failopen"] is False and st["timeout_s"] == 120.0
+
+
+def test_ebpf_enforce_scoped_attach(monkeypatch):
+    """EN: start() must attach to the DEDICATED snitch cgroup, never the
+    cgroup2 root — a root attach would make every block host-wide,
+    silently contradicting the per-process promise.
+    FR: start() doit attacher au cgroup snitch DÉDIÉ, jamais la racine —
+    un attach racine rendrait chaque blocage global."""
+    import platform
+    if platform.system().lower() != "linux":
+        pytest.skip("cgroup paths are linux-only")
+    from detection import ebpf_enforce as m
+    attached = {}
+
+    class FakeBPF:
+        class BPFAttachType:
+            CGROUP_INET_EGRESS = 0
+        CGROUP_SKB = 0
+        def __init__(self, text=None):
+            pass
+        def load_func(self, name, t):
+            return object()
+        def attach_cgroup(self, fn, path, at):
+            attached["path"] = path
+
+    monkeypatch.setitem(__import__("sys").modules, "bcc",
+                        type("B", (), {"BPF": FakeBPF}))
+    monkeypatch.setattr(m, "available", lambda: (True, ""))
+    monkeypatch.setattr(m._CGROUP_DIR, "mkdir", lambda **kw: None)
+    e = m.EbpfEnforcer()
+    ok, why = e.start()
+    assert ok, why
+    assert attached["path"] == str(m._CGROUP_DIR)
+    assert e.status()["attached"] is True

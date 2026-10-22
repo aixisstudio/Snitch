@@ -327,3 +327,76 @@ class TestMacosReal:
         finally:
             fm.remove_rule(rule["id"])
         assert "itest-sinkhole.example" not in fake_hosts.read_text()
+
+
+@pytest.mark.skipif(SYSTEM != "linux", reason="linux only")
+class TestLinuxV15Real:
+    """EN: v1.5 primitives on a real kernel — nftables, firejail,
+    netfilterqueue, bcc/cgroup. All probe availability first and skip
+    honestly; they never fake a pass.
+    FR: Primitives v1.5 sur un vrai noyau — nftables, firejail,
+    netfilterqueue, bcc/cgroup. Sondes d'abord, skip honnête sinon."""
+
+    def test_nftables_table_lifecycle(self):
+        """EN: If `nft` exists, a dedicated `inet snitch` table can be
+        created and destroyed for real — the path _nft_apply() uses.
+        FR: Si `nft` existe, une table `inet snitch` dédiée se crée et se
+        détruit réellement — le chemin utilisé par _nft_apply()."""
+        import shutil
+        if not shutil.which("nft"):
+            pytest.skip("nft binary missing")
+        probe = _sudo(["nft", "list", "table", "inet", "snitch_itest"])
+        _run(probe)                                              # may exist
+        _run(_sudo(["nft", "delete", "table", "inet", "snitch_itest"]))
+        try:
+            res = _run(_sudo(["nft", "add", "table", "inet", "snitch_itest"]))
+            assert res.returncode == 0, res.stderr[:200]
+            res = _run(_sudo(["nft", "add", "chain", "inet", "snitch_itest",
+                              "output", "{", "type", "filter", "hook",
+                              "output", "priority", "0", ";", "}"]))
+            assert res.returncode == 0, res.stderr[:200]
+        finally:
+            _run(_sudo(["nft", "delete", "table", "inet", "snitch_itest"]))
+        res = _run(_sudo(["nft", "list", "table", "inet", "snitch_itest"]))
+        assert res.returncode != 0                            # really gone
+
+    def test_firejail_net_none_denies_egress(self, tmp_path):
+        """EN: If firejail exists, `firejail --net=none` must actually
+        refuse a TCP connect — same guarantee unshare proves.
+        FR: Si firejail existe, `--net=none` doit réellement refuser une
+        connexion TCP — même garantie que unshare."""
+        import shutil
+        if not shutil.which("firejail"):
+            pytest.skip("firejail binary missing")
+        probe = tmp_path / "probe.py"
+        probe.write_text(_probe_source())
+        res = _run(["firejail", "--net=none", "--quiet",
+                    sys.executable, str(probe)], timeout=30)
+        assert "NET_DENIED" in res.stdout, (
+            f"egress not denied: {res.stdout!r} {res.stderr[:200]!r}")
+
+    def test_netfilterqueue_available_probe(self):
+        """EN: askmode.available() must answer honestly on a real Linux
+        box — either (True,"") when root+libnetfilter_queue+NetfilterQueue
+        are all present, or (False, <reason>) that names what's missing.
+        FR: askmode.available() répond honnêtement — True ou une raison
+        nommant ce qui manque."""
+        from detection import askmode
+        ok, why = askmode.available()
+        if ok:
+            import os as _os
+            assert _os.geteuid() == 0
+        else:
+            assert why and isinstance(why, str)
+
+    def test_ebpf_enforce_available_probe(self):
+        """EN: ebpf_enforce.available() reports a concrete reason —
+        never crashes, never lies on a real kernel.
+        FR: ebpf_enforce.available() rapporte une raison concrète —
+        jamais de crash, jamais de mensonge."""
+        from detection import ebpf_enforce
+        ok, why = ebpf_enforce.available()
+        if not ok:
+            assert why and isinstance(why, str)
+        st = ebpf_enforce.EbpfEnforcer().status()
+        assert st["attached"] is False                    # nothing started

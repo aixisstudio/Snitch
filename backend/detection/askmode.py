@@ -91,6 +91,20 @@ class AskMode:
 
     # ── lifecycle / cycle de vie ──────────────────────────────────────────
 
+    def configure(self, timeout: Optional[float] = None,
+                  failopen: Optional[bool] = None) -> None:
+        """EN: Live-update timeout / fail-open policy from settings — takes
+            effect on the next pending flow (no restart needed).
+        FR: Met à jour à chaud timeout / fail-open depuis les réglages —
+            effet au prochain flux en attente (pas de redémarrage)."""
+        if timeout is not None:
+            try:
+                self._timeout = max(3.0, min(float(timeout), 120.0))
+            except (TypeError, ValueError):
+                pass
+        if failopen is not None:
+            self._failopen = bool(failopen)
+
     def start(self) -> tuple[bool, str]:
         ok, why = available()
         if not ok:

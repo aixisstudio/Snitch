@@ -107,3 +107,19 @@ Snitch **不**在用户态过滤数据包。规则会被尽力下发到操作系
 - **内置模型** — `slm_mode=embedded` 通过 `llama-cpp-python` 加载用户 `.gguf` — 完全零网络。
 - **原生骨架** — `contrib/wfp-callout/`（C 版 WFP callout＋签名说明）与 `contrib/macos-filter/`（Swift `NEFilterDataProvider`＋entitlement 说明）：研究用脚手架，不随产品分发。
 - **ASN** — 存在 `GeoLite2-ASN.mmdb`/`dbip-asn-lite.mmdb` 时，节点除 `org` 外还带 `asn`。
+
+## v1.5 — 被动检查、内核判定与集群同步
+
+- **被动 TLS 证书检查** — 有界 TCP 重组（≤16 KiB/流，TTL 30 秒）读取 `Certificate` 消息：签发者/主体 CN+O、自签名、SAN、有效期、`san_mismatch` → `TLS_CERT`。**TLS 1.3 保持不透明** — 诚实报告不可观测而非猜测。
+- **高熵监视** — 非 TLS 通道上 ≥48 B、≥4.7 比特/字节的载荷 → `HIGH_ENTROPY`；每主机 10 分钟冷却。
+- **ICMP 隧道启发式** — 载荷 ≥24 B 的 echo 类型，5 分钟内 ≥3 次 → `ICMP_TUNNEL`。
+- **ML 流异常** — 纯 Python isolation forest（64 棵树、零依赖）对您自己的流摘要打分；<384 流时惰性，0.62 触发 `ML_ANOMALY`。基线偏差，**不是**恶意软件分类器。
+- **Ask-on-connect（Linux，可选）** — `ask_enabled` + root + `python-netfilterqueue`：新出站流在 NFQUEUE 7 挂起至 `POST /security/ask/verdict`；超时 15 秒，默认拒绝（`ask_failopen=1` 反转）。Windows/macOS 需要 `contrib/` 中的签名 callout/NetworkExtension。
+- **eBPF cgroup 执行（Linux，可选）** — `POST /security/ebpf/isolate {pid}` + `/security/ebpf/block {ip}`：程序挂载到 snitch cgroup — 内核丢弃仅作用于被隔离进程。
+- **空心化检查（Linux）** — `POST /security/hollow {pid}` 对比 `/proc/<pid>/mem` 中文件映射的可执行页与磁盘。
+- **IOC 节点同步（可选）** — `gossip_peers` ≤32 + `gossip_enabled`：每 5 分钟经认证 HTTP(S) 推送 Merkle 证明包 — 无发现机制，非 ZK。
+- **Syslog（可选）** — `syslog_addr`（`主机:端口` UDP 或 `tcp://`）→ RFC 3164 `local4`。
+- **Firejail 隔离** — 优先 `firejail --net=none`，回退 `unshare`。
+- **nftables 后端** — 有 `nft` 时使用专用 `inet snitch` 表替代 iptables。
+- **可操作告警** — 结构化 `actions`（封锁 IP、终止/挂起、ask 判定）以一键按钮呈现。
+- **自定义规则的 `asn`/`country`** — 本地 geo 数据库，可与 `action=block` 组成地理围栏。

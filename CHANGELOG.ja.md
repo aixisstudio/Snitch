@@ -6,6 +6,23 @@ Snitch の全ての注目すべき変更。
 
 フォーマットは [Keep a Changelog](https://keepachangelog.com/) に準拠。
 
+## [1.5.0] — 2026-10-22
+
+### 追加
+
+- **パッシブTLS証明書インスペクション** — `capture/tlscert.py` がサーバーの `Certificate` メッセージをTCPセグメント越しに再構成（16 KiB/フロー上限）し、リーフDERを読み取り：発行者/サブジェクト、自己署名フラグ、SAN、有効期限 → 自己署名やSAN/SNI不一致で `TLS_CERT`。TLS 1.3は正直に「観測不可」と報告 — MITMも復号もなし。
+- **ICMPトンネル検知** — 大きなエコーペイロードの繰り返し（≥24B、5分で3回以上）→ `ICMP_TUNNEL`（ptunnel/icmpshシグネチャ）。
+- **高エントロピー検知** — 平文ソケット上のほぼランダムなペイロード先頭（≥4.7ビット/バイト）→ `HIGH_ENTROPY`（秘匿暗号/ステガノの兆候）。
+- **Isolation Forest（純Python）** — `detection/iforest.py` + `mlflow.py` が送信フローを6特徴量でスコアリング；スコア0.62以上で `ML_ANOMALY`、学習384フロー未満では不活性。
+- **Ask-on-Connect（Linux NFQUEUE、オプトイン）** — `ask_enabled` が新規送信フローをキュー7に保留し `POST /security/ask/verdict` まで保持 — 本物の判定権、タイムアウトは既定でdrop。
+- **eBPF egressエンフォースメント** — `detection/ebpf_enforce.py` + `POST /security/ebpf/isolate|block` — snitch cgroup内のプロセスのみカーネルdrop。
+- **ハロウィング証拠** — `POST /security/hollow` が実行可能RAMページとディスク上ファイルを比較（Linux、`/proc`）。
+- **IOCピア同期** — `gossip_peers` + `gossip_enabled`：塩付きMerkleパックを5分毎に明示リストのピアへ — ハッシュコミットメントのみ、探索なし。
+- **Syslog** — `syslog_addr`（UDPまたは `tcp://`）が警告/重大アラートをRFC 3164で転送 — SIEM/Wazuh経路。
+- **ジオルール + 自動ブロック** — カスタムルールの `asn`/`country`（ローカルmmdb）と `action:"block"` が一致IPへ実ファイアウォールルールを追加。
+- **アクション可能アラート + 設定UI** — アラート毎にIPブロック/強制終了/一時停止/許可・拒否；設定画面に新コントロール（syslog、ask、ピア）。
+- **nftablesバックエンド + firejail** — iptables不在時は `nft`（専用 `inet snitch` テーブル）；`firejail --net=none` をサンドボックスのフォールバックに。
+
 ## [Unreleased]
 
 ### 追加

@@ -114,3 +114,19 @@ OS ネイティブファイアウォールへ best-effort で適用されます:
 - **埋め込みモデル** — `slm_mode=embedded` がユーザーの `.gguf` を `llama-cpp-python` で読込 — ネットワーク一切なし。
 - **ネイティブスケルトン** — `contrib/wfp-callout/`（C の WFP callout＋署名メモ）と `contrib/macos-filter/`（`NEFilterDataProvider` Swift＋entitlement メモ）：研究用スキャフォールド、出荷なし。
 - **ASN** — `GeoLite2-ASN.mmdb`/`dbip-asn-lite.mmdb` がある場合、ノードに `org` に加え `asn` を付与。
+
+## v1.5 — パッシブ検査、カーネル判定、フリート同期
+
+- **パッシブTLS証明書インスペクション** — 制限付きTCP再構成（≤16 KiB/フロー、TTL 30秒）で `Certificate` メッセージを読み取り：発行者/サブジェクト CN+O、自己署名、SAN、有効期限、`san_mismatch` → `TLS_CERT`。**TLS 1.3は不透明のまま** — 推測せず観測不可と正直に報告。
+- **高エントロピー監視** — 非TLSチャネルで ≥48 B・≥4.7ビット/バイトのペイロード → `HIGH_ENTROPY`；ホスト毎10分クールダウン。
+- **ICMPトンネル検知** — ≥24 Bペイロードのエコーが5分で3回以上 → `ICMP_TUNNEL`。
+- **MLフロー異常** — 純Pythonのisolation forest（64本、依存ゼロ）が自フロー要約をスコアリング；384フロー未満では不活性、0.62で `ML_ANOMALY`。ベースライン偏差でありマルウェア分類器では**ありません**。
+- **Ask-on-Connect（Linux、オプトイン）** — `ask_enabled` + root + `python-netfilterqueue`：新規送信フローをNFQUEUE 7に `POST /security/ask/verdict` まで保留；タイムアウト15秒、fail-closed（`ask_failopen=1`で反転）。Windows/macOSは `contrib/` の署名済みcallout/NetworkExtensionが必要。
+- **eBPF cgroupエンフォースメント（Linux、オプトイン）** — `POST /security/ebpf/isolate {pid}` + `/security/ebpf/block {ip}`：snitch cgroupへattach — カーネルdropは隔離プロセスのみ。
+- **ハロウィングチェック（Linux）** — `POST /security/hollow {pid}` が `/proc/<pid>/mem` のfile-backed実行可能ページをディスクと比較。
+- **IOCピア同期（オプトイン）** — `gossip_peers` ≤32 + `gossip_enabled`：Merkleプルーフパックを5分毎に認証HTTP(S)で — 探索なし、ZKプロトコルではありません。
+- **Syslog（オプトイン）** — `syslog_addr`（`host:port` UDPまたは `tcp://`）→ RFC 3164 `local4`。
+- **Firejailコンテインメント** — `firejail --net=none` 優先、`unshare` にフォールバック。
+- **nftablesバックエンド** — `nft` があれば専用 `inet snitch` テーブル（iptablesの代わり）。
+- **アクション可能アラート** — 構造化 `actions`（IPブロック、終了/一時停止、ask判定）をワンクリックボタンとして表示。
+- **カスタムルールの `asn`/`country`** — ローカルgeo DB、`action=block` と組み合わせてgeoフェンスに。

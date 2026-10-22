@@ -84,3 +84,11 @@ Windows, `~/Library/Application Support/Snitch` unter macOS,
 - **Sandbox ohne Netzwerk** — `POST /security/sandbox` führt eine Binärdatei in einem netzlosen Namespace (`unshare -n` Linux) bzw. Seatbelt-Profil (`sandbox-exec` macOS) aus: null Egress, Ausgabe bleibt lokal.
 - **IOC `format=proof`** — gesalzene SHA-256-Blätter + Merkle-Wurzel: exakte Mitgliedschaft ohne Aufzählung unverdächtiger Indikatoren; nichts wird automatisch übertragen.
 - **Eingebettetes Modell** — `slm_mode=embedded` lädt Ihr `.gguf` im Prozess via `llama-cpp-python` — null Netzwerk; Snitch lädt nie Gewichte herunter.
+
+## Neu in v1.5 (Privatsphäre)
+
+- **Syslog-Ausgabe (opt-in, aus)** — `syslog_addr` (`host:port` UDP oder `tcp://host:port`) leitet warning/critical-Alarmtexte als RFC-3164-Datagramme an Ihren SIEM — ein echter ausgehender Fluss zur konfigurierten Adresse, unabhängig vom Webhook-Schalter.
+- **IOC-Peer-Sync (opt-in, aus)** — `gossip_peers` (explizite Liste von Snitch-Backends unter Ihrer Kontrolle) lässt `POST /remote/ioc_sync` Ihr gesalzenes Merkle-Proof-Paket an deren authentifizierten Import-Endpunkt pushen — NUR das Paket (Hash-Commitments, nie rohe Indikatoren, Hostnamen oder Pfade). `gossip_enabled` wiederholt den Push alle 5 Minuten. Keine Discovery, nichts geht an ungelistete Adressen.
+- **Passive TLS-Zertifikatslektüre bleibt auf der Leitung** — der Handshake-Watcher liest die Certificate-Nachricht *des Servers* im Klartext — kein Abfangen, kein Einfügen, kein Entschlüsseln. TLS 1.3 verschlüsselt diese Nachricht, was wir ehrlich als unbeobachtbar melden. Metadaten (Issuer, Subject, SANs) speisen nur lokale Anomalie-Checks und werden nie als rohe Zertifikatsbytes persistiert.
+- **Ask-on-Connect (opt-in)** — `ask_enabled` hält neue Ausgangsflüsse lokal in NFQUEUE 7, bis Sie urteilen; Timeout droppt standardmäßig. Es ist ein Verdict, kein Relay — nichts wird dadurch ins Netz gesendet.
+- **eBPF-Enforcement & Hollow-Check** — laufen vollständig im Kernel bzw. `/proc` der eigenen Maschine; Ergebnisse bleiben lokal.

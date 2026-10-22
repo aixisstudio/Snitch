@@ -436,4 +436,18 @@ export default {
   ar_action: 'Ação',
   ar_action_alert: 'Só alerta',
   ar_action_block: 'Alerta + bloqueio',
+
+  sl_title: 'Saída syslog',
+  sl_hint: 'Encaminha alertas warning/críticos a um coletor syslog (RFC 3164, UDP ou tcp://). Opt-in — nada é enviado até definir um endereço.',
+  sl_ph: 'host:porta ou tcp://host:porta',
+  ask_title: 'Ask-on-connect',
+  ask_hint: 'Retém novos fluxos de saída até você permitir/negar — o prompt estilo Little Snitch. Requer Linux + NFQUEUE + root.',
+  ask_timeout: 'Timeout',
+  ask_failopen: 'Fail-open (permitir no timeout — menos seguro)',
+  ask_unavailable: 'Modo ask indisponível neste sistema',
+  ask_not_running: 'Modo ask ativado mas não iniciado — verifique os logs do backend',
+  gs_title: 'Sincronização IOC entre pares',
+  gs_hint: 'Envia pacotes Merkle com sal a instâncias Snitch pareadas explicitamente a cada 5 min — só compromissos hash, nunca indicadores brutos.',
+  gs_peers_ph: 'host:porta, separados por vírgula',
+  gs_privacy: 'Compartilhamento opt-in — os pacotes só saem para os pares listados aqui.',
 }

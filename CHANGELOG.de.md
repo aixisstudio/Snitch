@@ -6,6 +6,23 @@ Alle nennenswerten Änderungen an Snitch.
 
 Das Format folgt [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.5.0] — 2026-10-22
+
+### Hinzugefügt
+
+- **Passive TLS-Zertifikatsinspektion** — `capture/tlscert.py` reassembliert die Server-`Certificate`-Nachricht über TCP-Segmente (begrenzt 16 KiB/Flow) und liest den Blatt-DER: Issuer/Subject, Self-Signed-Flag, SANs, Validität → `TLS_CERT` bei Self-Signed oder SAN/SNI-Mismatch. TLS 1.3 wird ehrlich als unbeobachtbar gemeldet — kein MITM, keine Entschlüsselung.
+- **ICMP-Tunnel-Heuristik** — wiederholte große Echo-Payloads (≥24 B, 3+ in 5 Min) → `ICMP_TUNNEL` (ptunnel/icmpsh-Signatur).
+- **High-Entropy-Erkennung** — quasi-zufällige Payload-Köpfe (≥4,7 Bit/Byte) auf Klartext-Sockets → `HIGH_ENTROPY` (verdeckte Krypto/Stego-Hinweis).
+- **Isolation Forest (pur Python)** — `detection/iforest.py` + `mlflow.py` scoren Ausgangsflüsse auf 6 Features; `ML_ANOMALY` ab Score 0,62, inert unter 384 gelernten Flüssen.
+- **Ask-on-Connect (Linux NFQUEUE, opt-in)** — `ask_enabled` hält neue Ausgangsflüsse in Queue 7 bis zu `POST /security/ask/verdict` — echte Verdict-Macht, Timeout droppt standardmäßig.
+- **eBPF-Egress-Enforcement** — `detection/ebpf_enforce.py` + `POST /security/ebpf/isolate|block` — Kernel-Drops nur für Prozesse im snitch-Cgroup.
+- **Hollowing-Beweis** — `POST /security/hollow` diff't ausführbare RAM-Seiten gegen die Disk-Datei (Linux, `/proc`).
+- **IOC-Peer-Sync** — `gossip_peers` + `gossip_enabled`: gesalzene Merkle-Pakete alle 5 Min an explizit gelistete Peers — nur Hash-Commitments, keine Discovery.
+- **Syslog** — `syslog_addr` (UDP oder `tcp://`) leitet warning/critical-Alarme als RFC 3164 weiter — SIEM/Wazuh-Pfad.
+- **Geo-Regeln + Auto-Block** — Custom Rules mit `asn`/`country` (lokale mmdb) und `action:"block"` installieren echte Firewall-Regeln pro gematchter IP.
+- **Actionable Alerts + Settings-UI** — Block IP / Kill / Suspend / Allow-Deny pro Alarm; neue Regler in den Einstellungen (syslog, ask, peers).
+- **nftables-Backend + firejail** — `nft` wenn iptables fehlt (eigene `inet snitch`-Tabelle); `firejail --net=none` als Sandbox-Fallback.
+
 ## [Unreleased]
 
 ### Hinzugefügt

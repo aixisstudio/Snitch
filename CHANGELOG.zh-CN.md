@@ -6,6 +6,23 @@ Snitch 的所有重要变更。
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/)。
 
+## [1.5.0] — 2026-10-22
+
+### 新增
+
+- **被动 TLS 证书检查** — `capture/tlscert.py` 跨 TCP 分段重组服务器 `Certificate` 消息（每流 16 KiB 上限）并读取叶子 DER：签发者/主体、自签名标记、SAN、有效期 → 自签名或 SAN/SNI 不匹配时触发 `TLS_CERT`。TLS 1.3 诚实报告为不可观测 — 无 MITM、无解密。
+- **ICMP 隧道启发式** — 反复出现的大载荷回显（≥24 B，5 分钟内 3 次以上）→ `ICMP_TUNNEL`（ptunnel/icmpsh 特征）。
+- **高熵检测** — 明文套接字上接近随机的载荷头部（≥4.7 比特/字节）→ `HIGH_ENTROPY`（隐蔽加密/隐写迹象）。
+- **Isolation Forest（纯 Python）** — `detection/iforest.py` + `mlflow.py` 用 6 个特征为出站流打分；score ≥0.62 触发 `ML_ANOMALY`，学习不足 384 流时保持惰性。
+- **Ask-on-connect（Linux NFQUEUE，可选）** — `ask_enabled` 将新出站流挂入队列 7 直到 `POST /security/ask/verdict` — 真实判定权，超时默认丢弃。
+- **eBPF 出站执行** — `detection/ebpf_enforce.py` + `POST /security/ebpf/isolate|block` — 仅对 snitch cgroup 内进程进行内核级丢弃。
+- **空心化证据** — `POST /security/hollow` 对比 RAM 中可执行页与磁盘文件（Linux，`/proc`）。
+- **IOC 节点同步** — `gossip_peers` + `gossip_enabled`：每 5 分钟向显式列出的节点推送加盐 Merkle 包 — 仅哈希承诺，无发现机制。
+- **Syslog** — `syslog_addr`（UDP 或 `tcp://`）以 RFC 3164 转发警告/严重告警 — SIEM/Wazuh 路径。
+- **地理规则 + 自动封锁** — 自定义规则支持 `asn`/`country`（本地 mmdb）与 `action:"block"`，为每个匹配 IP 安装真实防火墙规则。
+- **可操作告警 + 设置界面** — 每条告警提供封锁 IP / 终止 / 挂起 / 允许-拒绝；设置中新增控件（syslog、ask、节点）。
+- **nftables 后端 + firejail** — 无 iptables 时使用 `nft`（专用 `inet snitch` 表）；`firejail --net=none` 作为沙箱回退。
+
 ## [Unreleased]
 
 ### 新增

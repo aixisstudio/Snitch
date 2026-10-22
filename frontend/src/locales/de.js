@@ -436,4 +436,18 @@ export default {
   ar_action: 'Aktion',
   ar_action_alert: 'Nur Alarm',
   ar_action_block: 'Alarm + Block',
+
+  sl_title: 'Syslog-Ausgabe',
+  sl_hint: 'Warn-/Kritisch-Alarme an einen Syslog-Kollektor weiterleiten (RFC 3164, UDP oder tcp://). Opt-in — nichts wird gesendet, bis eine Adresse gesetzt ist.',
+  sl_ph: 'host:port oder tcp://host:port',
+  ask_title: 'Ask-on-Connect',
+  ask_hint: 'Neue ausgehende Flüsse zurückhalten, bis Sie erlauben/verweigern — wie Little Snitch. Linux + NFQUEUE + Root nötig.',
+  ask_timeout: 'Timeout',
+  ask_failopen: 'Fail-open (bei Timeout erlauben — unsicherer)',
+  ask_unavailable: 'Ask-Modus auf diesem System nicht verfügbar',
+  ask_not_running: 'Ask-Modus aktiviert, läuft aber nicht — Backend-Logs prüfen',
+  gs_title: 'IOC-Peer-Sync',
+  gs_hint: 'Gesalzene Merkle-Proof-Pakete alle 5 Min an explizit gepaarte Snitch-Instanzen pushen — nur Hash-Commitments, nie rohe Indikatoren.',
+  gs_peers_ph: 'host:port, kommagetrennt',
+  gs_privacy: 'Opt-in Flotten-Sharing — Pakete gehen nur an die hier gelisteten Peers.',
 }

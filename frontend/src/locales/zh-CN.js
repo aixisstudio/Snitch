@@ -436,4 +436,18 @@ export default {
   ar_action: '动作',
   ar_action_alert: '仅告警',
   ar_action_block: '告警+封锁',
+
+  sl_title: 'Syslog 输出',
+  sl_hint: '将警告/严重告警转发到 syslog 收集器（RFC 3164，UDP 或 tcp://）。可选开启 — 未设置地址前不发送任何数据。',
+  sl_ph: '主机:端口 或 tcp://主机:端口',
+  ask_title: '连接询问',
+  ask_hint: '将新出站连接挂起，直到您允许/拒绝 — 类似 Little Snitch 的弹窗。需要 Linux + NFQUEUE + root。',
+  ask_timeout: '超时',
+  ask_failopen: '失败开放（超时放行 — 较不安全）',
+  ask_unavailable: '此系统不支持询问模式',
+  ask_not_running: '询问模式已启用但未运行 — 请查看后端日志',
+  gs_title: 'IOC 节点同步',
+  gs_hint: '每 5 分钟向显式配对的 Snitch 实例推送加盐 Merkle 证明包 — 仅哈希承诺，绝不发送原始指标。',
+  gs_peers_ph: '主机:端口，逗号分隔',
+  gs_privacy: '可选的集群共享 — 数据包只发送给此处列出的节点。',
 }

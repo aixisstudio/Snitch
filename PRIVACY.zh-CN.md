@@ -73,3 +73,11 @@ macOS 为 `~/Library/Application Support/Snitch`；Linux 安装后运行时为
 - **无网络沙箱** — `POST /security/sandbox` 在无网络的命名空间（Linux `unshare -n`）或 seatbelt（macOS `sandbox-exec`）中运行二进制：出站为零，输出留在本机。
 - **IOC `format=proof`** — 加盐 SHA-256 叶子 + Merkle 根：精确成员证明且无法枚举未怀疑的指标；绝不自动传输。
 - **内置模型** — `slm_mode=embedded` 通过 `llama-cpp-python` 在进程内加载您的 `.gguf` — 完全零网络；Snitch 从不下载权重。
+
+## v1.5 新增（隐私）
+
+- **Syslog 输出（可选，默认关闭）** — `syslog_addr`（UDP `主机:端口` 或 `tcp://主机:端口`）将警告/严重告警文本以 RFC 3164 数据报转发给您的 SIEM — 指向所配置地址的真实出站流，与 webhook 开关独立。
+- **IOC 节点同步（可选，默认关闭）** — `gossip_peers`（您控制的 Snitch 后端显式列表）允许 `POST /remote/ioc_sync` 将您的加盐 Merkle 证明包推送到对方的认证导入端点 — 仅此包（哈希承诺，绝不包含原始指标、主机名或路径）。`gossip_enabled` 每 5 分钟自动推送一次。无发现机制，绝不发往未列出地址。
+- **被动 TLS 证书读取不离开线路** — 握手观察器仅明文读取*服务器自己的* Certificate 消息 — 不拦截、不注入、不解密。TLS 1.3 会加密该消息，我们诚实报告为不可观测。元数据（签发者、主体、SAN）只用于本地异常检查，绝不以原始证书字节持久化。
+- **Ask-on-connect（可选）** — `ask_enabled` 将新出站流保留在本地 NFQUEUE 7 直到您判定；超时默认丢弃。这是判定而非中继 — 它本身不向网络发送任何内容。
+- **eBPF 执行与空心化检查** — 完全在本机内核/`/proc` 中运行；结果留在本地。

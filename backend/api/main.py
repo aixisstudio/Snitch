@@ -103,6 +103,7 @@ from detection.llm_local import LocalSlm
 from detection.miner import MinerDetector
 from detection.mlflow import FlowAnomaly
 from detection import askmode
+from detection import ebpf_enforce
 from detection import hollow as hollowmod
 from detection.gossip import PeerSync
 from detection import perfprobe
@@ -180,6 +181,11 @@ def _ask_notify(ctx: dict) -> None:
 
 
 ask_mode = askmode.AskMode(_ask_notify)
+# EN: cgroup-skb egress enforcer — lazy-started on first use; needs
+#     root + bcc + cgroup2 (status endpoint reports honestly).
+# FR: Enforceur egress cgroup-skb — démarré paresseusement au premier
+#     usage ; exige root + bcc + cgroup2 (statut honnête).
+ebpf_enforcer = ebpf_enforce.EbpfEnforcer()
 # EN: Dedup for custom-rule block actions — one firewall rule per
 #     (rule_id, remote_ip), so a chatty flow doesn't pile up rules.
 # FR: Dédup des actions block des règles — une règle pare-feu par
@@ -187,6 +193,11 @@ ask_mode = askmode.AskMode(_ask_notify)
 _rule_blocks: set[tuple] = set()
 _entropy_cooldown: dict[str, float] = {}
 _icmp_window: dict[str, list] = {}
+# EN: IOC peer-sync cadence — fixed 5 min; activation is governed by the
+#     `gossip_enabled` setting, not by this constant.
+# FR: Cadence de sync IOC — 5 min fixe ; l'activation relève du réglage
+#     `gossip_enabled`, pas de cette constante.
+_GOSSIP_INTERVAL_S = 300
 _loop: asyncio.AbstractEventLoop | None = None
 _sniffer: PacketSniffer | None = None
 _scanner: ARPScanner | None = None
@@ -1341,6 +1352,35 @@ async def _drain_loop() -> None:
         await asyncio.sleep(DRAIN_INTERVAL_S)
 
 
+async def _gossip_loop() -> None:
+    """EN: Periodic IOC peer sync — every 5 min, only while the operator
+        opt-in (`gossip_enabled`) is set AND peers are configured. Pushes
+        the salted-Merkle proof pack (hash commitments only, never raw
+        indicators). Failures are logged, never raised.
+    FR: Sync IOC périodique — toutes les 5 min, seulement si l'opt-in
+        `gossip_enabled` est posé ET des pairs configurés. Pousse le
+        paquet Merkle salé (engagements de hash, jamais d'indicateurs
+        bruts). Les échecs sont loggés, jamais levés."""
+    while not _shutdown:
+        await asyncio.sleep(_GOSSIP_INTERVAL_S)
+        if _shutdown:
+            break
+        try:
+            if not db.get_setting("gossip_enabled", False):
+                continue
+            if not peer_sync.peers:
+                continue
+            loop = asyncio.get_running_loop()
+            indicators = await loop.run_in_executor(
+                None, _collect_indicators)
+            pack = iocshare.build_proof_pack(indicators)
+            res = await loop.run_in_executor(
+                None, peer_sync.push_pack, pack)
+            logger.info("ioc peer sync: %s", res)
+        except Exception as exc:                     # noqa: BLE001
+            logger.warning("ioc peer sync failed: %s", exc)
+
+
 async def _miner_corroborate() -> None:
     """EN: Sample CPU for pool-port suspects off the event loop; each
     corroborated case becomes a MINING_SUSPECT alert.
@@ -1727,6 +1767,9 @@ def _load_settings() -> None:
     #     persisted opt-in is set AND the platform allows it.
     # FR: Ask-on-first-connect (NFQUEUE Linux) — démarré seulement si
     #     l'opt-in persisté est posé ET la plateforme le permet.
+    ask_mode.configure(
+        timeout=db.get_setting("ask_timeout", 15),
+        failopen=bool(db.get_setting("ask_failopen", False)))
     if db.get_setting("ask_enabled", False):
         ok, why = ask_mode.start()
         if not ok:
@@ -1767,6 +1810,7 @@ async def _startup() -> None:
     _load_settings()
     _start_capture()
     asyncio.get_running_loop().create_task(_drain_loop())
+    asyncio.get_running_loop().create_task(_gossip_loop())
     threading.Thread(target=_flush_loop, daemon=True).start()
     threading.Thread(target=_cleanup_loop, daemon=True).start()
 
@@ -1786,6 +1830,8 @@ async def _shutdown_all() -> None:
     _shutdown = True
     _stop_capture()
     ebpf.stop()
+    ebpf_enforcer.stop()
+    ask_mode.stop()
     sink.stop()
     if _media_monitor:
         _media_monitor.stop()
@@ -1927,6 +1973,10 @@ async def post_settings(body: SettingsBody) -> dict:
                 ask_mode.stop()
         if key == "gossip_peers":
             peer_sync.configure(value if isinstance(value, list) else [])
+        if key in ("ask_timeout", "ask_failopen"):
+            ask_mode.configure(
+                timeout=db.get_setting("ask_timeout", 15),
+                failopen=bool(db.get_setting("ask_failopen", False)))
         if key == "integrity_watch":
             integrity.configure(bool(value))
         if key == "ebpf_probe":
@@ -3052,6 +3102,54 @@ async def hollow_check(body: PidBody) -> dict:
         seulement, lecture bornée)."""
     loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, hollowmod.hollow_check, body.pid)
+
+
+@app.get("/security/ebpf_enforce", dependencies=_AUTH)
+async def ebpf_enforce_status() -> dict:
+    """EN: cgroup-skb enforcer status — availability reason is reported
+        honestly (needs Linux + root + bcc + cgroup2).
+    FR: État de l'enforceur cgroup-skb — la raison d'indisponibilité est
+        rapportée honnêtement (Linux + root + bcc + cgroup2)."""
+    ok, why = ebpf_enforce.available()
+    return {"available": ok, "reason": why, **ebpf_enforcer.status()}
+
+
+@app.post("/security/ebpf/isolate", dependencies=_AUTH)
+async def ebpf_isolate(body: PidBody) -> dict:
+    """EN: Move a process into the snitch cgroup — its egress then flows
+        through the kernel drop program (block rules added via
+        /security/ebpf/block apply to it specifically, host untouched).
+        Lazy-starts the enforcer; failure is honest, never fake success.
+    FR: Déplace un processus dans le cgroup snitch — son egress passe
+        alors par le programme de drop noyau (les blocages ajoutés via
+        /security/ebpf/block s'appliquent à lui seul, l'hôte intact)."""
+    if body.pid <= 3 or body.pid == os.getpid():
+        raise HTTPException(400, "refusing to isolate a system/critical pid")
+    loop = asyncio.get_running_loop()
+    if not ebpf_enforcer.status()["attached"]:
+        ok, why = await loop.run_in_executor(None, ebpf_enforcer.start)
+        if not ok:
+            return {"applied": False, "reason": why}
+    ok, why = await loop.run_in_executor(
+        None, ebpf_enforcer.isolate_pid, body.pid)
+    return {"applied": ok, "reason": why}
+
+
+@app.post("/security/ebpf/block", dependencies=_AUTH)
+async def ebpf_block(body: ThreatCheckBody) -> dict:
+    """EN: Add a destination IP to the kernel drop map — drops apply only
+        to processes inside the snitch cgroup (see /security/ebpf/isolate).
+    FR: Ajoute une IP destination à la map de drop noyau — les drops ne
+        s'appliquent qu'aux processus du cgroup snitch (voir
+        /security/ebpf/isolate)."""
+    loop = asyncio.get_running_loop()
+    if not ebpf_enforcer.status()["attached"]:
+        ok, why = await loop.run_in_executor(None, ebpf_enforcer.start)
+        if not ok:
+            return {"applied": False, "reason": why}
+    ok, why = await loop.run_in_executor(
+        None, ebpf_enforcer.block_ip, body.ip)
+    return {"applied": ok, "reason": why}
 
 
 @app.post("/security/explain", dependencies=_AUTH)

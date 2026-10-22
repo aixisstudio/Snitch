@@ -76,9 +76,13 @@ class IsolationForest:
         self._trees = []
         if len(data) < 16:
             return 0
-        sub = data if len(data) <= self.sample else \
-            self._rng.sample(data, self.sample)
         for _ in range(self.n_trees):
+            # EN: Fresh subsample per tree (paper-standard) — sharing one
+            #     subsample correlated every tree and wasted diversity.
+            # FR: Sous-échantillon frais par arbre (standard du papier) —
+            #     partager un seul échantillon corrélait tous les arbres.
+            sub = data if len(data) <= self.sample else \
+                self._rng.sample(data, self.sample)
             self._trees.append(self._build(sub, 0))
         return len(self._trees)
 
@@ -87,11 +91,21 @@ class IsolationForest:
         if len(pts) <= 1 or depth >= self.max_depth:
             return node
         nfeat = len(pts[0])
-        feat = self._rng.randrange(nfeat)
-        col = [p[feat] for p in pts]
-        lo, hi = min(col), max(col)
-        if lo == hi:
+        # EN: Split only among features with actual variance in this subset.
+        #     Constant columns (e.g. the direction placeholder, a fixed
+        #     hour) can never separate points — picking them produced
+        #     degenerate fat leaves that compressed every score toward 0.5.
+        # FR: Ne splitter que sur les features à variance réelle. Les
+        #     colonnes constantes ne séparent rien — elles produisaient des
+        #     feuilles grasses qui compressaient tous les scores vers 0,5.
+        cols = list(zip(*pts))
+        cands = [f for f in range(nfeat)
+                 if min(cols[f]) != max(cols[f])]
+        if not cands:
             return node                            # EN: no split possible
+        feat = self._rng.choice(cands)
+        col = cols[feat]
+        lo, hi = min(col), max(col)
         node.feat = feat
         node.split = self._rng.uniform(lo, hi)
         left = [p for p in pts if p[feat] < node.split]

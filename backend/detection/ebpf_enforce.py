@@ -106,23 +106,31 @@ class EbpfEnforcer:
             return False, why
         try:
             from bcc import BPF
+        except ImportError as e:                     # pragma: no cover
+            return False, str(e)
+        # EN: Create OUR cgroup first — the program attaches to it, so the
+        #     drop map filters ONLY processes moved inside via
+        #     isolate_pid(). Attaching at the cgroup2 root would make every
+        #     block host-wide, silently contradicting the per-process
+        #     promise.
+        # FR: Créer NOTRE cgroup d'abord — le programme s'y attache, donc la
+        #     map de drop ne filtre QUE les processus déplacés dedans via
+        #     isolate_pid(). Un attach à la racine cgroup2 rendrait chaque
+        #     blocage global, contredisant la promesse par processus.
+        try:
+            _CGROUP_DIR.mkdir(exist_ok=True)
+        except OSError as e:
+            return False, f"cgroup dir unavailable: {e}"
+        try:
             self._b = BPF(text=_PROG)
             self._fn = self._b.load_func("egress_drop", BPF.CGROUP_SKB)
-            # EN: Attach at the cgroup2 root — covers every process;
-            #     per-process isolation narrows via our own cgroup below.
-            # FR: Attach à la racine cgroup2 — couvre tous les processus ;
-            #     l'isolation par processus affine via notre cgroup.
-            root = str(_cgroup2_root())
-            self._b.attach_cgroup(self._fn, root,
+            target = str(_CGROUP_DIR)
+            self._b.attach_cgroup(self._fn, target,
                                   self._b.BPFAttachType.CGROUP_INET_EGRESS)
-            self._attached_to = root
+            self._attached_to = target
         except Exception as e:                     # noqa: BLE001
             self._b = None
             return False, f"bpf attach failed: {e}"
-        try:
-            _CGROUP_DIR.mkdir(exist_ok=True)
-        except OSError:
-            pass
         return True, ""
 
     def stop(self) -> None:

@@ -440,4 +440,18 @@ export default {  // Navigation
   ar_action: 'Action',
   ar_action_alert: 'Alert only',
   ar_action_block: 'Alert + block',
+
+  sl_title: 'Syslog output',
+  sl_hint: 'Forward warning/critical alerts to a syslog collector (RFC 3164, UDP or tcp://). Opt-in — nothing is sent until an address is set.',
+  sl_ph: 'host:port or tcp://host:port',
+  ask_title: 'Ask-on-connect',
+  ask_hint: 'Hold new outbound flows until you allow/deny — the Little Snitch-style prompt. Linux + NFQUEUE + root required.',
+  ask_timeout: 'Timeout',
+  ask_failopen: 'Fail-open (allow on timeout — less safe)',
+  ask_unavailable: 'Ask mode unavailable on this system',
+  ask_not_running: 'Ask mode is enabled but not running — check backend logs',
+  gs_title: 'IOC peer sync',
+  gs_hint: 'Push salted-Merkle proof packs to explicitly paired Snitch instances every 5 min — hash commitments only, never raw indicators.',
+  gs_peers_ph: 'host:port, comma-separated',
+  gs_privacy: 'Opt-in fleet sharing — packs leave only for the peers you list here.',
 }

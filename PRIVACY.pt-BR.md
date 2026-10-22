@@ -86,3 +86,11 @@ Windows, `~/Library/Application Support/Snitch` no macOS,
 - **Sandbox sem rede** — `POST /security/sandbox` executa um binário num namespace sem rede (`unshare -n` Linux) ou seatbelt (`sandbox-exec` macOS): egress zero, a saída fica na máquina.
 - **IOC `format=proof`** — folhas SHA-256 com sal + raiz Merkle: pertinência exata sem enumerar indicadores não suspeitos; nada é transmitido automaticamente.
 - **Modelo embutido** — `slm_mode=embedded` carrega seu `.gguf` em processo via `llama-cpp-python` — zero rede; Snitch nunca baixa pesos.
+
+## Novidades v1.5 (privacidade)
+
+- **Saída syslog (opt-in, desativada)** — `syslog_addr` (`host:porta` UDP ou `tcp://host:porta`) encaminha textos de alertas warning/críticos como datagramas RFC 3164 ao seu SIEM — um fluxo de saída real para o endereço configurado, independente do webhook.
+- **Sincronização IOC entre pares (opt-in, desativada)** — `gossip_peers` (lista explícita de backends Snitch que você controla) permite ao `POST /remote/ioc_sync` enviar seu pacote Merkle com sal ao endpoint de importação autenticado deles — APENAS esse pacote (compromissos hash, nunca indicadores brutos, hostnames ou caminhos). `gossip_enabled` repete o envio a cada 5 min. Sem discovery, nada sai para endereços não listados.
+- **A leitura passiva do certificado TLS fica no fio** — o watcher de handshake lê a mensagem Certificate *do próprio servidor* em claro — sem interceptação, injeção ou decriptação. O TLS 1.3 cifra essa mensagem, o que reportamos honestamente como inobservável. Metadados (emissor, sujeito, SANs) só alimentam checagens locais e nunca são persistidos como bytes brutos.
+- **Ask-on-connect (opt-in)** — `ask_enabled` retém novos fluxos de saída localmente na NFQUEUE 7 até seu veredito; o timeout dropa por padrão. É um veredito, não um relay — nada vai para a rede por causa disso.
+- **Enforcement eBPF e check de hollowing** — rodam inteiramente no kernel/`/proc` da sua máquina; os resultados ficam locais.
