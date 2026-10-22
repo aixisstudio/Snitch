@@ -32,8 +32,6 @@ from __future__ import annotations
 import ctypes
 import ipaddress
 import os
-import socket
-import struct
 import uuid
 from typing import Optional
 
@@ -54,10 +52,13 @@ FWP_UINT8                = 1
 FWP_UINT16               = 2
 FWP_UINT32               = 3
 FWP_UINT64               = 4          # EN: value passed by POINTER / FR: valeur par pointeur
-FWP_BYTE_ARRAY16_TYPE    = 10
-FWP_BYTE_BLOB_TYPE       = 11
-FWP_V4_ADDR_MASK         = 19
-FWP_V6_ADDR_MASK         = 20
+FWP_BYTE_ARRAY16_TYPE    = 11         # EN: FWP_DATA_TYPE — fwpmtypes.h / FR: idem
+FWP_BYTE_BLOB_TYPE       = 12
+# EN: Compound types start at 0x100 — they are NOT small scalars.
+#     (Found by the Windows integration job: 19/20 → FWP_E_INVALID_ENUMERATOR)
+# FR: Les types composés commencent à 0x100 — pas de petits scalaires.
+FWP_V4_ADDR_MASK         = 256
+FWP_V6_ADDR_MASK         = 257
 FWP_MATCH_EQUAL          = 0
 FWP_ACTION_BLOCK         = 0x00001001  # EN: BLOCK | FLAG_TERMINATING / FR: BLOCK | TERMINATING
 FWP_E_FILTER_NOT_FOUND   = 0x80320004
@@ -303,9 +304,15 @@ class WfpBackend:
         for net_s in remotes:
             net = ipaddress.ip_network(net_s, strict=False)
             if net.version == 4:
+                # EN: FWP_V4_ADDR_AND_MASK stores both fields in NETWORK
+                #     byte order (samples fill .addr via InetPton into an
+                #     in_addr). int(ip) is host order → swap.
+                # FR: FWP_V4_ADDR_AND_MASK stocke les deux champs en ordre
+                #     réseau (les samples remplissent .addr via InetPton
+                #     dans un in_addr). int(ip) est host order → swap.
                 am = _V4_ADDR_MASK(
-                    int(net.network_address),
-                    struct.unpack("!I", socket.inet_aton(str(net.netmask)))[0])
+                    int.from_bytes(net.network_address.packed, "little"),
+                    int.from_bytes(net.netmask.packed, "little"))
                 cf = (_COND_REMOTE_IP, FWP_V4_ADDR_MASK,
                       ctypes.cast(ctypes.byref(am), ctypes.c_void_p), am)
                 plan.append((_LAYER_V4, [cf], f"ip-{net}"))
