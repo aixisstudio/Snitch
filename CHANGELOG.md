@@ -6,6 +6,40 @@ All notable changes to Snitch. / Toutes les modifications notables de Snitch.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/) — EN/FR.
 
+## [1.6.3] — 2026-10-22 — hygiene & hardening / hygiène & durcissement
+
+### Fixed / Corrigé
+
+- EN: **All 9 CodeQL alerts fixed at the source** — askmode exempt IPs
+  are validated and normalized through `ipaddress.ip_network` before
+  reaching iptables argv (command-line injection ×2); webhook provider
+  detection matches parsed hostnames instead of raw URL substrings
+  (×3); API responses no longer leak exception text (×2);
+  `ci-agent.yml` declares `contents: read` permissions; one test-only
+  substring assertion made exact.
+  FR: **Les 9 alertes CodeQL corrigées à la source** — IP exemptées
+  validées et normalisées via `ipaddress.ip_network` avant argv
+  iptables (injection ×2) ; détection webhook par hostname parsé au
+  lieu de sous-chaîne d'URL (×3) ; les réponses API ne fuient plus le
+  texte d'exception (×2) ; `contents: read` sur `ci-agent.yml`.
+- EN: Homebrew launcher renamed `snitch` → `snitchd` — the bare CLI
+  name belongs to `karol-broda/snitch` (an ss/netstat replacement).
+  Refs #51.
+  FR: Lanceur Homebrew renommé `snitch` → `snitchd` — le nom CLI nu
+  appartient à `karol-broda/snitch`. Refs #51.
+- EN: **All 11 dependabot updates merged** — electron 44.9, fastapi,
+  react/react-dom 19.3.1, lucide-react, vitest, ruff, and the docker /
+  download-artifact / setup-buildx / login GitHub Actions.
+  FR: **Les 11 mises à jour dependabot mergées** — electron 44.9,
+  fastapi, react/react-dom, lucide-react, vitest, ruff et les actions
+  docker/download-artifact/setup-buildx/login.
+- EN: release pipeline end-to-end green — nfpm `.deb`/`.rpm` built,
+  formula pushed to `aixisstudio/homebrew-tap`, winget/choco jobs
+  skip cleanly until their installer assets/keys exist.
+  FR: pipeline release vert de bout en bout — `.deb`/`.rpm` construits,
+  formule poussée vers le tap, winget/choco sautent proprement tant
+  que leurs assets/clés n'existent pas.
+
 ## [1.6.2] — 2026-10-22 — fleet maturity / maturité de flotte
 
 ### Added / Ajouté
