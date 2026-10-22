@@ -42,8 +42,9 @@ jobs:
         run: |
           V=${GITHUB_REF_NAME#v}
           sed -i "s/^version:.*/version: \"$V\"/" packaging/nfpm.yaml
-          nfpm package -f packaging/nfpm.yaml -p deb -t dist/
-          nfpm package -f packaging/nfpm.yaml -p rpm -t dist/
+          mkdir -p dist
+          nfpm package -f packaging/nfpm.yaml -p deb -t "dist/snitch_${V}_amd64.deb"
+          nfpm package -f packaging/nfpm.yaml -p rpm -t "dist/snitch-${V}.x86_64.rpm"
       - uses: actions/upload-artifact@v4
         with:
           name: linux-packages
