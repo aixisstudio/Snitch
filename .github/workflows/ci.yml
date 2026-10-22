@@ -212,6 +212,7 @@ jobs:
             dist/installer/*.exe
             dist/installer/*.AppImage
             dist/installer/*.deb
+            dist/installer/*.snap
             dist/installer/*.dmg
             dist/installer/*.zip
             dist/installer/*.yml
@@ -300,7 +301,7 @@ jobs:
       - name: Rename installer assets to stable names
         run: |
           shopt -s globstar nullglob
-          for f in artifacts/**/*.exe artifacts/**/*.AppImage artifacts/**/*.deb artifacts/**/*.dmg artifacts/**/*.zip; do
+          for f in artifacts/**/*.exe artifacts/**/*.AppImage artifacts/**/*.deb artifacts/**/*.snap artifacts/**/*.dmg artifacts/**/*.zip; do
             b="$(basename "$f")"
             case "$b" in
               "Snitch Setup "*)   mv "$f" "$f.renamed" && mv "$f.renamed" "$(dirname "$f")/Snitch-Setup-windows.exe" ;;
@@ -308,6 +309,7 @@ jobs:
               *-arm64.dmg)        mv "$f" "$(dirname "$f")/Snitch-macos-arm64.dmg" ;;
               *-arm64-mac.zip)    mv "$f" "$(dirname "$f")/Snitch-macos-arm64.zip" ;;
               *amd64.deb)         mv "$f" "$(dirname "$f")/snitch-linux-amd64.deb" ;;
+              *amd64.snap)        mv "$f" "$(dirname "$f")/snitch-linux-amd64.snap" ;;
             esac
           done
           find artifacts -type f -name "*" | sort
