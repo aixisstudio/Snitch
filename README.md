@@ -49,6 +49,15 @@ The entire interface is available in **English, Français, Español, Deutsch, Р
 | 15/30/60-min Timeline | Sliding history stored locally in SQLite (24 h retention) |
 | Anomaly Detection | Flags port scans, beaconing (regular-interval C2), potential exfiltration |
 | Advanced Detection | DNS-tunnelling heuristic, cleartext-port spotting, per-app country baseline deviation |
+| Passive TLS Inspection | Leaf-certificate metadata read off the wire (issuer, self-signed, SAN/SNI mismatch) — TLS 1.3 honestly unobservable |
+| ICMP Tunnel Heuristic | Repeated fat echo payloads flagged — the ptunnel/icmpsh exfiltration signature |
+| ML Anomaly Scoring | Pure-Python isolation forest over your own flows (zero deps) — outlier flows flagged after ~400 samples |
+| Entropy Watch | Encrypted-looking payloads on cleartext channels (covert crypto/stego hint) |
+| Ask-on-Connect | **Opt-in** NFQUEUE verdict mode (Linux) — new flows held until you allow/deny, like Little Snitch prompts |
+| Actionable Alerts | One-click Block IP / Kill / Suspend on every alert; custom rules can auto-firewall matched hosts (`asn`/`country` fields included) |
+| Syslog / SIEM | **Opt-in** RFC 3164 output to your syslog/Wazuh collector, UDP or TCP |
+| IOC Peer Sync | **Opt-in** salted-Merkle pack exchange with explicitly-paired Snitch peers — hash commitments only, no central server |
+| Memory Forensics | On-demand process-hollowing check — executable pages in RAM diffed against disk (Linux) |
 | Firewall Orchestration | Block rules (IP/CIDR/domain/process/port) applied to the OS firewall — `netsh`/`iptables`/`pf`, persisted, per-rule blocked counters |
 | Lockdown Mode | Panic switch — flags & blocks all public outbound traffic, LAN stays up |
 | Incident Response | Kill / suspend a process, block an IP — one click from the connection detail |
@@ -257,6 +266,15 @@ Toute l'interface est disponible en **English, Français, Español, Deutsch, Р�
 | Timeline 15/30/60 min | Historique glissant stocké localement dans SQLite (rétention 24 h) |
 | Détection d'anomalies | Signale scans de ports, beaconing (C2 à intervalle régulier), exfiltration potentielle |
 | Détection avancée | Heuristique de tunnel DNS, repérage de trafic en clair, déviation de baseline pays par application |
+| Inspection TLS passive | Métadonnées du certificat feuille lues sur le réseau (émetteur, auto-signé, mismatch SAN/SNI) — TLS 1.3 honnêtement inobservable |
+| Heuristique tunnel ICMP | Échos ICMP au payload répété et volumineux signalés — signature d'exfiltration ptunnel/icmpsh |
+| Score d'anomalie ML | Forêt d'isolation pur Python sur vos propres flux (zéro dépendance) — flux aberrants signalés après ~400 échantillons |
+| Veille d'entropie | Payloads d'apparence chiffrée sur canaux en clair (indice de crypto couverte/stégo) |
+| Ask-on-Connect | Verdict NFQUEUE **opt-in** (Linux) — les nouveaux flux sont suspendus jusqu'à votre allow/deny, façon Little Snitch |
+| Alertes actionnables | Bloquer IP / Tuer / Suspendre en un clic sur chaque alerte ; les règles custom peuvent pare-feu automatiquement (champs `asn`/`country` inclus) |
+| Syslog / SIEM | Sortie RFC 3164 **opt-in** vers votre collecteur syslog/Wazuh, UDP ou TCP |
+| Sync IOC entre pairs | Échange de packs Merkle salés **opt-in** avec des pairs Snitch explicitement appairés — engagements de hash uniquement, pas de serveur central |
+| Forensique mémoire | Vérification de process hollowing à la demande — pages exécutables en RAM comparées au disque (Linux) |
 | Orchestration pare-feu | Règles de blocage (IP/CIDR/domaine/processus/port) appliquées au pare-feu OS — `netsh`/`iptables`/`pf`, persistées, compteurs de blocages |
 | Mode lockdown | Bouton panique — signale & bloque tout le trafic sortant public, le LAN reste actif |
 | Réponse à incident | Tuer / suspendre un processus, bloquer une IP — en un clic depuis le détail d'une connexion |

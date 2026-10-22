@@ -58,6 +58,7 @@ FR: Cœur du backend. Détenir l'état du graphe en mémoire (nœuds / arêtes /
 """
 
 import asyncio
+import math
 import ipaddress
 import json
 import logging
@@ -79,7 +80,7 @@ from fastapi.responses import PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from api.security import ALLOWED_ORIGIN_REGEX, require_token, ws_authorized
+from api.security import ALLOWED_ORIGIN_REGEX, get_token, require_token, ws_authorized
 from capture.sniffer import Packet, PacketSniffer, get_local_ips
 import demo
 from capture.media_monitor import MediaMonitor, MediaState
@@ -91,6 +92,7 @@ from scanner.arp_scanner import READ_STATS as _arp_stats
 from detection.anomaly import AnomalyDetector, Alert
 from detection.customrules import CustomRules
 from capture.ebpf_probe import EbpfProbe
+from capture.tlscert import san_mismatch as _san_mismatch
 from detection.deepinspect import DeepInspector, suspicious_module_paths
 from detection.firewall import FirewallManager
 from detection.integrity import IntegrityWatcher
@@ -99,6 +101,10 @@ from detection import explain as alert_explain
 from detection import iocshare
 from detection.llm_local import LocalSlm
 from detection.miner import MinerDetector
+from detection.mlflow import FlowAnomaly
+from detection import askmode
+from detection import hollow as hollowmod
+from detection.gossip import PeerSync
 from detection import perfprobe
 from detection.sinkresponder import SinkholeResponder
 from detection.threatintel import ThreatIntel
@@ -143,6 +149,44 @@ sink = SinkholeResponder()        # EN: loopback :80/:443 sinkhole listener / FR
 miner = MinerDetector()           # EN: stratum/pool/CPU mining signals / FR: signaux de minage
 slm = LocalSlm()                  # EN: optional localhost LLM enrichment / FR: enrichissement LLM local
 custom_rules = CustomRules()      # EN: user-defined alert rules / FR: règles d'alerte utilisateur
+# EN: ML flow scoring (pure-Python isolation forest) + IOC peer sync +
+#     NFQUEUE ask-mode — all opt-in / self-limiting, see their modules.
+# FR: Scoring ML des flux (forêt d'isolation pur Python) + sync IOC entre
+#     pairs + mode ask NFQUEUE — tous opt-in / auto-limités.
+flow_ml = FlowAnomaly()
+peer_sync = PeerSync(get_token)
+
+
+def _ask_notify(ctx: dict) -> None:
+    """EN: Called from the NFQUEUE verdict thread — hop onto the event loop
+        and surface the pending flow as a broadcast ASK_VERDICT alert.
+    FR: Appelé depuis le thread NFQUEUE — bascule sur la boucle et diffuse
+        le flux en attente comme alerte ASK_VERDICT."""
+    if _loop is None:
+        return
+    a = Alert(type="ASK_VERDICT", severity="warning",
+              message=f"New outbound flow needs a verdict: "
+                      f"{ctx['remote_ip']}:{ctx['remote_port']}/{ctx['proto']} "
+                      f"(auto-decision in {ctx['timeout_s']}s)",
+              node_id=ctx["remote_ip"],
+              details=dict(ctx))
+    ad = a.to_dict()
+    try:
+        db.log_alert(ad)
+        asyncio.run_coroutine_threadsafe(
+            broadcast({"type": "alert", "alert": ad}), _loop)
+    except Exception:                                # noqa: BLE001
+        pass
+
+
+ask_mode = askmode.AskMode(_ask_notify)
+# EN: Dedup for custom-rule block actions — one firewall rule per
+#     (rule_id, remote_ip), so a chatty flow doesn't pile up rules.
+# FR: Dédup des actions block des règles — une règle pare-feu par
+#     (rule_id, ip distante) pour ne pas empiler les règles.
+_rule_blocks: set[tuple] = set()
+_entropy_cooldown: dict[str, float] = {}
+_icmp_window: dict[str, list] = {}
 _loop: asyncio.AbstractEventLoop | None = None
 _sniffer: PacketSniffer | None = None
 _scanner: ARPScanner | None = None
@@ -258,6 +302,17 @@ class IocImportBody(BaseModel):
     pack: dict = Field(default_factory=dict)
 
 
+class AskVerdictBody(BaseModel):
+    """EN: /security/ask/verdict payload — allow/deny one pending flow.
+    `remember` stores the decision for the session (default True).
+    FR: Charge utile du verdict ask — autoriser/refuser un flux en
+    attente. `remember` mémorise la décision pour la session."""
+    remote_ip: str
+    remote_port: int
+    proto: str = "TCP"
+    allow: bool
+
+
 class PairingBody(BaseModel):
     """EN: /remote/pairing payload — opt-in LAN exposure. `enabled`
     persists a bind address applied at the NEXT backend start (uvicorn
@@ -306,12 +361,17 @@ class BlocklistBody(BaseModel):
 
 class CustomRuleBody(BaseModel):
     """EN: /alerts/rules payload — one field, one operator, one value.
-    FR: Charge utile /alerts/rules — un champ, un opérateur, une valeur."""
+    `action` is "alert" (default) or "block" (installs a real firewall
+    rule on each newly-matched remote IP — the auto kill-switch).
+    FR: Charge utile /alerts/rules — un champ, un opérateur, une valeur.
+    `action` = « alert » (défaut) ou « block » (installe une vraie règle
+    pare-feu sur chaque IP distante matchée — le kill-switch auto)."""
     name: str = ""
     field: str
     op: str
     value: str
     severity: str = "warning"
+    action: str = "alert"
 
 
 class ProfileBody(BaseModel):
@@ -993,15 +1053,16 @@ def _process_batch(packets: list[Packet]) -> None:
                 db.log_alert(ad)
                 out_alerts.append(ad)
 
-        # EN: Mining signals — cleartext stratum in the payload head and
-        #     pool-port marking for later CPU corroboration (drain loop).
-        # FR: Signaux de minage — stratum en clair dans la tête du payload
-        #     et marquage port-pool pour corroboration CPU (boucle drain).
         # EN: User-defined alert rules — first match per packet raises
-        #     CUSTOM_RULE carrying the rule name (alert-only, never blocks).
+        #     CUSTOM_RULE carrying the rule name. `geo` powers the asn/
+        #     country fields; action="block" additionally installs a REAL
+        #     firewall rule on the remote IP (deduped per rule+target —
+        #     the flow-level kill-switch).
         # FR: Règles d'alerte utilisateur — le premier match lève
-        #     CUSTOM_RULE portant le nom de la règle (alerte, jamais de blocage).
-        for m in custom_rules.check(pkt)[:1]:
+        #     CUSTOM_RULE portant le nom de la règle. `geo` alimente les
+        #     champs asn/country ; action="block" installe en plus une
+        #     vraie règle pare-feu sur l'IP distante (dédupliquée).
+        for m in custom_rules.check(pkt, geo)[:1]:
             r = m["rule"]
             a = Alert(
                 type="CUSTOM_RULE", severity=r["severity"],
@@ -1010,7 +1071,151 @@ def _process_batch(packets: list[Packet]) -> None:
                         + (" by " + pkt.process_name if pkt.process_name else ""),
                 node_id=remote_ip,
                 details={"rule": r, "process": pkt.process_name,
-                         "direction": pkt.direction},
+                         "direction": pkt.direction, "pid": pkt.pid,
+                         "ip": remote_ip},
+            )
+            _flag_alert(a, nodes)
+            ad = a.to_dict()
+            db.log_alert(ad)
+            out_alerts.append(ad)
+            asyncio.get_running_loop().create_task(_notify(ad))
+            if r.get("action") == "block" and pkt.direction == "out":
+                bk = (r["id"], remote_ip)
+                if bk not in _rule_blocks and len(_rule_blocks) < 4096:
+                    _rule_blocks.add(bk)
+                    # EN: Kill-switch — real OS rule, best effort (needs
+                    #     privileges; the alert is still emitted regardless).
+                    # FR: Kill-switch — vraie règle OS, au mieux (privilèges
+                    #     requis ; l'alerte est émise quoi qu'il arrive).
+                    asyncio.get_running_loop().run_in_executor(
+                        None, fw.add_rule, "ip", remote_ip, "block", 64)
+
+        # EN: Passive TLS certificate findings — self-signed leaf or a
+        #     cert whose SANs do not cover the requested SNI (MitM /
+        #     C2-with-bad-cert signatures). TLS 1.3 stays None → no alert.
+        # FR: Constatats passifs du certificat TLS — feuille auto-signée
+        #     ou SANs ne couvrant pas le SNI demandé (signatures MitM /
+        #     C2 à cert douteux). TLS 1.3 → None → pas d'alerte.
+        if pkt.tls_cert:
+            cert = pkt.tls_cert
+            reasons = []
+            if cert.get("self_signed"):
+                reasons.append("self-signed")
+            if _san_mismatch(pkt.sni, cert.get("sans") or []):
+                reasons.append(f"SANs do not cover {pkt.sni}")
+            if reasons:
+                a = Alert(
+                    type="TLS_CERT", severity="warning",
+                    message=f"TLS certificate anomaly for {pkt.sni or remote_ip}: "
+                            f"{', '.join(reasons)} "
+                            f"(issuer {cert.get('issuer_cn') or cert.get('issuer_o') or '?'})",
+                    node_id=remote_ip,
+                    details={"ip": remote_ip, "host": pkt.sni,
+                             "issuer": cert.get("issuer_cn") or cert.get("issuer_o"),
+                             "subject": cert.get("subject_cn"),
+                             "reasons": reasons, "pid": pkt.pid,
+                             "process": pkt.process_name},
+                )
+                _flag_alert(a, nodes)
+                ad = a.to_dict()
+                db.log_alert(ad)
+                out_alerts.append(ad)
+                asyncio.get_running_loop().create_task(_notify(ad))
+
+        # EN: High-entropy payload on a cleartext channel — real plaintext
+        #     protocols (HTTP, SMTP…) compress and structure, so ~random
+        #     bytes on a non-TLS port suggest covert encryption/stego or a
+        #     mislabelled tunnel. Bounded: only the ≤64B head, one alert per
+        #     host per 10 min.
+        # FR: Payload à haute entropie sur canal en clair — les protocoles
+        #     clairs sont structurés ; des octets quasi aléatoires sur un
+        #     port non TLS suggèrent du chiffrement couvert/stégo. Borné :
+        #     tête ≤64 o, une alerte par hôte / 10 min.
+        if pkt.protocol == "TCP" and pkt.app_head and \
+                not pkt.app_head.startswith(b"\x16\x03") and \
+                pkt.remote_port not in (53, 853):
+            now_s = time.monotonic()
+            if now_s - _entropy_cooldown.get(remote_ip, 0) > 600:
+                head = pkt.app_head
+                freq: dict[int, int] = {}
+                for b in head:
+                    freq[b] = freq.get(b, 0) + 1
+                ent = -sum((c / len(head)) * math.log2(c / len(head))
+                           for c in freq.values())
+                # EN: ≥4.7 bits/byte with a mostly-full head = compressed or
+                #     encrypted-looking material on a cleartext socket.
+                # FR: ≥4,7 bits/octet avec tête quasi pleine = matériau
+                #     compressé/chiffré sur socket en clair.
+                if ent >= 4.7 and len(head) >= 48:
+                    _entropy_cooldown[remote_ip] = now_s
+                    a = Alert(
+                        type="HIGH_ENTROPY", severity="info",
+                        message=f"High-entropy payload on cleartext channel "
+                                f"{pkt.process_name or '?'} → {remote_ip}:"
+                                f"{pkt.remote_port} ({ent:.1f} bits/byte)",
+                        node_id=remote_ip,
+                        details={"ip": remote_ip, "port": pkt.remote_port,
+                                 "entropy": round(ent, 2),
+                                 "process": pkt.process_name, "pid": pkt.pid},
+                    )
+                    _flag_alert(a, nodes)
+                    ad = a.to_dict()
+                    db.log_alert(ad)
+                    out_alerts.append(ad)
+
+        # EN: ICMP tunnel heuristic — echo requests/replies SHOULD carry ~0
+        #     or timestamp-sized payloads; bulk data or a sustained stream
+        #     of fat echoes is the classic ICMP exfil signature (ptunnel,
+        #     icmpsh). Flags encode type<<8|code; types 8/0 = v4 echo.
+        # FR: Heuristique de tunnel ICMP — les échos devraient porter un
+        #     payload quasi nul ; des données massives ou un flux soutenu
+        #     d'échos gros sont la signature d'exfil ICMP classique.
+        if pkt.protocol == "ICMP" and pkt.app_head:
+            icmp_type = pkt.tcp_flags >> 8
+            if icmp_type in (0, 8, 13, 14) and len(pkt.app_head) >= 24:
+                w = _icmp_window.setdefault(remote_ip, [0, 0.0])
+                w[0] += 1
+                if time.monotonic() - w[1] > 300:
+                    w[0], w[1] = 1, time.monotonic()
+                # EN: Alert on the 3rd fat echo in 5 min — one big ping is
+                #     normal, a repeating pattern is not.
+                # FR: Alerte au 3e gros écho en 5 min — un gros ping est
+                #     normal, pas un motif répété.
+                if w[0] == 3:
+                    a = Alert(
+                        type="ICMP_TUNNEL", severity="warning",
+                        message=f"Possible ICMP tunnelling: repeated fat echo "
+                                f"payloads ({len(pkt.app_head)}B observed) "
+                                f"involving {remote_ip}",
+                        node_id=remote_ip,
+                        details={"ip": remote_ip, "icmp_type": icmp_type,
+                                 "payload_len": len(pkt.app_head),
+                                 "count_5m": w[0]},
+                    )
+                    _flag_alert(a, nodes)
+                    ad = a.to_dict()
+                    db.log_alert(ad)
+                    out_alerts.append(ad)
+                    asyncio.get_running_loop().create_task(_notify(ad))
+                if len(_icmp_window) > 2048:
+                    _icmp_window.pop(next(iter(_icmp_window)))
+
+        # EN: ML flow anomaly — pure-Python isolation forest over this
+        #     host's own outbound summaries (port/size/interval/fan-out/
+        #     hour). Inert until 384 flows learned; score ≥0.62 → warning.
+        # FR: Anomalie ML de flux — forêt d'isolation pur Python sur les
+        #     résumés sortants de cette machine. Inerte avant 384 flux ;
+        #     score ≥0,62 → warning.
+        ml_hit = flow_ml.observe(pkt.process_name, remote_ip,
+                                 pkt.remote_port or 0, pkt.direction,
+                                 pkt.size)
+        if ml_hit:
+            a = Alert(
+                type="ML_ANOMALY", severity=ml_hit["severity"],
+                message=f"ML flow anomaly: {ml_hit['process']} → "
+                        f"{remote_ip} — {ml_hit['detail']}",
+                node_id=remote_ip,
+                details={**ml_hit, "ip": remote_ip, "pid": pkt.pid},
             )
             _flag_alert(a, nodes)
             ad = a.to_dict()
@@ -1018,6 +1223,10 @@ def _process_batch(packets: list[Packet]) -> None:
             out_alerts.append(ad)
             asyncio.get_running_loop().create_task(_notify(ad))
 
+        # EN: Mining signals — cleartext stratum in the payload head and
+        #     pool-port marking for later CPU corroboration (drain loop).
+        # FR: Signaux de minage — stratum en clair dans la tête du payload
+        #     et marquage port-pool pour corroboration CPU (boucle drain).
         for f in miner.analyze_packet(pkt):
             a = Alert(
                 type=f["type"], severity=f["severity"],
@@ -1508,7 +1717,20 @@ def _load_settings() -> None:
     integrity.load_baselines(db.get_setting("integrity_baselines", {}) or {})
     notifier.configure(db.get_setting("webhook_url", "") or "",
                        bool(db.get_setting("webhook_enabled", False)),
-                       db.get_setting("telegram_chat_id", "") or "")
+                       db.get_setting("telegram_chat_id", "") or "",
+                       db.get_setting("syslog_addr", "") or "")
+    # EN: Opt-in IOC peer sync — explicit peer list only, packs leave only
+    #     for operator-listed addresses (detection/gossip.py).
+    # FR: Sync IOC entre pairs opt-in — liste explicite seulement.
+    peer_sync.configure(db.get_setting("gossip_peers", []) or [])
+    # EN: Ask-on-first-connect (Linux NFQUEUE) — started only when the
+    #     persisted opt-in is set AND the platform allows it.
+    # FR: Ask-on-first-connect (NFQUEUE Linux) — démarré seulement si
+    #     l'opt-in persisté est posé ET la plateforme le permet.
+    if db.get_setting("ask_enabled", False):
+        ok, why = ask_mode.start()
+        if not ok:
+            logger.warning("ask mode unavailable: %s", why)
     # EN: Local SLM enrichment — loopback-only by construction, opt-in.
     # FR: Enrichissement SLM local — loopback par construction, opt-in.
     slm.configure(bool(db.get_setting("slm_enabled", False)),
@@ -1686,10 +1908,25 @@ async def post_settings(body: SettingsBody) -> dict:
         if key in ("ti_provider", "ti_api_key"):
             ti.configure(db.get_setting("ti_provider", "none") or "none",
                          db.get_setting("ti_api_key", "") or "")
-        if key in ("webhook_url", "webhook_enabled", "telegram_chat_id"):
+        if key in ("webhook_url", "webhook_enabled", "telegram_chat_id",
+                   "syslog_addr"):
             notifier.configure(db.get_setting("webhook_url", "") or "",
                                bool(db.get_setting("webhook_enabled", False)),
-                               db.get_setting("telegram_chat_id", "") or "")
+                               db.get_setting("telegram_chat_id", "") or "",
+                               db.get_setting("syslog_addr", "") or "")
+        if key == "ask_enabled":
+            # EN: Live toggle of NFQUEUE ask mode — stop is always safe;
+            #     start reports platform availability honestly.
+            # FR: Bascule à chaud du mode ask NFQUEUE — stop toujours sûr ;
+            #     start rapporte honnêtement la disponibilité plateforme.
+            if value:
+                ok, why = ask_mode.start()
+                if not ok:
+                    logger.warning("ask mode unavailable: %s", why)
+            else:
+                ask_mode.stop()
+        if key == "gossip_peers":
+            peer_sync.configure(value if isinstance(value, list) else [])
         if key == "integrity_watch":
             integrity.configure(bool(value))
         if key == "ebpf_probe":
@@ -2468,7 +2705,7 @@ async def alert_rules_add(body: CustomRuleBody) -> dict:
     correspondants lèvent CUSTOM_RULE, rien n'est bloqué."""
     try:
         rule = custom_rules.add(body.name, body.field, body.op,
-                                body.value, body.severity)
+                                body.value, body.severity, body.action)
     except ValueError as exc:
         raise HTTPException(400, str(exc))
     db.set_setting("custom_rules", custom_rules.serialized())
@@ -2752,6 +2989,69 @@ def _collect_indicators() -> list[str]:
     except Exception:                                # noqa: BLE001
         pass
     return list(dict.fromkeys(out))[:4096]
+
+
+@app.get("/remote/ioc_sync", dependencies=_AUTH)
+async def ioc_sync_status() -> dict:
+    """EN: Peer-sync status — configured peers + per-peer last results.
+    FR: État de la sync IOC — pairs configurés + derniers résultats."""
+    return peer_sync.status()
+
+
+@app.post("/remote/ioc_sync", dependencies=_AUTH)
+async def ioc_sync_push() -> dict:
+    """EN: Push this machine's salted-Merkle proof pack to every configured
+        peer — explicit opt-in fleet sharing (settings `gossip_peers`).
+        Only hash commitments leave the box, never raw indicators.
+    FR: Pousser le paquet Merkle salé local vers chaque pair configuré —
+        partage de flotte opt-in (settings `gossip_peers`). Seuls des
+        engagements de hash quittent la machine."""
+    if not peer_sync.peers:
+        raise HTTPException(400, "no peers configured "
+                                 "(set gossip_peers in settings)")
+    loop = asyncio.get_running_loop()
+    indicators = await loop.run_in_executor(None, _collect_indicators)
+    pack = iocshare.build_proof_pack(indicators)
+    return await loop.run_in_executor(None, peer_sync.push_pack, pack)
+
+
+@app.get("/security/ask", dependencies=_AUTH)
+async def ask_status() -> dict:
+    """EN: Ask-on-first-connect status — platform availability + queue
+        state. Linux/NFQUEUE only; other platforms report available=false.
+    FR: État ask-on-first-connect — disponibilité plateforme + file.
+        Linux/NFQUEUE seulement."""
+    ok, why = askmode.available()
+    return {"available": ok, "reason": why, **ask_mode.status()}
+
+
+@app.post("/security/ask/verdict", dependencies=_AUTH)
+async def ask_verdict(body: AskVerdictBody) -> dict:
+    """EN: Verdict for one pending NFQUEUE flow — the packet has been held
+        since the ASK_VERDICT alert; `allow` accepts or drops it now and
+        remembers the decision for the session.
+    FR: Verdict pour un flux NFQUEUE en attente — le paquet est gelé
+        depuis l'alerte ASK_VERDICT ; `allow` l'accepte ou le droppe et
+        mémorise la décision pour la session."""
+    loop = asyncio.get_running_loop()
+    decided = await loop.run_in_executor(
+        None, ask_mode.decide, body.remote_ip, body.remote_port,
+        body.proto, body.allow)
+    return {"ok": decided,
+            "note": "flow already timed out — OS policy applied"
+                    if not decided else "verdict applied"}
+
+
+@app.post("/security/hollow", dependencies=_AUTH)
+async def hollow_check(body: PidBody) -> dict:
+    """EN: On-demand memory-vs-disk hollowing check — diffs the process's
+        executable .text pages in RAM against the file on disk (Linux
+        /proc only, bounded read). Honest capability reporting.
+    FR: Contrôle de hollowing mémoire/disque à la demande — diff les
+        pages .text en RAM contre le fichier disque (Linux /proc
+        seulement, lecture bornée)."""
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, hollowmod.hollow_check, body.pid)
 
 
 @app.post("/security/explain", dependencies=_AUTH)

@@ -83,14 +83,24 @@ class ParsedPacket:
     # FR: (nom d'hôte, ip demandée|None, mac) d'un message DHCP client.
     dhcp: Optional[tuple] = None
     # EN: First ≤64 bytes of a PLAINTEXT TCP payload — used internally by
-    #     the stratum/mining detector only. NEVER stored or broadcast:
-    #     it exists to answer "does this flow speak a known-bad cleartext
-    #     protocol?" and is dropped with the packet. TLS is skipped.
+    #     the stratum/mining detector and the entropy check. NEVER stored
+    #     or broadcast: it exists to answer "does this flow speak a
+    #     known-bad cleartext protocol?" and is dropped with the packet.
+    #     TLS is skipped; ICMP echoes put their payload head here.
     # FR: Premiers ≤64 octets d'un payload TCP EN CLAIR — utilisé
     #     uniquement en interne par le détecteur stratum/minage. JAMAIS
     #     stocké ni diffusé : sert à répondre « ce flux parle-t-il un
     #     protocole malveillant en clair ? », puis jeté. TLS ignoré.
     app_head: bytes = b""
+    # EN: Leaf TLS certificate metadata from the passive handshake watcher
+    #     (capture/tlscert.py) — None on TLS 1.3, incomplete handshakes or
+    #     non-TLS flows. ICMP echoes carry their payload head in app_head
+    #     and type/code in flags (type << 8 | code).
+    # FR: Métadonnées du certificat feuille via l'observateur passif —
+    #     None en TLS 1.3, handshake incomplet ou flux non TLS. Les échos
+    #     ICMP portent leur tête de payload dans app_head et type/code
+    #     dans flags (type << 8 | code).
+    tls_cert: Optional[dict] = None
 
 
 def parse_frame(linktype: int, buf: bytes) -> Optional[ParsedPacket]:
@@ -258,21 +268,34 @@ def _parse_transport(payload: bytes, proto: int, src: str, dst: str,
         flags = payload[13]
         tcp_payload = payload[data_off:] if data_off <= len(payload) else b""
 
-        sni = None
         # EN: Cheap gate: TLS record starts 0x16 0x03 xx on port 443 (or SNI on
         #     any port — be liberal, check both endpoints' payload anyway).
         # FR: Filtre rapide : un enregistrement TLS commence par 0x16 0x03 xx
         #     sur le port 443 (ou SNI sur tout port — rester souple).
         sni = None
         app_head = b""
+        tls_cert = None
         if tcp_payload[:2] == b"\x16\x03":
             sni = parse_tls_sni(tcp_payload)
-        elif tcp_payload:
+        if tcp_payload:
             # EN: Cleartext protocol fingerprinting needs only the head —
             #     stratum/HTTP/IRC banners all declare themselves early.
+            #     TLS stays opaque: ciphertext in app_head would be useless
+            #     anyway, and the privacy contract is "cleartext only".
             # FR: La signature de protocole en clair n'a besoin que de la
-            #     tête — stratum/HTTP/IRC se déclarent tôt.
-            app_head = tcp_payload[:64]
+            #     tête. TLS reste opaque : du chiffré dans app_head serait
+            #     inutile et le contrat vie privée dit « clair seulement ».
+            if tcp_payload[:2] != b"\x16\x03":
+                app_head = tcp_payload[:64]
+            # EN: Passive server-cert watch — bounded flow reassembly,
+            #     returns the leaf cert dict once the handshake completes.
+            #     Feeds on the FULL segment, independent of app_head.
+            # FR: Veille passive du certificat serveur — réassemblage borné,
+            #     renvoie le cert feuille une fois le handshake complet.
+            #     Se nourrit du segment complet, indépendant d'app_head.
+            from capture import tlscert
+            tls_cert = tlscert.feed_tls_stream(src, sport, dst, dport,
+                                               tcp_payload)
 
         dns = []
         if sport == 53 or dport == 53:
@@ -280,7 +303,7 @@ def _parse_transport(payload: bytes, proto: int, src: str, dst: str,
             dns = parse_dns(tcp_payload[2:]) if len(tcp_payload) > 2 else []
 
         return ParsedPacket(src, dst, "TCP", wire_len, sport, dport, flags,
-                            dns, sni, None, app_head)
+                            dns, sni, None, app_head, tls_cert)
 
     if proto == IPPROTO_UDP:
         if len(payload) < 8:
@@ -318,7 +341,19 @@ def _parse_transport(payload: bytes, proto: int, src: str, dst: str,
         return ParsedPacket(src, dst, "UDP", wire_len, sport, dport, 0, dns, None, dhcp)
 
     if proto in (IPPROTO_ICMP, IPPROTO_ICMPV6):
-        return ParsedPacket(src, dst, "ICMP", wire_len)
+        # EN: ICMP type/code → flags (type << 8 | code); payload head into
+        #     app_head for tunnel heuristics (echo should be near-empty or
+        #     timestamp-sized — bulk data in ICMP is the tunnel signature).
+        # FR: type/code ICMP → flags (type << 8 | code) ; tête du payload
+        #     dans app_head pour les heuristiques de tunnel (l'écho doit
+        #     être quasi vide — des données massives = signature tunnel).
+        icmp_type, icmp_code, ihead = 0, 0, b""
+        if len(payload) >= 4:
+            icmp_type, icmp_code = payload[0], payload[1]
+            ihead = payload[8:72] if len(payload) > 8 else b""
+        return ParsedPacket(src, dst, "ICMP", wire_len, 0, 0,
+                            (icmp_type << 8) | icmp_code, [], None, None,
+                            ihead)
 
     return ParsedPacket(src, dst, "OTHER", wire_len)
 

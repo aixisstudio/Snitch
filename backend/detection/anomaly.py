@@ -519,6 +519,17 @@ class AnomalyDetector:
             # FR: Écarter les alertes supprimées avant l'enregistrement —
             #     règles « ignorer cet hôte/ce type » persistées depuis l'UI.
             alerts = [a for a in alerts if not self._suppressed(a.type, remote_ip)]
+            # EN: Make every packet alert actionable — the UI offers one-click
+            #     Kill/Suspend (pid) and Block-IP (remote_ip is already in
+            #     details.ip on every rule that has one).
+            # FR: Rendre chaque alerte actionnable — l'UI propose Tuer/
+            #     Suspendre en un clic (pid) et Bloquer l'IP (remote_ip est
+            #     déjà dans details.ip des règles concernées).
+            for a in alerts:
+                if pkt.pid and "pid" not in a.details:
+                    a.details["pid"] = pkt.pid
+                if pkt.process_name and "process" not in a.details:
+                    a.details["process"] = pkt.process_name
             self._record(alerts)
             return alerts
 

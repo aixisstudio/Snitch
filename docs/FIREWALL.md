@@ -15,7 +15,7 @@ applied to the OS-native firewall, best-effort:
 | OS | Mechanism |
 |---|---|
 | Windows | **WFP user-mode filters** via `fwpuclnt.dll` (ctypes, elevated) — `netsh advfirewall` remains the fallback |
-| Linux | `iptables -A OUTPUT -j DROP` (dedicated `SNITCH_LOCK` chain for lockdown); `tc` clsact/flower for throttling |
+| Linux | `nftables` when available (dedicated `inet snitch` table, rules removed by handle/comment), `iptables -A OUTPUT -j DROP` otherwise (`SNITCH_LOCK` chain for lockdown); `tc` clsact/flower for throttling |
 | macOS | generated `pf` anchor loaded with `pfctl` |
 
 On Windows, `detection/wfp.py` talks to the **Windows Filtering Platform**
@@ -182,10 +182,12 @@ never ship data off the machine:
   uses — no hidden code path — and dedup against identical rules.
 - **Custom alert rules** — `GET/POST/DELETE /alerts/rules` plus a
   per-rule toggle. One field (`remote_ip`, `host`, `process_name`,
-  `remote_port`, `protocol`, `direction`, `size`), one operator
-  (`eq`, `ne`, `contains`, `regex`, `gt`, `lt`, `cidr`), one value →
-  `CUSTOM_RULE` alerts with hit counters. Validated at creation,
-  bounded regex cache, **alert-only** — blocking stays the firewall's.
+  `remote_port`, `protocol`, `direction`, `size`, `asn`, `country`),
+  one operator (`eq`, `ne`, `contains`, `regex`, `gt`, `lt`, `cidr`),
+  one value → `CUSTOM_RULE` alerts with hit counters. Validated at
+  creation, bounded regex cache. Default `action` is `alert`; setting
+  `action=block` also installs a real firewall rule on the matched
+  remote IP (deduped per rule+target) — the opt-in kill-switch.
 - **Blocklist import** — `POST /firewall/blocklist` turns a local
   hosts/domain file (a pure local read) or an opt-in URL (bounded
   4 MiB HTTPS fetch — one of the few outbound requests Snitch can ever
@@ -214,6 +216,58 @@ never ship data off the machine:
   not shipped, not loaded by Snitch.
 - **ASN attribution** — when `GeoLite2-ASN.mmdb`/`dbip-asn-lite.mmdb`
   is present, nodes carry `asn` (AS number) alongside `org`.
+
+### Passive inspection, kernel verdicts & fleet sync (v1.5)
+
+- **Passive TLS certificate inspection** — the parser reassembles
+  bounded TCP streams (≤16 KiB/flow, 30 s TTL) and reads the
+  `Certificate` handshake message: issuer/subject CN+O, self-signed
+  flag, DNS SANs, validity window, and `san_mismatch` against the
+  observed SNI → `TLS_CERT` alerts. **TLS 1.3 stays opaque** — its
+  certificates are encrypted, Snitch reports nothing rather than
+  guessing. No MITM, no decryption, no injected CA.
+- **High-entropy cleartext watch** — payloads ≥48 B on non-TLS
+  channels scoring ≥4.7 bits/byte raise `HIGH_ENTROPY` (covert
+  encryption/stego hint). Per-host 10-min cooldown.
+- **ICMP tunnel heuristic** — echo types carrying ≥24 B payloads,
+  repeated ≥3× in 5 min → `ICMP_TUNNEL` (ptunnel/icmpsh signature).
+- **ML flow anomaly** — pure-Python isolation forest (64 trees, zero
+  dependencies) over your own flow summaries — port, size, interval,
+  fan-out, hour. Inert below 384 learned flows, refits every 256,
+  score ≥0.62 → `ML_ANOMALY`. Baseline deviation, **not** a malware
+  classifier.
+- **Ask-on-connect (Linux, opt-in)** — `ask_enabled=1` + root +
+  `python-netfilterqueue`: new outbound flows are held on NFQUEUE 7
+  until you answer `POST /security/ask {flow_id, allow}` in the UI —
+  the Little Snitch-style prompt, for real. Default timeout 15 s,
+  fail-closed (`ask_failopen=1` to reverse). Windows/macOS need the
+  signed callout/NetworkExtension skeletons in `contrib/` — user-mode
+  cannot hold a connection.
+- **eBPF cgroup enforcement (Linux, opt-in)** — `ebpf_enforce.py`
+  moves a contained process into a dedicated cgroup and attaches a
+  `cgroup_skb/egress` program dropping its packets kernel-side.
+  Honest `available()` probe; firewall rules remain the fallback.
+- **Process-hollowing check (Linux)** — `GET /security/hollow/{pid}`
+  reads executable file-backed pages from `/proc/<pid>/mem` and diffs
+  them against the on-disk binary → bounded mismatch evidence.
+- **IOC peer sync (opt-in)** — `gossip_peers` lists up to 32 explicit
+  `host:port` Snitch instances; salted-Merkle proof packs are pushed
+  over authenticated HTTP(S), 8 s timeout. No discovery, no central
+  server — and it is **not** a zero-knowledge protocol: commitments
+  prove exact membership only.
+- **Syslog output (opt-in)** — `syslog_addr` (`host:port` UDP or
+  `tcp://host:port`) forwards warning/critical alerts as RFC 3164
+  `local4` — Wazuh/SIEM-ready. Independent of webhooks.
+- **Firejail containment** — `security/sandbox` prefers
+  `firejail --net=none` when present, falls back to `unshare`.
+- **nftables backend** — where `nft` exists, rules land in a dedicated
+  `inet snitch` table instead of iptables; `iptables-nft` hosts are
+  detected and keep the iptables path.
+- **Actionable alerts** — every alert carries structured `actions`
+  (block IP, kill/suspend process, ask verdict, inspect memory); the
+  UI renders them as one-click buttons.
+- **`asn`/`country` in custom rules** — matched against the local
+  geo DB, usable with `action=block` for a geo-fence kill-switch.
 
 ---
 
@@ -404,10 +458,12 @@ honnêtement et n'envoient jamais de données hors de la machine :
   l'UI — aucun chemin caché — avec dédup des règles identiques.
 - **Règles d'alerte personnalisées** — `GET/POST/DELETE /alerts/rules`
   + bascule par règle. Un champ (`remote_ip`, `host`, `process_name`,
-  `remote_port`, `protocol`, `direction`, `size`), un opérateur
-  (`eq`, `ne`, `contains`, `regex`, `gt`, `lt`, `cidr`), une valeur →
-  alertes `CUSTOM_RULE` avec compteurs. Validées à la création, cache
-  regex borné, **alerte seule** — le blocage reste au pare-feu.
+  `remote_port`, `protocol`, `direction`, `size`, `asn`, `country`),
+  un opérateur (`eq`, `ne`, `contains`, `regex`, `gt`, `lt`, `cidr`),
+  une valeur → alertes `CUSTOM_RULE` avec compteurs. Validées à la
+  création, cache regex borné. L'`action` par défaut est `alert` ;
+  `action=block` installe de plus une vraie règle pare-feu sur l'IP
+  distante matchée (dédup par règle+cible) — le kill-switch opt-in.
 - **Import de blocklist** — `POST /firewall/blocklist` convertit un
   fichier hosts/domaines local (lecture purement locale) ou une URL
   opt-in (fetch HTTPS borné à 4 Mio — l'une des rares requêtes sortantes
@@ -437,3 +493,54 @@ honnêtement et n'envoient jamais de données hors de la machine :
   non livrés, non chargés par Snitch.
 - **Attribution ASN** — quand `GeoLite2-ASN.mmdb`/`dbip-asn-lite.mmdb`
   est présente, les nœuds portent `asn` (numéro d'AS) en plus de `org`.
+
+### Inspection passive, verdicts noyau & sync de flotte (v1.5)
+
+- **Inspection TLS passive** — le parseur réassemble des flux TCP
+  bornés (≤16 Kio/flux, TTL 30 s) et lit le message `Certificate` :
+  CN+O émetteur/sujet, drapeau auto-signé, SANs DNS, fenêtre de
+  validité, `san_mismatch` vs le SNI observé → alertes `TLS_CERT`.
+  **TLS 1.3 reste opaque** — ses certificats sont chiffrés, Snitch ne
+  rapporte rien plutôt que deviner. Pas de MITM, pas de déchiffrement.
+- **Veille d'entropie en clair** — payloads ≥48 o hors TLS à ≥4,7
+  bits/octet → `HIGH_ENTROPY` (indice de chiffrement couvert/stégo).
+  Cooldown 10 min par hôte.
+- **Heuristique tunnel ICMP** — types echo portant ≥24 o, répétés
+  ≥3× en 5 min → `ICMP_TUNNEL` (signature ptunnel/icmpsh).
+- **Anomalie ML de flux** — forêt d'isolation pur Python (64 arbres,
+  zéro dépendance) sur vos propres résumés de flux — port, taille,
+  intervalle, fan-out, heure. Inerte sous 384 flux appris, réajustée
+  tous les 256, score ≥0,62 → `ML_ANOMALY`. Déviation de baseline,
+  **pas** un classifieur de malware.
+- **Ask-on-connect (Linux, opt-in)** — `ask_enabled=1` + root +
+  `python-netfilterqueue` : les nouveaux flux sortants sont retenus
+  sur NFQUEUE 7 jusqu'à votre `POST /security/ask {flow_id, allow}`
+  dans l'UI — la pop-up façon Little Snitch, pour de vrai. Timeout
+  15 s, fail-closed (`ask_failopen=1` inverse). Windows/macOS exigent
+  les callout/NetworkExtension signés de `contrib/` — le user-mode ne
+  peut pas suspendre une connexion.
+- **Enforcement eBPF cgroup (Linux, opt-in)** — `ebpf_enforce.py`
+  déplace un processus contenu dans un cgroup dédié et attache un
+  programme `cgroup_skb/egress` qui droppe ses paquets côté noyau.
+  Sonde `available()` honnête ; les règles pare-feu restent le repli.
+- **Vérif process-hollowing (Linux)** — `GET /security/hollow/{pid}`
+  lit les pages exécutables fichier-mappées de `/proc/<pid>/mem` et
+  les compare au binaire disque → preuve de mismatch bornée.
+- **Sync IOC entre pairs (opt-in)** — `gossip_peers` liste jusqu'à
+  32 instances Snitch `host:port` explicites ; les packs de preuves
+  Merkle salés sont poussés en HTTP(S) authentifié, timeout 8 s. Ni
+  découverte ni serveur central — et ce n'est **pas** du zero-knowledge :
+  les engagements prouvent seulement l'appartenance exacte.
+- **Sortie syslog (opt-in)** — `syslog_addr` (`host:port` UDP ou
+  `tcp://host:port`) relaie les alertes warning/critiques en RFC 3164
+  `local4` — prêt pour Wazuh/SIEM. Indépendant des webhooks.
+- **Containment Firejail** — `security/sandbox` préfère
+  `firejail --net=none` s'il est présent, repli `unshare`.
+- **Backend nftables** — là où `nft` existe, les règles vont dans une
+  table `inet snitch` dédiée plutôt que iptables ; les hôtes
+  `iptables-nft` sont détectés et gardent le chemin iptables.
+- **Alertes actionnables** — chaque alerte porte des `actions`
+  structurées (bloquer IP, tuer/suspendre, verdict ask, inspecter la
+  mémoire) rendues en boutons un clic dans l'UI.
+- **`asn`/`country` dans les règles custom** — matchés sur la base
+  geo locale, combinables avec `action=block` pour un geo-fence.

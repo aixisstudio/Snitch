@@ -41,6 +41,26 @@ URL (Discord, Slack, Telegram bot endpoint or any URL) and flip the switch,
 warning/critical alert texts are POSTed to that endpoint in real time.
 Nothing is sent while the switch is off.
 
+**Syslog output (opt-in, off by default).** Setting `syslog_addr`
+(`host:port` for UDP, `tcp://host:port` for TCP) forwards the same
+warning/critical alert texts as RFC 3164 datagrams to your SIEM — a
+real outbound flow to the configured address, independent of the
+webhook switch.
+
+**IOC peer sync (opt-in, off by default).** Setting `gossip_peers` (a list
+of explicit Snitch backend URLs you control) lets `POST /remote/ioc_sync`
+push your salted-Merkle proof pack to those peers' authenticated import
+endpoint — and ONLY that pack (hash commitments, never raw indicators,
+never hostnames or paths). Peers must be operator-listed; there is no
+discovery and nothing is ever sent to an unlisted address.
+
+**Passive TLS certificate reading stays on the wire.** The handshake
+watcher reads the *server's own* Certificate message in cleartext —
+no interception, no injection, no decryption. TLS 1.3 encrypts that
+message, which we report honestly as unobservable. Metadata (issuer,
+subject, SANs) feeds local anomaly checks only and is never persisted
+as raw certificate bytes.
+
 **Local LLM enrichment (opt-in, off by default).** When `slm_enabled` is
 set, alert *metadata* (type, process, destination) may be sent to an
 Ollama-compatible model endpoint — **restricted to loopback addresses
@@ -144,6 +164,29 @@ une URL de webhook (Discord, Slack, endpoint de bot Telegram ou toute URL)
 et basculez l'interrupteur, les textes des alertes warning/critiques sont
 POSTés vers cet endpoint en temps réel. Rien n'est envoyé tant que
 l'interrupteur est éteint.
+
+**Sortie syslog (opt-in, désactivée par défaut).** Régler `syslog_addr`
+(`hôte:port` en UDP, `tcp://hôte:port` en TCP) relaie les mêmes textes
+d'alertes warning/critiques en datagrammes RFC 3164 vers votre SIEM —
+un vrai flux sortant vers l'adresse configurée, indépendant de
+l'interrupteur webhook.
+
+**Sync IOC entre pairs (opt-in, désactivée par défaut).** Régler
+`gossip_peers` (liste explicite d'URL de backends Snitch que vous
+contrôlez) permet à `POST /remote/ioc_sync` de pousser votre paquet
+Merkle salé vers l'endpoint d'import authentifié de ces pairs — et
+UNIQUEMENT ce paquet (engagements de hash, jamais d'indicateurs en
+clair, jamais de noms d'hôte ni de chemins). Les pairs doivent être
+listés par l'opérateur ; aucune découverte, rien n'est jamais envoyé
+à une adresse non listée.
+
+**La lecture passive des certificats TLS reste sur le fil.** L'observateur
+de handshake lit le message Certificate *propre au serveur* en clair —
+pas d'interception, pas d'injection, pas de déchiffrement. TLS 1.3
+chiffre ce message, ce que nous rapportons honnêtement comme
+inobservable. Les métadonnées (émetteur, sujet, SANs) n'alimentent que
+les contrôles d'anomalies locaux et ne sont jamais persistées en
+octets bruts.
 
 **Enrichissement LLM local (opt-in, désactivé par défaut).** Quand
 `slm_enabled` est activé, les *métadonnées* d'alerte (type, processus,

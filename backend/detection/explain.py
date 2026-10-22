@@ -529,14 +529,136 @@ EXPLANATIONS: dict[str, dict] = {
     "Un paquet a correspondu à une condition que VOUS avez définie dans "
     "le panneau de règles (champ + opérateur + valeur). C'est votre propre "
     "détection qui se déclenche — pas une heuristique intégrée.",
-    "The rule only alerts; it never blocks. Tune the field/op/value if it "
-    "fires too often, or disable it from the rules list.",
-    "La règle ne fait qu'alerter ; elle ne bloque jamais. Ajustez "
-    "champ/op/valeur si elle se déclenche trop, ou désactivez-la.",
+    "Default rules only alert; rules with the block action additionally "
+    "install a firewall rule on the remote host. Tune field/op/value if "
+    "it fires too often, or disable it from the rules list.",
+    "Par défaut la règle ne fait qu'alerter ; une règle avec l'action "
+    "« block » installe de plus une règle pare-feu sur l'hôte distant. "
+    "Ajustez champ/op/valeur si elle se déclenche trop, ou désactivez-la.",
     ["Check which process triggered it",
-     "Tighten the matcher if noisy"],
+     "Tighten the matcher if noisy",
+     "Review any firewall rule it auto-created"],
     ["Vérifier quel processus l'a déclenchée",
-     "Resserrer le filtre si trop bavarde"]),
+     "Resserrer le filtre si trop bavarde",
+     "Revoir la règle pare-feu auto-créée le cas échéant"]),
+
+"TLS_CERT": _e(
+    "TLS certificate anomaly",
+    "Anomalie du certificat TLS",
+    "The server presented a leaf certificate that is self-signed or whose "
+    "SANs do not cover the requested SNI — observed passively from the "
+    "handshake, no interception involved.",
+    "Le serveur a présenté un certificat feuille auto-signé ou dont les "
+    "SANs ne couvrent pas le SNI demandé — observé passivement sur le "
+    "handshake, sans interception.",
+    "Self-signed certs are normal on internal tools and dev boxes; on a "
+    "public service they can mean MitM or a C2 with a throwaway cert. A "
+    "SAN/SNI mismatch means the endpoint answered with someone else's "
+    "certificate — suspicious on real services.",
+    "L'auto-signé est normal sur les outils internes et dev ; sur un "
+    "service public cela peut indiquer un MitM ou un C2 à cert jetable. "
+    "Un mismatch SAN/SNI signifie que l'endpoint a répondu avec le "
+    "certificat d'un autre — suspect sur un vrai service.",
+    ["Check the issuer shown in the alert",
+     "Verify the site loads correctly in a browser",
+     "Block the IP if the endpoint cannot be explained",
+     "Note: TLS 1.3 encrypts this message — absence of alert is not proof"],
+    ["Vérifier l'émetteur affiché dans l'alerte",
+     "Vérifier que le site se charge normalement dans un navigateur",
+     "Bloquer l'IP si l'endpoint est inexplicable",
+     "NB : TLS 1.3 chiffre ce message — l'absence d'alerte n'est pas une preuve"]),
+
+"HIGH_ENTROPY": _e(
+    "Encrypted-looking data on a cleartext channel",
+    "Données d'apparence chiffrée sur un canal en clair",
+    "The first payload bytes on a non-TLS socket are statistically "
+    "near-random — real plaintext protocols are structured and compress "
+    "well, so this suggests covert encryption, packed data or stego.",
+    "Les premiers octets du payload sur une socket non TLS sont "
+    "statistiquement quasi aléatoires — un vrai protocole clair est "
+    "structuré ; cela suggère du chiffrement couvert, des données packées "
+    "ou de la stéganographie.",
+    "Info-level by design: compressed uploads (zip, video, protobuf) "
+    "trigger it legitimately. It matters when an unexpected process "
+    "produces it.",
+    "Niveau info par conception : les envois compressés (zip, vidéo, "
+    "protobuf) la déclenchent légitimement. Elle compte quand un "
+    "processus inattendu la produit.",
+    ["Check which process is sending",
+     "Correlate with destination and other alerts",
+     "Ignore for known compression-heavy apps"],
+    ["Vérifier quel processus envoie",
+     "Corréler avec la destination et les autres alertes",
+     "Ignorer pour les apps connues très compressées"]),
+
+"ICMP_TUNNEL": _e(
+    "Possible ICMP tunnelling",
+    "Tunnel ICMP possible",
+    "Repeated ICMP echo packets carrying unusually large payloads — real "
+    "echo traffic is tiny; fat echoes are the classic signature of ICMP "
+    "exfiltration tools (ptunnel, icmpsh).",
+    "Paquets d'écho ICMP répétés avec des payloads anormalement gros — "
+    "l'écho réel est minuscule ; de gros échos sont la signature "
+    "classique des outils d'exfiltration ICMP (ptunnel, icmpsh).",
+    "ICMP passes where TCP/UDP are filtered, making it a favourite "
+    "covert channel. Requires several fat echoes to fire, so a single "
+    "odd ping stays quiet.",
+    "L'ICMP passe là où TCP/UDP sont filtrés — canal couvert favori. "
+    "Plusieurs gros échos requis pour déclencher, un ping isolé reste muet.",
+    ["Identify which host pair is talking",
+     "Check whether diagnostic tooling runs ICMP here",
+     "Block ICMP to that peer with a firewall rule if confirmed"],
+    ["Identifier la paire d'hôtes qui communique",
+     "Vérifier qu'un outil de diagnostic n'utilise pas ICMP ici",
+     "Bloquer l'ICMP vers ce pair si confirmé"]),
+
+"ML_ANOMALY": _e(
+    "Flow unlike this machine's baseline",
+    "Flux atypique vs la baseline de la machine",
+    "A pure-Python isolation forest scored this outbound flow as an "
+    "outlier against YOUR OWN recent traffic — unusual port, interval, "
+    "size pattern or fan-out. Unsupervised: it learned what YOUR machine "
+    "looks like, not what malware looks like.",
+    "Une forêt d'isolation pur Python a scoré ce flux sortant comme "
+    "outlier face à VOTRE propre trafic récent — port, intervalle, taille "
+    "ou fan-out inhabituels. Non supervisé : elle a appris à quoi "
+    "ressemble VOTRE machine, pas ce à quoi ressemble un malware.",
+    "Complements the heuristics — it can catch patterns no rule was "
+    "written for, but unusual-but-legit software (new apps, rare "
+    "backups) will also stand out early on. It needs a few hundred flows "
+    "before it scores anything.",
+    "Complète les heuristiques — elle peut attraper des motifs pour "
+    "lesquels aucune règle n'existe, mais le logiciel inhabituel-et-"
+    "légitime ressort aussi au début. Quelques centaines de flux sont "
+    "requis avant le premier score.",
+    ["Compare with what changed on the machine recently",
+     "Check the process against the integrity tools",
+     "Expect noise in the first days — it sharpens with uptime"],
+    ["Comparer avec ce qui a changé récemment sur la machine",
+     "Vérifier le processus avec les outils d'intégrité",
+     "Bruit attendu les premiers jours — se raffine avec le temps"]),
+
+"ASK_VERDICT": _e(
+    "New flow awaiting your verdict",
+    "Nouveau flux en attente de verdict",
+    "Ask-on-first-connect is enabled: the kernel handed this packet to "
+    "Snitch instead of letting it through. It is genuinely suspended "
+    "until you answer — this is real verdict power, not a notification.",
+    "Le mode ask-on-first-connect est actif : le noyau a remis ce paquet "
+    "à Snitch au lieu de le laisser passer. Il est réellement suspendu "
+    "jusqu'à votre réponse — vrai pouvoir de verdict, pas une notif.",
+    "Only the FIRST packet of each flow waits — decide once and the rest "
+    "of the connection rides your decision for the session. Unanswered "
+    "flows hit the timeout policy (drop by default).",
+    "Seul le PREMIER paquet de chaque flux attend — décidez une fois et "
+    "le reste de la connexion suit votre décision pour la session. Les "
+    "flux sans réponse subissent la politique de timeout (drop par défaut).",
+    ["Allow once or deny from the prompt",
+     "Create a firewall rule for permanent decisions",
+     "Linux/NFQUEUE only — see /security/ask for platform status"],
+    ["Autoriser ou refuser depuis le prompt",
+     "Créer une règle pare-feu pour les décisions permanentes",
+     "Linux/NFQUEUE seulement — voir /security/ask pour le statut"]),
 }
 
 

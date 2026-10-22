@@ -106,6 +106,11 @@ class Packet:
     # FR: ≤64 o. de payload en clair pour la signature de protocole en
     #     interne (détection mineur stratum). Interne — jamais diffusé.
     app_head: bytes = b""
+    # EN: Leaf TLS cert metadata (passive handshake watch) — internal use:
+    #     anomaly checks, never persisted raw. None when not observed.
+    # FR: Métadonnées du cert feuille TLS (veille passive) — usage interne
+    #     (contrôles d'anomalies), jamais persistées. None sinon.
+    tls_cert: Optional[dict] = None
 
 
 def get_local_ips() -> set[str]:
@@ -386,6 +391,7 @@ class PacketSniffer:
             dns=parsed.dns,
             dhcp=parsed.dhcp,
             app_head=parsed.app_head,
+            tls_cert=parsed.tls_cert,
         ))
         # EN: Forensic ring entry — raw frame + wire ts + attribution, so
         #     /forensics/pcap can export exactly what was on the wire.

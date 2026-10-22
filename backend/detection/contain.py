@@ -59,7 +59,13 @@ def available() -> tuple[bool, str]:
     if _SYSTEM == "linux":
         if shutil.which("unshare"):
             return True, "linux user+net namespace (unshare -U -n)"
-        return False, "no unshare binary"
+        # EN: firejail is a common pre-installed sandbox — `--net=none`
+        #     gives the same zero-egress guarantee as our namespace path.
+        # FR: firejail est souvent pré-installé — `--net=none` donne la
+        #     même garantie zéro-égress que le namespace.
+        if shutil.which("firejail"):
+            return True, "linux firejail (--net=none)"
+        return False, "no unshare or firejail binary"
     if _SYSTEM == "darwin":
         if shutil.which("sandbox-exec"):
             return True, "macOS seatbelt (sandbox-exec deny network*)"
@@ -79,8 +85,14 @@ def sandbox_command(path: str, args: list[str]) -> list[str]:
         préfère `unshare -U -n` ; si les userns non privilégiés sont
         désactivés au boot, l'enfant renvoie EPERM — rapporté, pas simulé."""
     if _SYSTEM == "linux":
-        return ["unshare", "--user", "--net", "--map-root-user",
-                "--fork", path, *args]
+        if shutil.which("unshare"):
+            return ["unshare", "--user", "--net", "--map-root-user",
+                    "--fork", path, *args]
+        # EN: --net=none removes all interfaces except loopback; --quiet
+        #     keeps firejail's own banner out of the captured output.
+        # FR: --net=none retire toutes les interfaces sauf loopback ;
+        #     --quiet garde la bannière firejail hors de la sortie.
+        return ["firejail", "--net=none", "--quiet", "--", path, *args]
     if _SYSTEM == "darwin":
         return ["sandbox-exec", "-p", _MACOS_PROFILE, path, *args]
     return [path, *args]                 # EN: never reached — caller checks available() first

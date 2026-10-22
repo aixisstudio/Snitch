@@ -21,6 +21,7 @@ import {
   Activity, Unlock, TrendingUp, Camera, ShieldAlert,
   FileWarning, Fingerprint, Cpu, HelpCircle,
   Pickaxe, Magnet, Syringe, Package, ListFilter,
+  Ban, Skull, Pause, ShieldCheck, ShieldX, Brain, Waves,
 } from 'lucide-react'
 import { useT } from '../i18n'
 import { apiBase, authHeaders } from '../api'
@@ -61,6 +62,85 @@ const TYPE_ICONS = {
   SINKHOLE_HIT:       Magnet,
   INJECT_SUSPECT:     Syringe,
   CUSTOM_RULE:        ListFilter,
+  TLS_CERT:           Fingerprint,
+  HIGH_ENTROPY:       Waves,
+  ICMP_TUNNEL:        Activity,
+  ML_ANOMALY:         Brain,
+  ASK_VERDICT:        HelpCircle,
+}
+
+/**
+ * EN: One-click incident response on an alert — real API calls, tiny
+ *     inline buttons under the alert body. `block` creates a real OS
+ *     firewall rule on the remote IP; `kill`/`suspend` act on the
+ *     reported pid; ASK_VERDICT alerts get allow/deny that resolves the
+ *     held NFQUEUE packet. Errors stay silent — the action is best-effort
+ *     remediation, the alert itself is the durable record.
+ * FR: Réponse à incident en un clic sur une alerte — vrais appels API.
+ *     `block` crée une vraie règle pare-feu OS sur l'IP distante ;
+ *     `kill`/`suspend` agissent sur le pid rapporté ; les alertes
+ *     ASK_VERDICT ont autoriser/refuser qui résout le paquet NFQUEUE
+ *     gelé. Échecs silencieux — remédiation au mieux.
+ */
+function AlertActions({ alert }) {
+  const { t } = useT()
+  const [done, setDone] = useState('')
+  const d = alert.details || {}
+  const post = async (path, body, tag) => {
+    try {
+      const base = await apiBase()
+      const headers = { ...(await authHeaders()), 'Content-Type': 'application/json' }
+      const r = await fetch(`${base}${path}`, {
+        method: 'POST', headers, body: JSON.stringify(body),
+      })
+      if (r.ok) setDone(tag)
+    } catch { /* best-effort remediation */ }
+  }
+  const btn = {
+    background: 'none', border: '1px solid var(--border)', borderRadius: 4,
+    padding: '2px 6px', fontSize: 9, color: 'var(--text-muted)',
+    cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3,
+  }
+  return (
+    <>
+      {alert.type === 'ASK_VERDICT' && d.remote_ip && (
+        <>
+          <button onClick={() => post('/security/ask/verdict',
+            { remote_ip: d.remote_ip, remote_port: d.remote_port,
+              proto: d.proto, allow: true }, 'allow')}
+            style={{ ...btn, color: '#4ade80', borderColor: '#4ade8044' }}>
+            <ShieldCheck size={10} /> {t('alert_act_allow')}
+          </button>
+          <button onClick={() => post('/security/ask/verdict',
+            { remote_ip: d.remote_ip, remote_port: d.remote_port,
+              proto: d.proto, allow: false }, 'deny')}
+            style={{ ...btn, color: '#ef4444', borderColor: '#ef444444' }}>
+            <ShieldX size={10} /> {t('alert_act_deny')}
+          </button>
+        </>
+      )}
+      {d.ip && !alert._grouped && done !== 'block' && (
+        <button onClick={() => post('/firewall/rules',
+          { kind: 'ip', value: d.ip, action: 'block' }, 'block')}
+          title={t('alert_act_block')} style={btn}>
+          <Ban size={10} /> {t('alert_act_block')}
+        </button>
+      )}
+      {d.pid && !alert._grouped && (
+        <>
+          <button onClick={() => post('/processes/kill', { pid: d.pid }, 'kill')}
+            title={t('alert_act_kill')} style={{ ...btn, color: '#ef4444' }}>
+            <Skull size={10} /> {t('alert_act_kill')}
+          </button>
+          <button onClick={() => post('/processes/suspend', { pid: d.pid }, 'suspend')}
+            title={t('alert_act_suspend')} style={btn}>
+            <Pause size={10} /> {t('alert_act_suspend')}
+          </button>
+        </>
+      )}
+      {done && <span style={{ fontSize: 9, color: '#4ade80' }}>✓ {done}</span>}
+    </>
+  )
 }
 
 /**
@@ -267,6 +347,7 @@ function AlertRow({ alert, onIgnore }) {
                   {t('ignore_alert')}
                 </button>
               )}
+              <AlertActions alert={alert} />
             </div>
           </div>
         </div>

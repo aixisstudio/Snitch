@@ -51,6 +51,7 @@ from __future__ import annotations
 import ipaddress
 import os
 import platform
+import shutil
 import socket
 import subprocess
 import threading
@@ -101,6 +102,11 @@ class FirewallManager:
         # EN: tc state for throttle rules — iface cached after first setup.
         # FR: État tc pour les règles throttle — iface mise en cache.
         self._tc_iface: str | None = None
+        # EN: Linux firewall tool — 'iptables' | 'nft' | False (none).
+        #     nftables is the modern path; iptables-nft maps to it anyway.
+        # FR: Outil pare-feu Linux — 'iptables' | 'nft' | False (aucun).
+        #     nftables est le chemin moderne ; iptables-nft y mappe déjà.
+        self._linux_fw: object | None = None
 
     # ── Introspection / Introspection ────────────────────────────────────────
 
@@ -441,6 +447,11 @@ class FirewallManager:
                 #     Names are resolved to PIDs lazily — best effort.
                 # FR: Le match owner fonctionne par PID sur paquets locaux.
                 return self._block_linux_process(target, rid)
+            tool = self._linux_tool()
+            if tool == "nft":
+                return self._nft_apply(kind, target, rid)
+            if tool is None:
+                return False, "no iptables or nft binary"
             args = ["iptables", "-w", "-I", "OUTPUT"]
             if kind in ("ip", "cidr", "domain"):
                 args += ["-d", target]
@@ -626,7 +637,11 @@ class FirewallManager:
         # EN: ip/cidr sinkhole — DNAT to loopback, Linux nat table only.
         # FR: sinkhole ip/cidr — DNAT vers loopback, table nat Linux seulement.
         if self._platform != "linux":
-            return False, "ip sinkhole needs iptables (linux only)"
+            return False, "ip sinkhole needs iptables/nft (linux only)"
+        if self._linux_tool() == "nft":
+            return self._nft_dnat(value, rid)
+        if self._linux_tool() is None:
+            return False, "no iptables or nft binary"
         return self._run(["iptables", "-w", "-t", "nat", "-I", "OUTPUT",
                           "-d", value, "-j", "DNAT",
                           "--to-destination", "127.0.0.1",
@@ -659,6 +674,9 @@ class FirewallManager:
             except OSError:
                 pass
         elif self._platform == "linux":
+            if self._linux_tool() == "nft":
+                self._nft_del_comment(f"snitch-sinkhole-{rid}")
+                return
             self._run(["iptables", "-w", "-t", "nat", "-D", "OUTPUT",
                        "-d", value, "-j", "DNAT",
                        "--to-destination", "127.0.0.1",
@@ -707,14 +725,23 @@ class FirewallManager:
                     continue
                 if self._platform == "linux":
                     rid = r["id"]
-                    for t in sorted(set(old) - set(new)):
-                        self._run(["iptables", "-w", "-D", "OUTPUT", "-d", t,
-                                   "-j", "DROP", "-m", "comment",
-                                   "--comment", f"snitch-{rid}"])
-                    for t in sorted(set(new) - set(old)):
-                        self._run(["iptables", "-w", "-I", "OUTPUT", "-d", t,
-                                   "-j", "DROP", "-m", "comment",
-                                   "--comment", f"snitch-{rid}"])
+                    if self._linux_tool() == "nft":
+                        # EN: Comment-tagged delete is the whole delta —
+                        #     one scan covers every stale IP at once.
+                        # FR: La suppression par commentaire fait tout le
+                        #     delta en un scan.
+                        self._nft_del_comment(f"snitch-{rid}")
+                        for t in new:
+                            self._nft_apply("domain", t, rid)
+                    else:
+                        for t in sorted(set(old) - set(new)):
+                            self._run(["iptables", "-w", "-D", "OUTPUT", "-d", t,
+                                       "-j", "DROP", "-m", "comment",
+                                       "--comment", f"snitch-{rid}"])
+                        for t in sorted(set(new) - set(old)):
+                            self._run(["iptables", "-w", "-I", "OUTPUT", "-d", t,
+                                       "-j", "DROP", "-m", "comment",
+                                       "--comment", f"snitch-{rid}"])
                 elif self._platform == "windows":
                     if self._wfp() is not None:
                         # EN: True delta — per-IP keys mean stale addresses
@@ -766,6 +793,9 @@ class FirewallManager:
             self._run(["netsh", "advfirewall", "firewall", "delete", "rule",
                        "name=all", "program=" + rule["value"]]) if kind == "process" else None
         elif self._platform == "linux":
+            if self._linux_tool() == "nft":
+                self._nft_del_comment(f"snitch-{rid}")
+                return
             targets = rule.get("resolved") if kind == "domain" else [rule["value"]]
             for t in targets:
                 args = ["iptables", "-w", "-D", "OUTPUT"]
@@ -787,6 +817,14 @@ class FirewallManager:
         PIDs via psutil. Only locally generated packets match; still useful
         for an instant kill-switch on a known process.
         FR: `owner` matche par PID — on résout le nom en PID via psutil."""
+        if self._linux_tool() == "nft":
+            # EN: nftables has no PID-owner match — meta skuid is per-USER.
+            #     Honest refusal rather than a wrong-semantic rule.
+            # FR: nftables n'a pas de match par PID — meta skuid est par
+            #     UTILISATEUR. Refus honnête plutôt qu'une règle biaisée.
+            return False, ("nftables cannot match per-process (owner "
+                           "match is iptables-only); use a port/ip rule "
+                           "instead")
         try:
             import psutil
             pids = [p.pid for p in psutil.process_iter(["name"])
@@ -801,6 +839,94 @@ class FirewallManager:
                                "--pid-owner", str(pid), "-j", "DROP"])
             ok_all = ok_all and ok
         return ok_all, "" if ok_all else "owner match failed"
+
+    # ── Linux nftables backend / Backend nftables Linux ────────────────────
+    #
+    # EN: iptables-nft already maps onto nftables, but some minimal systems
+    #     ship ONLY `nft`. When iptables is absent we drive nftables
+    #     directly: a dedicated `inet snitch` table whose `output` chain
+    #     hooks the output path, plus a `dnat` chain for IP sinkholes.
+    #     Rules are removed by their `comment "snitch-<rid>"` tag — we
+    #     scan `nft -a` handles and delete each match.
+    # FR: iptables-nft mappe déjà sur nftables, mais certains systèmes
+    #     minimaux n'ont QUE `nft`. Sans iptables on pilote nftables
+    #     directement : table `inet snitch` dédiée avec chaîne `output`
+    #     accrochée au chemin sortant + chaîne `dnat` pour les sinkholes
+    #     IP. Les règles se suppriment par leur tag `comment "snitch-<rid>"`
+    #     via les handles de `nft -a`.
+
+    def _linux_tool(self) -> Optional[str]:
+        """EN: Cached Linux backend — 'iptables' preferred (widest compat),
+        'nft' when only nftables exists, False when neither.
+        FR: Backend Linux en cache — 'iptables' de préférence, 'nft' quand
+        seul nftables existe, False sinon."""
+        if self._linux_fw is not None:
+            return self._linux_fw or None
+        if shutil.which("iptables"):
+            self._linux_fw = "iptables"
+        elif shutil.which("nft"):
+            self._linux_fw = "nft"
+        else:
+            self._linux_fw = False
+        return self._linux_fw or None
+
+    def _nft_setup(self) -> None:
+        """EN: Create the table + hooked chains once — idempotent, errors
+        ignored (existing objects make nft exit non-zero harmlessly).
+        FR: Crée la table + chaînes accrochées une fois — idempotent."""
+        self._run(["nft", "add", "table", "inet", "snitch"])
+        self._run(["nft", "add", "chain", "inet", "snitch", "output",
+                   "{", "type", "filter", "hook", "output", "priority",
+                   "0", ";", "policy", "accept", ";", "}"])
+        self._run(["nft", "add", "chain", "inet", "snitch", "dnat",
+                   "{", "type", "nat", "hook", "output", "priority",
+                   "-100", ";", "}"])
+
+    def _nft_apply(self, kind: str, target: str, rid: str) -> tuple[bool, str]:
+        """EN: Append one drop rule with our comment tag.
+        FR: Ajoute une règle drop avec notre tag de commentaire."""
+        self._nft_setup()
+        rule = ["nft", "add", "rule", "inet", "snitch", "output"]
+        if kind in ("ip", "cidr", "domain"):
+            fam = "ip6" if ":" in target else "ip"
+            rule += [fam, "daddr", target]
+        elif kind == "port":
+            rule += ["tcp", "dport", str(target)]
+        else:
+            return False, f"nft backend cannot match kind {kind}"
+        rule += ["counter", "drop", "comment", f'"snitch-{rid}"']
+        return self._run(rule)
+
+    def _nft_dnat(self, target: str, rid: str) -> tuple[bool, str]:
+        """EN: IP sinkhole under nftables — dnat to loopback in the nat
+        chain. / FR: Sinkhole IP sous nftables — dnat vers loopback."""
+        self._nft_setup()
+        fam = "ip6" if ":" in target else "ip"
+        loopback = "::1" if ":" in target else "127.0.0.1"
+        return self._run([
+            "nft", "add", "rule", "inet", "snitch", "dnat",
+            fam, "daddr", target, "counter", "dnat", "to", loopback,
+            "comment", f'"snitch-sinkhole-{rid}"'])
+
+    def _nft_del_comment(self, tag: str) -> None:
+        """EN: Delete every rule in our chains carrying `comment "tag"` —
+        handle-scan via `nft -a list chain`. Best-effort.
+        FR: Supprime chaque règle de nos chaînes portant `comment "tag"`
+        — scan des handles via `nft -a`. Au mieux."""
+        for chain in ("output", "dnat"):
+            ok, out = self._run(["nft", "-a", "list", "chain", "inet",
+                                 "snitch", chain])
+            if not ok:
+                continue
+            for line in out.splitlines():
+                if tag not in line or "handle" not in line:
+                    continue
+                try:
+                    handle = line.rsplit("handle", 1)[1].strip().split()[0]
+                    self._run(["nft", "delete", "rule", "inet", "snitch",
+                               chain, "handle", handle])
+                except (IndexError, ValueError):
+                    continue
 
     # ── macOS pf / pf macOS ──────────────────────────────────────────────────
 
@@ -846,6 +972,25 @@ class FirewallManager:
             return self._run(["netsh", "advfirewall", "set", "allprofiles",
                               "firewallpolicy", "blockinbound,allowoutbound"])
         if self._platform == "linux":
+            if self._linux_tool() == "nft":
+                # EN: Lockdown under nftables — private/LAN returns, then a
+                #     tagged blanket drop at the END of our output chain.
+                # FR: Lockdown sous nftables — return privé/LAN puis drop
+                #     général taggé en FIN de notre chaîne output.
+                if on:
+                    self._nft_setup()
+                    nets = ", ".join(_PRIVATE_NETS[:5])
+                    self._run(["nft", "add", "rule", "inet", "snitch",
+                               "output", "ip", "daddr", "{", nets, "}",
+                               "return", "comment", '"snitch-lock"'])
+                    self._run(["nft", "add", "rule", "inet", "snitch",
+                               "output", "oif", '"lo"', "return",
+                               "comment", '"snitch-lock"'])
+                    return self._run(["nft", "add", "rule", "inet",
+                                      "snitch", "output", "counter",
+                                      "drop", "comment", '"snitch-lock"'])
+                self._nft_del_comment("snitch-lock")
+                return True, ""
             if on:
                 self._run(["iptables", "-w", "-N", "SNITCH_LOCK"])
                 self._run(["iptables", "-w", "-F", "SNITCH_LOCK"])

@@ -62,6 +62,7 @@ export function FirewallPanel({ onClose, onLockdownChange }) {
   const [arOp, setArOp] = useState('contains')
   const [arValue, setArValue] = useState('')
   const [arSev, setArSev] = useState('warning')
+  const [arAction, setArAction] = useState('alert')
 
   const refresh = useCallback(async () => {
     const base = await apiBase()
@@ -233,7 +234,7 @@ export function FirewallPanel({ onClose, onLockdownChange }) {
     try {
       await post('/alerts/rules', {
         name: arName.trim(), field: arField, op: arOp,
-        value: arValue.trim(), severity: arSev,
+        value: arValue.trim(), severity: arSev, action: arAction,
       })
       setArName(''); setArValue('')
       refresh()
@@ -459,10 +460,12 @@ export function FirewallPanel({ onClose, onLockdownChange }) {
         </div>
 
         {/* EN: Custom alert rules — user-defined matchers that raise
-                CUSTOM_RULE alerts (alert-only, never block).
+                CUSTOM_RULE alerts; the "block" action additionally
+                installs a real firewall rule on the matched host.
             FR: Règles d'alerte personnalisées — filtres définis par
-                l'utilisateur qui lèvent des alertes CUSTOM_RULE (alerte
-                seule, jamais de blocage). */}
+                l'utilisateur qui lèvent des alertes CUSTOM_RULE ;
+                l'action « block » installe en plus une vraie règle
+                pare-feu sur l'hôte matché. */}
         <div style={{ borderTop: '1px solid var(--border)', marginTop: 10, paddingTop: 8 }}>
           <div style={label}>{t('ar_title')}</div>
           <div style={hint}>{t('ar_hint')}</div>
@@ -471,7 +474,7 @@ export function FirewallPanel({ onClose, onLockdownChange }) {
               placeholder={t('ar_name_ph')} aria-label={t('ar_name_ph')}
               style={{ ...input, flex: '1 1 100%' }} />
             <select value={arField} onChange={e => setArField(e.target.value)} aria-label={t('ar_field')} style={{ ...input }}>
-              {['remote_ip', 'host', 'process_name', 'remote_port', 'protocol', 'direction', 'size'].map(f =>
+              {['remote_ip', 'host', 'process_name', 'remote_port', 'protocol', 'direction', 'size', 'asn', 'country'].map(f =>
                 <option key={f} value={f}>{f}</option>)}
             </select>
             <select value={arOp} onChange={e => setArOp(e.target.value)} aria-label={t('ar_op')} style={{ ...input }}>
@@ -486,6 +489,10 @@ export function FirewallPanel({ onClose, onLockdownChange }) {
               <option value="warning">{t('sev_warning')}</option>
               <option value="critical">{t('sev_critical')}</option>
             </select>
+            <select value={arAction} onChange={e => setArAction(e.target.value)} aria-label={t('ar_action')} style={{ ...input }}>
+              <option value="alert">{t('ar_action_alert')}</option>
+              <option value="block">{t('ar_action_block')}</option>
+            </select>
             <button type="submit" style={{
               background: '#3b82f6', border: 'none', borderRadius: 6,
               color: '#fff', padding: '6px 10px', cursor: 'pointer',
@@ -496,6 +503,13 @@ export function FirewallPanel({ onClose, onLockdownChange }) {
             <div key={r.id} style={{ ...row, padding: '5px 0' }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <span style={{ fontSize: 10, color: 'var(--text)' }}>{r.name}</span>
+                {r.action === 'block' && (
+                  <span style={{
+                    fontSize: 8, fontWeight: 700, color: '#ef4444',
+                    background: 'var(--bg)', borderRadius: 3,
+                    padding: '0 4px', marginLeft: 5, textTransform: 'uppercase',
+                  }}>{t('ar_action_block')}</span>
+                )}
                 <div style={hint}>
                   {r.field} {r.op} {r.value}
                   {r.hits > 0 && ` · ${t('ar_hits', r.hits)}`}
