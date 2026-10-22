@@ -57,6 +57,39 @@ jobs:
           npm test
           npm run build
 
+  # EN: Real-OS integration — exercises the actual platform primitives the
+  #     unit suite only mocks, gated on SNITCH_OS_INTEGRATION=1:
+  #       Linux   unshare netns egress denial, real iptables DROP + live
+  #               connect check, tc clsact/flower, perf_event_open
+  #       Windows fwpuclnt engine open + ALE BLOCK filter proven by a TCP
+  #               connect that fails while installed and recovers on delete
+  #       macOS   sandbox-exec deny-network end-to-end, hosts-file sinkhole
+  #     Everything cleans up in `finally` and skips honestly when the
+  #     runner cannot provide the primitive (no egress, userns off, etc.).
+  # FR: Intégration OS réel — exerce les vraies primitives que les tests
+  #     unitaires ne font que mocker (SNITCH_OS_INTEGRATION=1) :
+  #     unshare/iptables/tc/perf sous Linux, filtres WFP prouvés par une
+  #     vraie connexion sous Windows, sandbox-exec + hosts sous macOS.
+  #     Nettoyage en `finally`, skip honnête si le runner ne peut pas.
+  integration:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install -r backend/requirements.txt -r backend/requirements-dev.txt
+      - name: Integration tests — real OS primitives (${{ matrix.os }})
+        shell: bash
+        env:
+          SNITCH_OS_INTEGRATION: '1'
+        run: cd backend && python -m pytest tests/test_integration_os.py -v
+
   # EN: Per-OS PyInstaller build — runs on tags; verifies the spec compiles
   #     everywhere and produces checksums for the release.
   # FR: Build PyInstaller par OS — sur tags ; vérifie que le spec compile

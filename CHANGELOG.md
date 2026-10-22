@@ -8,6 +8,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/) — EN/FR.
 
 ## [Unreleased]
 
+### Added / Ajouté
+
+- **Real-OS integration tests / Tests d'intégration OS réels** — new `integration` CI job (per-OS) running `tests/test_integration_os.py` with `SNITCH_OS_INTEGRATION=1`: Linux proves `unshare -n` egress denial, real `iptables` DROP + live connect failure, `tc` clsact/flower, `perf_event_open`; Windows opens the real `fwpuclnt` engine and proves a WFP BLOCK filter with a TCP connect that fails then recovers after key-delete; macOS proves `sandbox-exec` deny-network end-to-end and hosts-file sinkhole apply/remove. Every test cleans up in `finally` and skips honestly when the primitive is unavailable. / Nouveau job CI `integration` par OS exécutant `tests/test_integration_os.py` : `unshare`, `iptables` réels + connexion probée, `tc`, `perf` sous Linux ; moteur WFP + blocage prouvé par connexion TCP sous Windows ; `sandbox-exec` + hosts sous macOS. Nettoyage en `finally`, skip honnête si la primitive manque.
+
 ## [1.4.0] — 2026-10-23
 
 ### Added / Ajouté
