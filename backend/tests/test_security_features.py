@@ -756,6 +756,14 @@ def test_integrity_module_merkle_baseline(tmp_path, monkeypatch):
     """EN: First module set → baseline; a changed module file later →
     MODULE_CHANGED. / FR: Premier ensemble → baseline ; un fichier de
     module modifié → MODULE_CHANGED."""
+    # EN: tmp_path lives under /tmp on Linux and …\Temp on Windows —
+    #     both match _BAD_MODULE_MARKERS and would emit MODULE_SUSPECT.
+    #     This test is about the Merkle root, so disable path markers.
+    # FR: tmp_path vit sous /tmp (Linux) et …\Temp (Windows) — les deux
+    #     matchent _BAD_MODULE_MARKERS → MODULE_SUSPECT parasite. Ce test
+    #     vise la racine Merkle : marqueurs désactivés ici.
+    import detection.integrity as _integrity
+    monkeypatch.setattr(_integrity, "_BAD_MODULE_MARKERS", ())
     m1, m2 = tmp_path / "a.so", tmp_path / "b.so"
     m1.write_bytes(b"lib-a-v1")
     m2.write_bytes(b"lib-b-v1")
