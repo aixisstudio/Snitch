@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Snitch — Real-time network traffic visualizer</title>
-<meta name="description" content="See every connection your computer makes — live node graph + world map, 100% local, no telemetry. 8 languages. Free & open-source (AGPL).">
-<meta property="og:title" content="Snitch — Track every hidden flow">
-<meta property="og:description" content="Privacy-first real-time network traffic visualizer. 100% local, 8 languages, open-source.">
+<title>Snitch — Real-time network monitor + outbound firewall</title>
+<meta name="description" content="See and block every connection your computer makes — live graph + world map, OS-native outbound firewall, fleet agent, SIEM exports. 100% local, no telemetry. 8 languages. Free & open-source (AGPL).">
+<meta property="og:title" content="Snitch — See and block every hidden flow">
+<meta property="og:description" content="Privacy-first real-time network monitor + outbound firewall. 100% local, fleet-ready, 8 languages, open-source.">
 <meta property="og:image" content="https://raw.githubusercontent.com/aixisstudio/Snitch/main/docs/assets/social-preview.png">
 <link rel="icon" href="https://raw.githubusercontent.com/aixisstudio/Snitch/main/icon.png">
 <style>
@@ -65,7 +65,7 @@
 
   <div class="hero">
     <h1 data-i18n="h1">Track every <span>hidden flow</span>.</h1>
-    <p data-i18n="sub">See every connection your computer makes — who it talks to, where they are, and which app is responsible. 100% local. No telemetry. Ever.</p>
+    <p data-i18n="sub">See every connection your computer makes — who it talks to, where they are, which app is responsible — and block it through the OS-native firewall. 100% local. No telemetry. Ever.</p>
     <div class="cta">
       <a class="btn primary" id="dlBtn" href="https://github.com/aixisstudio/Snitch/releases/latest">⬇ Download</a>
       <a class="btn ghost" href="https://github.com/aixisstudio/Snitch" data-i18n="star">⭐ Star on GitHub</a>
@@ -85,14 +85,16 @@
     <div class="card"><span class="badge">LOCAL</span><h3 data-i18n="f2t">Privacy by design</h3><p data-i18n="f2d">Loopback-only API behind a token, offline GeoIP, SQLite on-device storage. No outbound calls without your opt-in.</p></div>
     <div class="card"><span class="badge">SMART</span><h3 data-i18n="f3t">Anomaly detection + firewall</h3><p data-i18n="f3d">Port scans, beaconing, exfiltration — flagged in real time, blocked via the OS firewall.</p></div>
     <div class="card"><span class="badge">8 LANGS</span><h3 data-i18n="f4t">8 languages</h3><p data-i18n="f4d">Interface and docs in English, French, Spanish, German, Russian, Japanese, Portuguese and Chinese.</p></div>
+    <div class="card"><span class="badge">FLEET</span><h3 data-i18n="f5t">Rust agent + fleet view</h3><p data-i18n="f5d">A zero-dependency agent streams sockets to one collector — enrolled per-agent tokens, declarative config, Ansible/Puppet/Salt/GPO deploys.</p></div>
+    <div class="card"><span class="badge">SIEM</span><h3 data-i18n="f6t">SIEM-native</h3><p data-i18n="f6d">CEF / RFC 3164 syslog and ECS NDJSON feed Wazuh, Splunk, Elastic, Loki. Sigma import, YARA-L export, free threat-intel feeds.</p></div>
   </div>
 
   <section>
     <h2 data-i18n="inst">Install in seconds</h2>
-    <pre data-i18n="instp"># One-click via Pinokio — or manually:
-git clone https://github.com/aixisstudio/Snitch.git && cd Snitch
-sudo python backend/run_backend.py     # capture needs root/Npcap
-<span class="k"># → open the printed http://127.0.0.1:8000/?token=… URL</span>
+    <pre data-i18n="instp">brew install --cask aixisstudio/tap/snitch   # macOS app — strips quarantine
+brew install aixisstudio/tap/snitch          # headless 'snitchd' daemon (any OS)
+<span class="k"># or grab Snitch Setup .exe (Windows) / AppImage · .deb · .rpm · .snap (Linux)
+# from https://github.com/aixisstudio/Snitch/releases/latest</span>
 SNITCH_DEMO=1 python backend/run_backend.py   # safe preview, no root</pre>
     <p style="color:var(--dim);font-size:13px" data-i18n="plat">macOS · Windows 10/11 (installer, Npcap) · Linux (AppImage / .deb / Docker). AGPL-3.0.</p>
   </section>
@@ -106,16 +108,18 @@ SNITCH_DEMO=1 python backend/run_backend.py   # safe preview, no root</pre>
 // FR: i18n 8 langues — l'anglais est le texte du markup, les 7 autres locales
 //     sont ci-dessous. Choix persisté en localStorage, détecté via le navigateur.
 const i18n = {
-  fr: { h1:'Traquez chaque <span>flux masqué</span>.', sub:'Voyez chaque connexion que votre ordinateur établit — à qui il parle, où ils sont, et quelle app est responsable. 100 % local. Zéro télémétrie.',
+  fr: { h1:'Traquez chaque <span>flux masqué</span>.', sub:'Voyez chaque connexion que votre ordinateur établit — à qui il parle, où ils sont, quelle app est responsable — et bloquez-la via le pare-feu natif de l'OS. 100 % local. Zéro télémétrie.',
         star:'⭐ Star sur GitHub', install:"Guide d'installation", docs:'Docs',
         f1t:'Graphe + carte du monde', f1d:'Votre machine au centre, les appareils LAN dans leur périmètre, chaque hôte distant géolocalisé sur un globe interactif.',
         f2t:'Privacy by design', f2d:'API en loopback derrière un jeton, GeoIP hors ligne, stockage SQLite local. Aucun appel sortant sans votre consentement.',
         f3t:"Détection d'anomalies + pare-feu", f3d:"Scans de ports, balisage, exfiltration — signalés en temps réel, bloqués via le pare-feu de l'OS.",
+        f5t:'Agent Rust + vue de flotte', f5d:"Un agent zéro-dépendance envoie les sockets à un collecteur — jetons dédiés par agent, config déclarative, déploiement Ansible/Puppet/Salt/GPO.",
+        f6t:'Natif SIEM', f6d:"Syslog CEF / RFC 3164 et NDJSON ECS alimentent Wazuh, Splunk, Elastic, Loki. Import Sigma, export YARA-L, flux TI gratuits.",
         f4t:'8 langues', f4d:'Interface et documentation en anglais, français, espagnol, allemand, russe, japonais, portugais et chinois.',
         sign:'Les builds Windows seront signés par la <a href="https://signpath.org">SignPath Foundation</a> — candidature en cours.',
         inst:'Installer en quelques secondes', plat:'macOS · Windows 10/11 (installeur, Npcap) · Linux (AppImage / .deb / Docker). AGPL-3.0.',
         foot:'Développé par <a href="https://aixis.fr/">aiXis</a> · AGPL-3.0 · <a href="https://github.com/aixisstudio/Snitch">github.com/aixisstudio/Snitch</a>' },
-  es: { h1:'Rastrea cada <span>flujo oculto</span>.', sub:'Ve cada conexión que hace tu ordenador — con quién habla, dónde están y qué app es responsable. 100 % local. Sin telemetría. Nunca.',
+  es: { h1:'Rastrea cada <span>flujo oculto</span>.', sub:'Ve cada conexión que hace tu ordenador — con quién habla, dónde están, qué app es responsable — y bloquéala con el firewall del sistema. 100 % local. Sin telemetría. Nunca.',
         star:'⭐ Estrella en GitHub', install:'Guía de instalación', docs:'Docs',
         f1t:'Grafo dinámico + mapa mundial', f1d:'Tu máquina en el centro, dispositivos LAN dentro de su perímetro, cada host remoto geolocalizado en un globo interactivo.',
         f2t:'Privacidad por diseño', f2d:'API solo loopback tras un token, GeoIP sin conexión, almacenamiento SQLite local. Sin llamadas salientes sin tu consentimiento.',
@@ -124,7 +128,7 @@ const i18n = {
         sign:'Las builds de Windows estarán firmadas por la <a href="https://signpath.org">SignPath Foundation</a> — solicitud en curso.',
         inst:'Instala en segundos', plat:'macOS · Windows 10/11 (instalador, Npcap) · Linux (AppImage / .deb / Docker). AGPL-3.0.',
         foot:'Desarrollado por <a href="https://aixis.fr/">aiXis</a> · AGPL-3.0 · <a href="https://github.com/aixisstudio/Snitch">github.com/aixisstudio/Snitch</a>' },
-  de: { h1:'Verfolge jeden <span>versteckten Flow</span>.', sub:'Sieh jede Verbindung deines Computers — mit wem er spricht, wo die Gegenstelle ist und welche App verantwortlich ist. 100 % lokal. Keine Telemetrie. Nie.',
+  de: { h1:'Verfolge jeden <span>versteckten Flow</span>.', sub:'Sieh jede Verbindung deines Computers — mit wem er spricht, wo die Gegenstelle ist, welche App verantwortlich ist — und blockiere sie über die OS-Firewall. 100 % lokal. Keine Telemetrie. Nie.',
         star:'⭐ Star auf GitHub', install:'Installationsanleitung', docs:'Docs',
         f1t:'Force-Graph + Weltkarte', f1d:'Dein Rechner im Zentrum, LAN-Geräte innerhalb ihres Perimeters, jeder Remote-Host auf einem interaktiven Globus geolokalisiert.',
         f2t:'Privacy by Design', f2d:'Loopback-API hinter einem Token, Offline-GeoIP, lokaler SQLite-Speicher. Keine ausgehenden Verbindungen ohne dein Opt-in.',
@@ -133,7 +137,7 @@ const i18n = {
         sign:'Windows-Builds werden von der <a href="https://signpath.org">SignPath Foundation</a> signiert — Antrag läuft.',
         inst:'In Sekunden installiert', plat:'macOS · Windows 10/11 (Installer, Npcap) · Linux (AppImage / .deb / Docker). AGPL-3.0.',
         foot:'Entwickelt von <a href="https://aixis.fr/">aiXis</a> · AGPL-3.0 · <a href="https://github.com/aixisstudio/Snitch">github.com/aixisstudio/Snitch</a>' },
-  ru: { h1:'Отслеживайте каждый <span>скрытый поток</span>.', sub:'Видьте каждое соединение вашего компьютера — с кем он общается, где находятся узлы и какое приложение отвечает. 100 % локально. Без телеметрии.',
+  ru: { h1:'Отслеживайте каждый <span>скрытый поток</span>.', sub:'Видьте каждое соединение вашего компьютера — с кем он общается, где находятся узлы, какое приложение отвечает — и блокируйте его через файрвол ОС. 100 % локально. Без телеметрии.',
         star:'⭐ Звезда на GitHub', install:'Инструкция по установке', docs:'Доки',
         f1t:'Граф связей + карта мира', f1d:'Ваша машина в центре, устройства LAN внутри периметра, каждый удалённый хост геолокирован на интерактивном глобусе.',
         f2t:'Приватность по умолчанию', f2d:'API только на loopback за токеном, офлайн-GeoIP, локальное хранилище SQLite. Никаких исходящих запросов без вашего согласия.',
@@ -142,7 +146,7 @@ const i18n = {
         sign:'Сборки Windows будут подписаны <a href="https://signpath.org">SignPath Foundation</a> — заявка на рассмотрении.',
         inst:'Установка за секунды', plat:'macOS · Windows 10/11 (установщик, Npcap) · Linux (AppImage / .deb / Docker). AGPL-3.0.',
         foot:'Разработано <a href="https://aixis.fr/">aiXis</a> · AGPL-3.0 · <a href="https://github.com/aixisstudio/Snitch">github.com/aixisstudio/Snitch</a>' },
-  ja: { h1:'すべての<span>隠れたフロー</span>を追跡。', sub:'コンピューターのすべての接続を可視化 — 誰と通信し、どこにいて、どのアプリが原因か。100% ローカル。テレメトリなし。',
+  ja: { h1:'すべての<span>隠れたフロー</span>を追跡。', sub:'コンピューターのすべての接続を可視化 — 誰と通信し、どこにいて、どのアプリが原因か — OS ファイアウォールでブロック。100% ローカル。テレメトリなし。',
         star:'⭐ GitHub でスター', install:'インストールガイド', docs:'ドキュメント',
         f1t:'フォースグラフ + 世界地図', f1d:'あなたのマシンが中心、LAN デバイスはペリメータ内、すべてのリモートホストがインタラクティブな地球儀に表示。',
         f2t:'プライバシー重視の設計', f2d:'トークン保護のループバック専用 API、オフライン GeoIP、SQLite ローカル保存。オプトインなしの外部通信ゼロ。',
@@ -151,7 +155,7 @@ const i18n = {
         sign:'Windows ビルドは <a href="https://signpath.org">SignPath Foundation</a> により署名予定 — 申請中。',
         inst:'数秒でインストール', plat:'macOS · Windows 10/11（インストーラー、Npcap）· Linux（AppImage / .deb / Docker）。AGPL-3.0。',
         foot:'開発：<a href="https://aixis.fr/">aiXis</a> · AGPL-3.0 · <a href="https://github.com/aixisstudio/Snitch">github.com/aixisstudio/Snitch</a>' },
-  'pt-BR': { h1:'Rastreie cada <span>fluxo oculto</span>.', sub:'Veja todas as conexões do seu computador — com quem ele fala, onde estão e qual app é responsável. 100% local. Sem telemetria. Nunca.',
+  'pt-BR': { h1:'Rastreie cada <span>fluxo oculto</span>.', sub:'Veja todas as conexões do seu computador — com quem ele fala, onde estão, qual app é responsável — e bloqueie-a pelo firewall do sistema. 100% local. Sem telemetria. Nunca.',
         star:'⭐ Estrela no GitHub', install:'Guia de instalação', docs:'Docs',
         f1t:'Grafo dinâmico + mapa-múndi', f1d:'Sua máquina no centro, dispositivos LAN dentro do perímetro, cada host remoto geolocalizado num globo interativo.',
         f2t:'Privacidade por design', f2d:'API apenas loopback atrás de token, GeoIP offline, armazenamento SQLite local. Nenhuma chamada externa sem seu consentimento.',
@@ -160,7 +164,7 @@ const i18n = {
         sign:'Builds do Windows serão assinados pela <a href="https://signpath.org">SignPath Foundation</a> — candidatura em andamento.',
         inst:'Instale em segundos', plat:'macOS · Windows 10/11 (instalador, Npcap) · Linux (AppImage / .deb / Docker). AGPL-3.0.',
         foot:'Desenvolvido por <a href="https://aixis.fr/">aiXis</a> · AGPL-3.0 · <a href="https://github.com/aixisstudio/Snitch">github.com/aixisstudio/Snitch</a>' },
-  'zh-CN': { h1:'追踪每一个<span>隐藏流量</span>。', sub:'查看计算机的每一个连接 — 与谁通信、对方在哪里、哪个应用负责。100% 本地运行。零遥测。',
+  'zh-CN': { h1:'追踪每一个<span>隐藏流量</span>。', sub:'查看计算机的每一个连接 — 与谁通信、对方在哪里、哪个应用负责 — 并通过系统防火墙阻断。100% 本地运行。零遥测。',
         star:'⭐ 在 GitHub 上点星', install:'安装指南', docs:'文档',
         f1t:'力导向图 + 世界地图', f1d:'你的机器位于中心，局域网设备在边界内，每个远程主机都定位在交互式地球上。',
         f2t:'隐私优先设计', f2d:'仅回环 API + 令牌认证、离线 GeoIP、SQLite 本地存储。未经你同意绝无任何外联。',
