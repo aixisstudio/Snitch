@@ -82,8 +82,22 @@ jobs:
       - name: Skip when the secret is absent / Sauter si secret absent
         if: env.WINGET_TOKEN == ''
         run: echo "::notice::WINGET_TOKEN not set — skipping manifest submission"
-      - name: Submit winget manifest / Soumettre le manifeste winget
+      - name: Detect installer assets / Détecter les installateurs
+        # EN: winget-releaser needs a published GitHub Release holding a
+        #     Snitch-Setup-*.exe asset; without Electron packaging that
+        #     asset doesn't exist — skip loudly instead of failing red.
+        # FR: winget-releaser exige une Release publiée avec un asset
+        #     Snitch-Setup-*.exe ; sans packaging Electron l'asset
+        #     n'existe pas — on saute proprement au lieu d'échouer.
         if: env.WINGET_TOKEN != ''
+        id: assets
+        run: |
+          N=$(curl -s "https://api.github.com/repos/${{ github.repository }}/releases/tags/${GITHUB_REF_NAME}" \
+              | python3 -c "import json,sys; d=json.load(sys.stdin); print(sum(1 for a in d.get('assets',[]) if 'Snitch-Setup' in a.get('name','')))" || echo 0)
+          echo "count=$N" >> "$GITHUB_OUTPUT"
+          [ "$N" = "0" ] && echo "::notice::no Snitch-Setup-*.exe release asset — skipping winget submission"
+      - name: Submit winget manifest / Soumettre le manifeste winget
+        if: env.WINGET_TOKEN != '' && steps.assets.outputs.count != '0'
         uses: vedantmgoyal9/winget-releaser@v2
         with:
           identifier: aixisstudio.Snitch
