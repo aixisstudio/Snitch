@@ -123,7 +123,7 @@ Alle sind **standardmäßig aus oder selbstlimitierend**, degradieren ehrlich un
 - **High-Entropy-Wache** — Payloads ≥48 B auf Nicht-TLS-Kanälen mit ≥4,7 Bit/Byte → `HIGH_ENTROPY`; 10-Min-Cooldown pro Host.
 - **ICMP-Tunnel-Heuristik** — Echo-Typen mit ≥24 B Payload, ≥3× in 5 Min → `ICMP_TUNNEL`.
 - **ML-Flow-Anomalie** — Isolation Forest pur Python (64 Bäume, null Deps) über eigene Flow-Summaries; inert <384 Flows, `ML_ANOMALY` ab 0,62. Baseline-Abweichung, **kein** Malware-Klassifikator.
-- **Ask-on-Connect (Linux, opt-in)** — `ask_enabled` + root + `python-netfilterqueue`: neue Ausgangsflüsse werden auf NFQUEUE 7 gehalten bis `POST /security/ask/verdict`; Timeout 15 s, fail-closed (`ask_failopen=1` umgekehrt). Windows/macOS brauchen die signierten Callout-/NetworkExtension-Skelette aus `contrib/`.
+- **Ask-on-Connect (Linux, opt-in)** — `ask_enabled` + root + iptables: neue Ausgangsflüsse werden auf NFQUEUE 7 gehalten bis `POST /security/ask/verdict` — der NFQUEUE-Client ist **reines Python** (`detection/nfqueue.py`, AF_NETLINK), kein `python-netfilterqueue` nötig; Timeout 15 s, fail-closed (`ask_failopen=1` umgekehrt). Windows/macOS brauchen die signierten Callout-/NetworkExtension-Skelette aus `contrib/`.
 - **eBPF-Cgroup-Enforcement (Linux, opt-in)** — `POST /security/ebpf/isolate {pid}` + `/security/ebpf/block {ip}`: Programm an den snitch-Cgroup attachiert — Kernel-Drops gelten NUR für isolierte Prozesse.
 - **Hollowing-Check (Linux)** — `POST /security/hollow {pid}` diff't ausführbare file-backed Seiten aus `/proc/<pid>/mem` gegen Disk.
 - **IOC-Peer-Sync (opt-in)** — `gossip_peers` ≤32 + `gossip_enabled`: Merkle-Proof-Pakete alle 5 Min per authentifiziertem HTTP(S) — kein Discovery, kein ZK-Protokoll.
@@ -132,3 +132,12 @@ Alle sind **standardmäßig aus oder selbstlimitierend**, degradieren ehrlich un
 - **nftables-Backend** — eigene `inet snitch`-Tabelle statt iptables, wo `nft` existiert.
 - **Actionable Alerts** — strukturierte `actions` (Block IP, Kill/Suspend, Ask-Verdict) als Ein-Klick-Buttons.
 - **`asn`/`country` in Custom Rules** — lokale Geo-DB, kombinierbar mit `action=block` als Geo-Fence.
+- **DGA-Heuristik** — aufgelöste DNS-Namen und TLS-SNIs werden lexikalisch
+  bewertet (Entropie, Vokale, Konsonantenläufe, Ziffern) → `DGA_SUSPECT`.
+  Reine lokale Heuristik; kein WHOIS, kein Domain-Alter.
+- **Getarntes Protokoll** — der ≤64-Byte-Payload-Head muss zum Port passen
+  (HTTP/80, DNS/53, SSH/22, TLS/443+853, Mail-ASCII) → `PROTO_MISMATCH`,
+  Cooldown pro Flow.
+- **Volumen-Kill-Switch (opt-in)** — `kill_switch_enabled` verwandelt einen
+  `UPLOAD_SPIKE` in eine echte Firewall-Blockade der Remote-IP
+  (dedupliziert, best-effort). Standardmäßig aus.

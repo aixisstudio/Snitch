@@ -6,6 +6,19 @@ All notable changes to Snitch. / Toutes les modifications notables de Snitch.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/) — EN/FR.
 
+## [1.5.2] — 2026-10-22
+
+### Added / Ajouté
+
+- **Pure-Python NFQUEUE client / Client NFQUEUE pur Python** — `detection/nfqueue.py` speaks `nfnetlink_queue` over AF_NETLINK directly: config commands (PF_UNBIND/PF_BIND/BIND/COPY_PACKET) verified by netlink ACKs, packet receive + ACCEPT/DROP verdicts. Ask-on-connect no longer needs `python-netfilterqueue` or `libnetfilter_queue` — Linux + root + iptables only. Each held packet now waits on its own waiter thread so a stalled flow can't starve other verdicts. / `detection/nfqueue.py` parle nfnetlink_queue en AF_NETLINK directement : bind vérifié par ACK, réception + verdicts ACCEPT/DROP. Plus besoin de `python-netfilterqueue` — Linux + root + iptables seulement. Chaque paquet retenu a son thread d'attente dédié.
+- **DGA heuristic / Heuristique DGA** — `detection/dga.py` scores resolved DNS names and TLS SNIs on lexical features (Shannon entropy, vowel ratio, consonant runs, digit noise, nesting) → `DGA_SUSPECT` (info), one alert per name per hour. Pure local heuristic — no WHOIS, no domain-age data. / `detection/dga.py` note les noms DNS/SNI sur traits lexicaux → `DGA_SUSPECT` (info), cooldown 1 h par nom. Heuristique locale pure.
+- **Protocol/port mismatch / Protocole déguisé** — `detection/protomatch.py` verifies the ≤64 B payload head against the well-known port (HTTP/80, DNS/53 both transports, SSH/22, TLS/443+853, mail ASCII commands) → `PROTO_MISMATCH` (info), cooled down per flow. / `detection/protomatch.py` vérifie la tête du payload contre le port bien connu → `PROTO_MISMATCH` (info).
+- **Volume kill-switch (opt-in) / Kill-switch de volume (opt-in)** — setting `kill_switch_enabled` upgrades an `UPLOAD_SPIKE` alert into a real firewall block on the remote IP (deduped per IP, best-effort — needs privileges). Off by default; toggle in Settings. / Le réglage `kill_switch_enabled` transforme `UPLOAD_SPIKE` en vrai blocage pare-feu sur l'IP distante (dédupliqué, privilèges requis). Off par défaut.
+
+### Changed / Modifié
+
+- **Ask-on-connect dependency / Dépendance ask-on-connect** — dropped `NetfilterQueue`/`libnetfilter_queue`; `askmode` uses the bundled pure-Python client. / `NetfilterQueue`/`libnetfilter_queue` abandonnés ; `askmode` utilise le client pur Python embarqué.
+
 ## [1.5.1] — 2026-10-22
 
 ### Added / Ajouté

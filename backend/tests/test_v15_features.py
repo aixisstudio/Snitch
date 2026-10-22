@@ -587,7 +587,7 @@ def test_explain_covers_new_types():
     FR: Chaque nouveau type d'alerte a un gabarit bilingue."""
     from detection.explain import explain
     for t in ("TLS_CERT", "HIGH_ENTROPY", "ICMP_TUNNEL", "ML_ANOMALY",
-              "ASK_VERDICT"):
+              "ASK_VERDICT", "DGA_SUSPECT", "PROTO_MISMATCH"):
         rec = explain(t)
         assert rec is not None, t
         assert rec["what_en"] and rec["what_fr"]
@@ -642,3 +642,176 @@ def test_ebpf_enforce_scoped_attach(monkeypatch):
     assert ok, why
     assert attached["path"] == str(m._CGROUP_DIR)
     assert e.status()["attached"] is True
+
+
+# ── Pure-Python NFQUEUE / NFQUEUE pur Python ──────────────────────────────
+
+def test_nfqueue_packet_message_roundtrip():
+    """EN: A crafted NFQNL_MSG_PACKET parses back to (id, payload); an
+    ACK-type message returns None. / FR: Un NFQNL_MSG_PACKET fabriqué se
+    reparse en (id, payload) ; un message ACK renvoie None."""
+    import struct as st
+    from detection import nfqueue as n
+    ip_pkt = ipv4(b"\x0a\x00\x00\x01", b"\x08\x08\x08\x08", 6,
+                  tcp(50000, 443, flags=0x02))
+    # EN: attrs — PACKET_HDR {be32 id, be16 proto, u8 hook} + PAYLOAD
+    # FR: attributs — PACKET_HDR + PAYLOAD
+    attrs = n._attr(n._ATTR_PACKET_HDR, st.pack("!IHB", 42, 0x0800, 0)) \
+        + n._attr(n._ATTR_PAYLOAD, ip_pkt)
+    body = n._msg(n._MSG_PACKET, 7, attrs, 1)
+    pid, payload = n.parse_packet_message(body)
+    assert pid == 42 and payload == ip_pkt
+    # EN: a CONFIG message is not a packet / FR: un CONFIG n'est pas un paquet
+    cfg = n.build_config_cmd(n._CFG_CMD_BIND, 0, 7, 1)
+    assert n.parse_packet_message(cfg) is None
+
+
+def test_nfqueue_verdict_wire_format():
+    """EN: Verdict message carries queue res_id + verdict hdr attr with
+    the right id/verdict in network order. / FR: Le message de verdict
+    porte la file en res_id et l'en-tête verdict en ordre réseau."""
+    import struct as st
+    from detection import nfqueue as n
+    msg = n.build_verdict(99, n.NF_DROP, 7, 5)
+    length, mtype, _f, _s, _p = st.unpack_from("IHHII", msg, 0)
+    assert length == len(msg)
+    assert mtype == (n._SUBSYS_QUEUE << 8) | n._MSG_VERDICT
+    _fam, _ver, res = st.unpack_from("!BBH", msg, 16)
+    assert res == 7
+    attrs = n._parse_attrs(msg[20:])
+    v, pid = st.unpack("!II", attrs[n._ATTR_VERDICT_HDR])
+    assert v == n.NF_DROP and pid == 99
+
+
+def test_nfqueue_config_params_copy_packet():
+    """EN: The bind params ask for whole-packet COPY_PACKET mode.
+    FR: Les params du bind demandent le mode COPY_PACKET paquet entier."""
+    import struct as st
+    from detection import nfqueue as n
+    msg = n.build_config_params(7, 1)
+    attrs = n._parse_attrs(msg[20:])
+    rng, mode = st.unpack("!IB", attrs[n._ATTR_CFG_PARAMS])
+    assert mode == n._COPY_PACKET and rng == 0xFFFF
+
+
+def test_askmode_pending_entry_shape():
+    """EN: _handle parks [event, packet_id, ts] and decide() applies the
+    verdict via the socket — mocked end-to-end without a kernel.
+    FR: _handle gare [event, id, ts] et decide() applique le verdict via
+    le socket — simulé de bout en bout sans noyau."""
+    from detection.askmode import AskMode
+
+    class FakeNfq:
+        def __init__(self):
+            self.verdicts = []
+
+        def verdict(self, pid, accept):
+            self.verdicts.append((pid, accept))
+
+    asked = []
+    am = AskMode(lambda ctx: asked.append(ctx))
+    am._nfq = FakeNfq()
+    syn = tcp(50000, 443, flags=0x02)
+    ip = ipv4(b"\x0a\x00\x00\x01", b"\x08\x08\x08\x08", 6, syn)
+    am._handle(7, ip)
+    assert asked and asked[0]["remote_ip"] == "8.8.8.8"
+    assert am.decide("8.8.8.8", 443, "TCP", False) is True
+    assert am._nfq.verdicts == [(7, False)]
+    # EN: Next SYN on the same flow rides the stored DENY instantly.
+    # FR: Le SYN suivant du même flux suit le DENY stocké immédiatement.
+    am._handle(8, ip)
+    assert am._nfq.verdicts[-1] == (8, False)
+
+
+# ── DGA heuristic / Heuristique DGA ──────────────────────────────────────
+
+def test_dga_flags_random_names():
+    """EN: Long consonant-soup + digit-noise names flag; normal domains
+    stay silent. / FR: Les noms en soupe de consonnes/chiffres
+    déclenchent ; les domaines normaux restent silencieux."""
+    from detection.dga import score
+    for bad in ("xj3kq9wzvbtpklm.net", "qwxzjkvbtpxyzqwr.com",
+                "8f3k2j9xm4q7z5w1v.tk", "bcdfghjklmnpqrstvwxz.info"):
+        hit = score(bad)
+        assert hit is not None, bad
+        assert hit["score"] >= 0.7 and hit["entropy"] >= 3.4
+    for good in ("google.com", "github.io", "duckduckgo.com",
+                 "wikipedia.org", "apple.com", "cdn.discordapp.net",
+                 "mail.proton.me", "example.com"):
+        assert score(good) is None, good
+
+
+def test_dga_skips_unscorable():
+    """EN: IP literals, single labels, short names → None, never crash.
+    FR: IP, labels uniques, noms courts → None, jamais de crash."""
+    from detection.dga import score
+    for edge in ("", "localhost", "1.2.3.4", "8.8.8.8.",
+                 "a.b.c", None, "short.io", "::1"):
+        assert score(edge) is None
+
+
+def test_dga_cdn_left_label_skipped():
+    """EN: Random-looking LEFT labels under CDN parents are expected —
+    the score jumps to the registrable part instead.
+    FR: Les labels gauches aléatoires sous un parent CDN sont attendus —
+    le score saute au registrable."""
+    from detection.dga import score
+    # EN: akamaihd is a public-suffix-ish parent → score 'example', not
+    #     the hashed left label. / FR: parent type CDN → on note
+    #     'example', pas le label haché.
+    assert score("a1b2c3d4e5f6.example.akamaihd.net") is None
+    # EN: but a DGA registrable STILL flags under a CDN parent.
+    # FR: mais un registrable DGA déclenche quand même sous un CDN.
+    hit = score("ok.qwxzjkvbtpxyzqwr.akamaihd.net")
+    assert hit is not None and hit["label"] == "qwxzjkvbtpxyzqwr"
+
+
+# ── Protocol mismatch / Protocole déguisé ─────────────────────────────────
+
+def test_protomatch_http80():
+    """EN: GET/POST/HTTP-response on :80 pass; binary garbage flags.
+    FR: GET/POST/réponse HTTP sur :80 passent ; le binaire déclenche."""
+    from detection.protomatch import check
+    assert check(80, "TCP", b"GET / HTTP/1.1\r\nHost: x\r\n") is None
+    assert check(80, "TCP", b"HTTP/1.1 200 OK\r\n") is None
+    assert check(80, "TCP", b"\x89PNG\r\n\x1a\nbinary-blob!!") is not None
+    assert check(80, "TCP", b"\x16\x03\x01\x00\x80tls-like-data") is not None
+
+
+def test_protomatch_tls_ports():
+    """EN: TLS records pass :443/:853; cleartext flags.
+    FR: Les records TLS passent :443/:853 ; le clair déclenche."""
+    from detection.protomatch import check
+    tls = b"\x16\x03\x01\x00\x2e" + b"\x01" * 46
+    assert check(443, "TCP", tls) is None
+    assert check(853, "TCP", tls) is None
+    assert check(443, "TCP", b"GET /not-tls HTTP/1.1") is not None
+    assert check(853, "TCP", b"plain-dns-over-dot-port!") is not None
+
+
+def test_protomatch_dns53():
+    """EN: A real DNS query passes on :53; a blob flags — both transports.
+    FR: Une vraie requête DNS passe sur :53 ; un blob déclenche — TCP et
+    UDP."""
+    import struct as st
+    from detection.protomatch import check
+    qname = b"\x07example\x03com\x00"
+    dns = st.pack(">HHHHHH", 0x1234, 0x0100, 1, 0, 0, 0) + qname \
+        + st.pack(">HH", 1, 1)
+    assert check(53, "UDP", dns) is None
+    assert check(53, "TCP", dns) is None
+    assert check(53, "UDP", b"\xde\xad\xbe\xef" * 16) is not None
+    assert check(53, "TCP", b"not-a-dns-message-at-all!!") is not None
+
+
+def test_protomatch_ssh_and_ascii():
+    """EN: 'SSH-' banner passes :22; binary on mail ports flags; unknown
+    ports never match. / FR: bannière SSH- passe :22 ; binaire sur ports
+    mail déclenche ; ports inconnus jamais matchés."""
+    from detection.protomatch import check
+    assert check(22, "TCP", b"SSH-2.0-OpenSSH_9.6") is None
+    assert check(22, "TCP", b"\x00\x01\x02binary!") is not None
+    assert check(25, "TCP", b"EHLO mail.example.com\r\n") is None
+    assert check(25, "TCP", b"\x16\x03\x01tls-on-smtp?") is not None
+    assert check(8443, "TCP", b"whatever") is None
+    assert check(0, "TCP", b"") is None

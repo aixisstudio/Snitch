@@ -237,10 +237,12 @@ never ship data off the machine:
   score ≥0.62 → `ML_ANOMALY`. Baseline deviation, **not** a malware
   classifier.
 - **Ask-on-connect (Linux, opt-in)** — `ask_enabled=1` + root +
-  `python-netfilterqueue`: new outbound flows are held on NFQUEUE 7
-  until you answer `POST /security/ask {flow_id, allow}` in the UI —
-  the Little Snitch-style prompt, for real. Default timeout 15 s,
-  fail-closed (`ask_failopen=1` to reverse). Windows/macOS need the
+  iptables: new outbound flows are held on NFQUEUE 7 until you answer
+  `POST /security/ask/verdict` in the UI — the Little Snitch-style
+  prompt, for real. The NFQUEUE client is **pure Python**
+  (`detection/nfqueue.py`, AF_NETLINK) — no `python-netfilterqueue`
+  or libnetfilter_queue to install. Default timeout 15 s, fail-closed
+  (`ask_failopen=1` to reverse). Windows/macOS need the
   signed callout/NetworkExtension skeletons in `contrib/` — user-mode
   cannot hold a connection.
 - **eBPF cgroup enforcement (Linux, opt-in)** — `ebpf_enforce.py`
@@ -268,6 +270,19 @@ never ship data off the machine:
   UI renders them as one-click buttons.
 - **`asn`/`country` in custom rules** — matched against the local
   geo DB, usable with `action=block` for a geo-fence kill-switch.
+- **DGA heuristic** — resolved DNS names and TLS SNIs are scored on
+  lexical features (entropy, vowel ratio, consonant runs, digits) →
+  `DGA_SUSPECT`. Pure local heuristic; no WHOIS or domain-age data.
+- **Protocol/port mismatch** — the ≤64-byte payload head must match
+  what the port advertises (HTTP/80, DNS/53, SSH/22, TLS/443+853,
+  mail ASCII commands) → `PROTO_MISMATCH`, cooled down per flow.
+- **Volume kill-switch (opt-in)** — `kill_switch_enabled` turns an
+  `UPLOAD_SPIKE` alert into a real firewall block on the remote IP
+  (deduped, best-effort). Off by default.
+- **Pure-Python NFQUEUE** — ask-on-connect no longer needs
+  `python-netfilterqueue`: `detection/nfqueue.py` speaks
+  nfnetlink_queue over AF_NETLINK directly. Linux + root + iptables
+  only.
 
 ---
 
@@ -513,10 +528,12 @@ honnêtement et n'envoient jamais de données hors de la machine :
   tous les 256, score ≥0,62 → `ML_ANOMALY`. Déviation de baseline,
   **pas** un classifieur de malware.
 - **Ask-on-connect (Linux, opt-in)** — `ask_enabled=1` + root +
-  `python-netfilterqueue` : les nouveaux flux sortants sont retenus
-  sur NFQUEUE 7 jusqu'à votre `POST /security/ask {flow_id, allow}`
-  dans l'UI — la pop-up façon Little Snitch, pour de vrai. Timeout
-  15 s, fail-closed (`ask_failopen=1` inverse). Windows/macOS exigent
+  iptables : les nouveaux flux sortants sont retenus sur NFQUEUE 7
+  jusqu'à votre `POST /security/ask/verdict` dans l'UI — la pop-up
+  façon Little Snitch, pour de vrai. Le client NFQUEUE est en **pur
+  Python** (`detection/nfqueue.py`, AF_NETLINK) — plus besoin de
+  `python-netfilterqueue` ni de libnetfilter_queue. Timeout 15 s,
+  fail-closed (`ask_failopen=1` inverse). Windows/macOS exigent
   les callout/NetworkExtension signés de `contrib/` — le user-mode ne
   peut pas suspendre une connexion.
 - **Enforcement eBPF cgroup (Linux, opt-in)** — `ebpf_enforce.py`
@@ -544,3 +561,18 @@ honnêtement et n'envoient jamais de données hors de la machine :
   mémoire) rendues en boutons un clic dans l'UI.
 - **`asn`/`country` dans les règles custom** — matchés sur la base
   geo locale, combinables avec `action=block` pour un geo-fence.
+- **Heuristique DGA** — les noms DNS résolus et SNI TLS sont notés sur
+  des traits lexicaux (entropie, voyelles, consonnes empilées,
+  chiffres) → `DGA_SUSPECT`. Heuristique locale pure ; ni WHOIS ni
+  âge de domaine.
+- **Protocole déguisé** — la tête ≤64 o du payload doit correspondre
+  au protocole annoncé par le port (HTTP/80, DNS/53, SSH/22,
+  TLS/443+853, commandes ASCII mail) → `PROTO_MISMATCH`, cooldown
+  par flux.
+- **Kill-switch de volume (opt-in)** — `kill_switch_enabled`
+  transforme une alerte `UPLOAD_SPIKE` en vrai blocage pare-feu sur
+  l'IP distante (dédupliqué, au mieux). Désactivé par défaut.
+- **NFQUEUE pur Python** — ask-on-connect n'exige plus
+  `python-netfilterqueue` : `detection/nfqueue.py` parle
+  nfnetlink_queue en AF_NETLINK directement. Linux + root + iptables
+  seulement.

@@ -4,19 +4,23 @@ interactive à la première connexion (NFQUEUE Linux).
 
 EN: The honest user-mode slice of "ask before letting a new outbound flow
     out" — no kernel driver needed on Linux thanks to NFQUEUE: packets
-    matching an iptables rule are handed to a user-space verdict callback
+    matching an iptables rule are handed to a user-space verdict socket
     that can ACCEPT or DROP them. We divert the FIRST outbound packet of
     each unseen (remote_ip, remote_port, proto) flow into queue 7, hold it
     pending the analyst's decision via the API, then apply the verdict.
     Decisions persist per flow-key for the session, so only the first
     packet of each flow ever waits.
 
-      * opt-in only: enable via settings ask_enabled=1 (needs root +
-        libnetfilter_queue — python package `NetfilterQueue`)
+      * opt-in only: enable via settings ask_enabled=1 — needs Linux,
+        root (CAP_NET_ADMIN) and iptables; the NFQUEUE client is the
+        PURE-PYTHON `nfqueue.py` in this package, so there is nothing
+        else to install
       * iptables rule installed: `OUTPUT -j NFQUEUE --queue-num 7` minus
         exemptions for loopback/LAN (the API itself must stay reachable)
       * timeout policy `ask_timeout`: after N seconds with no verdict the
         packet is dropped (secure default) or accepted (ask_failopen=1)
+      * each held packet waits on its own waiter thread, so a stalled
+        flow never blocks the verdict loop for other connections
       * flows the user already ruled on go straight through — this is
         ask-on-first-connect, not ask-every-packet
 
@@ -27,13 +31,16 @@ EN: The honest user-mode slice of "ask before letting a new outbound flow
 
 FR: La tranche user-mode honnête du « demander avant de laisser sortir un
     nouveau flux » — sans driver noyau sous Linux grâce à NFQUEUE : les
-    paquets matchés par iptables sont remis à un callback user-space qui
-    les ACCEPTe ou les DROPpe. On détourne le PREMIER paquet sortant de
-    chaque flux (ip, port, proto) inconnu vers la file 7, on le gèle en
+    paquets matchés par iptables sont remis à un socket de verdict
+    user-space qui les ACCEPTe ou les DROPpe. On détourne le PREMIER
+    paquet sortant de chaque flux (ip, port, proto) inconnu vers la file 7
+    via `nfqueue.py` (pur Python, rien à installer), on le gèle en
     attendant le verdict de l'analyste via l'API, puis on applique.
-    Opt-in uniquement (root + libnetfilter_queue requis). Politique de
-    timeout : drop par défaut (ask_failopen=1 pour accepter). Linux
-    seulement — Windows/macOS passent par les pistes noyau (contrib/).
+    Opt-in uniquement (Linux + root + iptables). Politique de timeout :
+    drop par défaut (ask_failopen=1 pour accepter). Chaque paquet retenu
+    a son propre thread d'attente — un flux gelé ne bloque pas les autres.
+    Linux seulement — Windows/macOS passent par les pistes noyau
+    (contrib/).
 """
 
 from __future__ import annotations
@@ -53,19 +60,18 @@ _DEFAULT_TIMEOUT = 15.0
 
 
 def available() -> tuple[bool, str]:
-    """EN: Linux + root + NetfilterQueue importable + libnetfilter_queue.
-    FR: Linux + root + NetfilterQueue importable + libnetfilter_queue."""
+    """EN: Linux + root + iptables — the NFQUEUE client is pure Python
+    (nfqueue.py) so no extra package is needed anymore.
+    FR: Linux + root + iptables — le client NFQUEUE est en pur Python
+    (nfqueue.py), aucun paquet supplémentaire requis."""
     if platform.system().lower() != "linux":
         return False, "NFQUEUE is linux-only (windows/macOS need kernel " \
                       "callouts — see contrib/)"
-    try:
-        import netfilterqueue  # noqa: F401
-    except ImportError:
-        return False, "python package `NetfilterQueue` + libnetfilter_queue " \
-                      "required (pip install NetfilterQueue, apt install " \
-                      "libnetfilter-queue1)"
     if os.geteuid() != 0:
         return False, "needs root (CAP_NET_ADMIN) for iptables + NFQUEUE"
+    import shutil
+    if shutil.which("iptables") is None:
+        return False, "iptables binary not found"
     return True, ""
 
 
@@ -79,11 +85,13 @@ class AskMode:
         self._on_ask = on_ask                # EN: emit ASK_VERDICT alert / FR: émet l'alerte
         self._timeout = max(3.0, min(float(timeout), 120.0))
         self._failopen = failopen
-        self._nfq = None
+        self._nfq = None                     # EN: NfqSocket / FR: NfqSocket
         self._thread: Optional[threading.Thread] = None
         self._running = False
-        # EN: flow-key → (event, pkt, ts) pending verdict; decided → verdict
-        # FR: clé de flux → (event, pkt, ts) en attente ; décidé → verdict
+        # EN: flow-key → [event, packet_id, ts] pending verdict;
+        #     decided flow-key → allow verdict
+        # FR: clé de flux → [event, id du paquet, ts] en attente ;
+        #     clé décidée → verdict
         self._pending: dict[tuple, list] = {}
         self._decided: dict[tuple, bool] = {}
         self._lock = threading.Lock()
@@ -110,15 +118,17 @@ class AskMode:
         if not ok:
             return False, why
         import subprocess
+        from .nfqueue import NfqSocket                        # noqa: PLC0415
         try:
-            from netfilterqueue import NetfilterQueue
-        except ImportError as e:                   # pragma: no cover
-            return False, str(e)
-        try:
-            self._nfq = NetfilterQueue()
-            self._nfq.bind(_QUEUE_NUM, self._verdict_cb)
+            self._nfq = NfqSocket(_QUEUE_NUM)
+            self._nfq.open()
+            self._nfq.bind_queue()
         except Exception as e:                     # noqa: BLE001
-            self._nfq = None
+            try:
+                if self._nfq is not None:
+                    self._nfq.close()
+            finally:
+                self._nfq = None
             return False, f"nfqueue bind failed: {e}"
         # EN: Divert outbound SYN/non-established flows into queue 7 —
         #     private ranges exempt so the LAN/UI never stalls.
@@ -155,7 +165,15 @@ class AskMode:
 
     def _run(self) -> None:
         try:
-            self._nfq.run()
+            while self._running:
+                # EN: 0.5 s timeout keeps the loop interruptible; each
+                #     packet is handled inline (fast) or handed to a
+                #     per-flow waiter thread for the async verdict.
+                # FR: Timeout 0,5 s pour une boucle interruptible ;
+                #     chaque paquet est traité directement ou remis à un
+                #     thread d'attente dédié.
+                for pid, payload in self._nfq.recv_packets(0.5):
+                    self._handle(pid, payload)
         except Exception as e:                     # noqa: BLE001
             logger.warning("askmode nfqueue loop ended: %s", e)
         finally:
@@ -163,9 +181,25 @@ class AskMode:
 
     def stop(self) -> None:
         self._running = False
+        with self._lock:
+            pending = list(self._pending.values())
+            self._pending.clear()
+            self._decided.clear()
+        # EN: Verdict every held packet BEFORE closing — an unverdicted
+        #     packet dies with the socket; apply the fail-open policy so
+        #     shutdown semantics stay explicit.
+        # FR: Verdicter chaque paquet retenu AVANT de fermer — sans verdict
+        #     il meurt avec le socket ; on applique la politique fail-open.
+        for ent in pending:
+            try:
+                if self._nfq is not None:
+                    self._nfq.verdict(ent[1], self._failopen)
+            except Exception:                      # noqa: BLE001
+                pass
+            ent[0].set()
         try:
             if self._nfq is not None:
-                self._nfq.unbind()
+                self._nfq.close()
         except Exception:                          # noqa: BLE001
             pass
         if self._rule_installed:
@@ -174,9 +208,6 @@ class AskMode:
                             "NFQUEUE", "--queue-num", str(_QUEUE_NUM)],
                            timeout=10, check=False, capture_output=True)
             self._rule_installed = False
-        with self._lock:
-            self._pending.clear()
-            self._decided.clear()
 
     # ── verdict path / chemin du verdict ─────────────────────────────────
 
@@ -216,41 +247,55 @@ class AskMode:
             return None
         return None
 
-    def _verdict_cb(self, pkt) -> None:
+    def _handle(self, pid: int, payload: bytes) -> None:
+        """EN: One diverted packet: apply the stored verdict, accept when
+        not askable, or park it on a per-flow waiter thread.
+        FR: Un paquet détourné : applique le verdict stocké, accepte s'il
+        n'est pas interrogable, ou le gare sur un thread d'attente."""
         try:
-            payload = pkt.get_payload()
             key = self._flow_key(payload)
             if key is None:
-                pkt.accept()
+                self._nfq.verdict(pid, True)
                 return
             with self._lock:
                 verdict = self._decided.get(key)
+                if verdict is None:
+                    # EN: Pending table bounded — overflow accepts
+                    #     (fail-open on capacity, documented).
+                    # FR: Table bornée — débordement accepte.
+                    if len(self._pending) >= _MAX_PENDING:
+                        verdict = True
+                    else:
+                        ev = threading.Event()
+                        self._pending[key] = [ev, pid,
+                                              time.monotonic()]
             if verdict is not None:
-                (pkt.accept if verdict else pkt.drop)()
+                self._nfq.verdict(pid, verdict)
                 return
-            # EN: Pending table bounded — overflow accepts (fail-open on
-            #     capacity, documented; timeout policy is separate).
-            # FR: Table bornée — débordement accepte (fail-open capacitaire,
-            #     documenté ; la politique de timeout est à part).
-            with self._lock:
-                if len(self._pending) >= _MAX_PENDING:
-                    pkt.accept()
-                    return
-                ev = threading.Event()
-                self._pending[key] = [ev, pkt, time.monotonic()]
             self._on_ask({"type": "ASK_VERDICT", "remote_ip": key[0],
                           "remote_port": key[1], "proto": key[2],
                           "timeout_s": int(self._timeout)})
-            if not ev.wait(self._timeout):
-                with self._lock:
-                    self._pending.pop(key, None)
-                    self._decided[key] = self._failopen
-                (pkt.accept if self._failopen else pkt.drop)()
+            threading.Thread(target=self._waiter, args=(key, ev),
+                             daemon=True,
+                             name="snitch-ask-waiter").start()
         except Exception:                          # noqa: BLE001
             try:
-                pkt.accept()                       # EN: never wedge the host
+                self._nfq.verdict(pid, True)       # EN: never wedge host
             except Exception:                      # noqa: BLE001
                 pass
+
+    def _waiter(self, key: tuple, ev: threading.Event) -> None:
+        """EN: Holds one packet until decide() or the timeout; the recv
+        loop keeps serving other flows meanwhile.
+        FR: Retient un paquet jusqu'à decide() ou timeout ; la boucle de
+        réception sert les autres flux pendant ce temps."""
+        if ev.wait(self._timeout):
+            return                                 # EN: decide() applied it
+        with self._lock:
+            ent = self._pending.pop(key, None)
+            self._decided[key] = self._failopen
+        if ent is not None and self._nfq is not None:
+            self._nfq.verdict(ent[1], self._failopen)
 
     def decide(self, remote_ip: str, remote_port: int, proto: str,
                allow: bool) -> bool:
@@ -263,12 +308,9 @@ class AskMode:
             self._decided[key] = bool(allow)
         if ent is None:
             return False
-        ev, pkt, _ = ent
-        try:
-            (pkt.accept if allow else pkt.drop)()
-        except Exception:                          # noqa: BLE001
-            pass
-        ev.set()
+        if self._nfq is not None:
+            self._nfq.verdict(ent[1], bool(allow))
+        ent[0].set()
         return True
 
     def status(self) -> dict:

@@ -428,6 +428,8 @@ export default {
   alertmsg_ICMP_TUNNEL: d => `ICMPトンネルの可能性: ${d.ip} との大きなエコーペイロードの繰り返し`,
   alertmsg_ML_ANOMALY: d => `MLフロー異常: ${d.process || '?'} → ${d.ip} (スコア ${d.score})`,
   alertmsg_ASK_VERDICT: d => `判定が必要: ${d.process || 'プロセス'} → ${d.remote_ip}:${d.remote_port}/${d.proto} (${d.timeout_s}秒で自動判定)`,
+  alertmsg_DGA_SUSPECT: d => `DGAの疑いがあるドメイン ${d.label || d.name} (${(d.reasons || []).join(', ')})`,
+  alertmsg_PROTO_MISMATCH: d => `偽装プロトコル: ${d.reason} — ${d.process || '?'} → ${d.ip}:${d.port}`,
   alert_act_block: 'IPをブロック',
   alert_act_kill: '強制終了',
   alert_act_suspend: '一時停止',
@@ -450,4 +452,6 @@ export default {
   gs_hint: '塩付きMerkleプルーフパックを明示的にペアリングしたSnitchインスタンスへ5分毎にプッシュ — ハッシュコミットメントのみ、生インジケーターは送信しません。',
   gs_peers_ph: 'host:port（カンマ区切り）',
   gs_privacy: 'オプトインのフリート共有 — パックはここに列挙したピアにのみ送信されます。',
+  ks_title: 'ボリュームキルスイッチ',
+  ks_hint: 'アップロード急増時にリモートIPをブロック（実際のファイアウォールルール）— デフォルトでオフ',
 }

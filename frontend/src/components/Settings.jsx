@@ -590,6 +590,33 @@ export function SettingsPanel({ onClose, lang, setLang, watchlist = [], onWatchl
           <div style={{ ...hint, marginTop: 4 }}>{t('gs_privacy')}</div>
         </div>
 
+        {/* Volume kill-switch / Kill-switch de volume */}
+        <div style={{ ...row, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div style={label}>{t('ks_title')}</div>
+            <div style={hint}>{t('ks_hint')}</div>
+          </div>
+          <button
+            onClick={() => {
+              const v = !settings?.kill_switch_enabled
+              setSettings(s => ({ ...s, kill_switch_enabled: v }))
+              save('kill_switch_enabled', v)
+            }}
+            role="switch" aria-checked={!!settings?.kill_switch_enabled}
+            style={{
+              width: 36, height: 20, borderRadius: 10, border: 'none',
+              background: settings?.kill_switch_enabled ? '#3b82f6' : 'var(--bg)',
+              outline: '1px solid var(--border)', cursor: 'pointer',
+              position: 'relative', flexShrink: 0,
+            }}>
+            <div style={{
+              width: 14, height: 14, borderRadius: '50%', background: 'var(--text)',
+              position: 'absolute', top: 3, left: settings?.kill_switch_enabled ? 19 : 3,
+              transition: 'left 0.15s',
+            }} />
+          </button>
+        </div>
+
         {/* Integrity watch / Veille d'intégrité */}
         <div style={{ ...row, display: 'block' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

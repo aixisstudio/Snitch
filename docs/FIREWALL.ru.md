@@ -122,7 +122,7 @@ endpoint'ы получают `{alert, source, text}`. Сбои пишутся в
 - **Сторож высокой энтропии** — payloads ≥48 Б на не-TLS каналах с ≥4,7 бит/байт → `HIGH_ENTROPY`; кулдаун 10 мин на хост.
 - **Эвристика ICMP-туннеля** — echo с ≥24 Б payload, ≥3× за 5 мин → `ICMP_TUNNEL`.
 - **ML-аномалия потока** — isolation forest на чистом Python (64 дерева, ноль зависимостей) по вашим же сводкам; неактивно <384 потоков, `ML_ANOMALY` при 0,62. Отклонение от baseline, **не** классификатор.
-- **Ask-on-connect (Linux, opt-in)** — `ask_enabled` + root + `python-netfilterqueue`: новые исходящие потоки удерживаются в NFQUEUE 7 до `POST /security/ask/verdict`; таймаут 15 с, fail-closed (`ask_failopen=1` наоборот). Windows/macOS требуют подписанные callout/NetworkExtension из `contrib/`.
+- **Ask-on-connect (Linux, opt-in)** — `ask_enabled` + root + iptables: новые исходящие потоки удерживаются в NFQUEUE 7 до `POST /security/ask/verdict` — клиент NFQUEUE на **чистом Python** (`detection/nfqueue.py`, AF_NETLINK), `python-netfilterqueue` не нужен; таймаут 15 с, fail-closed (`ask_failopen=1` наоборот). Windows/macOS требуют подписанные callout/NetworkExtension из `contrib/`.
 - **eBPF cgroup-эндфорсмент (Linux, opt-in)** — `POST /security/ebpf/isolate {pid}` + `/security/ebpf/block {ip}`: программа attach к cgroup snitch — дропы в ядре ТОЛЬКО для изолированных процессов.
 - **Проверка hollowing (Linux)** — `POST /security/hollow {pid}` сравнивает file-backed исполняемые страницы `/proc/<pid>/mem` с диском.
 - **Синхронизация IOC с пирами (opt-in)** — `gossip_peers` ≤32 + `gossip_enabled`: Merkle-пакеты каждые 5 мин по аутентифицированному HTTP(S) — без discovery, не ZK.
@@ -131,3 +131,12 @@ endpoint'ы получают `{alert, source, text}`. Сбои пишутся в
 - **Backend nftables** — отдельная таблица `inet snitch` вместо iptables, где есть `nft`.
 - **Действующие алерты** — структурные `actions` (блок IP, убить/приостановить, вердикт ask) кнопками в один клик.
 - **`asn`/`country` в своих правилах** — локальная geo-БД, комбинируется с `action=block` как geo-fence.
+- **Эвристика DGA** — разрешённые DNS-имена и TLS SNI оцениваются по
+  лексическим признакам (энтропия, гласные, цепочки согласных, цифры) →
+  `DGA_SUSPECT`. Чисто локальная эвристика; без WHOIS и возраста домена.
+- **Замаскированный протокол** — заголовок payload ≤64 Б должен
+  соответствовать протоколу порта (HTTP/80, DNS/53, SSH/22,
+  TLS/443+853, ASCII-команды почты) → `PROTO_MISMATCH`, cooldown на поток.
+- **Килл-свитч по объёму (opt-in)** — `kill_switch_enabled` превращает
+  `UPLOAD_SPIKE` в реальную блокировку файрвола для удалённого IP
+  (с дедупликацией, best-effort). По умолчанию выключен.

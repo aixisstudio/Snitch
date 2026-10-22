@@ -428,6 +428,8 @@ export default {
   alertmsg_ICMP_TUNNEL: d => `疑似ICMP隧道: 与 ${d.ip} 之间反复出现大载荷回显`,
   alertmsg_ML_ANOMALY: d => `ML流量异常: ${d.process || '?'} → ${d.ip} (得分 ${d.score})`,
   alertmsg_ASK_VERDICT: d => `需要判定: ${d.process || '某进程'} → ${d.remote_ip}:${d.remote_port}/${d.proto} (${d.timeout_s}秒后自动判定)`,
+  alertmsg_DGA_SUSPECT: d => `疑似DGA域名 ${d.label || d.name} (${(d.reasons || []).join(', ')})`,
+  alertmsg_PROTO_MISMATCH: d => `伪装协议: ${d.reason} — ${d.process || '?'} → ${d.ip}:${d.port}`,
   alert_act_block: '封锁IP',
   alert_act_kill: '终止',
   alert_act_suspend: '挂起',
@@ -450,4 +452,6 @@ export default {
   gs_hint: '每 5 分钟向显式配对的 Snitch 实例推送加盐 Merkle 证明包 — 仅哈希承诺，绝不发送原始指标。',
   gs_peers_ph: '主机:端口，逗号分隔',
   gs_privacy: '可选的集群共享 — 数据包只发送给此处列出的节点。',
+  ks_title: '流量终止开关',
+  ks_hint: '上传激增时自动封锁远程IP（真实防火墙规则）— 默认关闭',
 }

@@ -659,6 +659,53 @@ EXPLANATIONS: dict[str, dict] = {
     ["Autoriser ou refuser depuis le prompt",
      "Créer une règle pare-feu pour les décisions permanentes",
      "Linux/NFQUEUE seulement — voir /security/ask pour le statut"]),
+
+"DGA_SUSPECT": _e(
+    "Domain looks algorithmically generated",
+    "Domaine à aspect généré algorithmiquement",
+    "The resolved name or TLS SNI fails lexical checks typical of domain-"
+    "generation algorithms: high entropy, almost no vowels, stacked "
+    "consonants, digit noise — how malware C2 hostnames usually look.",
+    "Le nom résolu ou le SNI TLS échoue aux contrôles lexicaux typiques "
+    "des algorithmes de génération de domaines : entropie élevée, quasi "
+    "aucune voyelle, consonnes empilées, chiffres — le look classique "
+    "des C2 de malware.",
+    "Pure local heuristic — no WHOIS, no domain-age data. Legit-but-"
+    "weird names (hashes, build artifacts) can trip it occasionally; the "
+    "finding is info-level and cooled down per name.",
+    "Heuristique purement locale — ni WHOIS ni âge du domaine. Des noms "
+    "légitimes bizarres (hachés, artefacts de build) peuvent déclencher "
+    "occasionnellement ; niveau info, cooldown par nom.",
+    ["Check which process resolved it",
+     "Look for follow-up connections to the resolved IP",
+     "Ignore once for known dev/build tools"],
+    ["Vérifier quel processus l'a résolu",
+     "Surveiller les connexions vers l'IP résolue",
+     "Ignorer une fois pour les outils de build connus"]),
+
+"PROTO_MISMATCH": _e(
+    "Payload does not match the port's protocol",
+    "Payload non conforme au protocole du port",
+    "The first bytes on this socket do not look like the protocol the "
+    "port advertises — non-HTTP on :80, non-TLS on :443, non-DNS on :53, "
+    "non-SSH on :22… Attackers hide tunnels on friendly ports to slip "
+    "past firewall rules.",
+    "Les premiers octets de cette socket ne ressemblent pas au protocole "
+    "annoncé par le port — non-HTTP sur :80, non-TLS sur :443, non-DNS "
+    "sur :53, non-SSH sur :22… Les attaquants planquent des tunnels sur "
+    "des ports amicaux pour passer les pare-feux.",
+    "Heuristic on the ≤64-byte head only — exotic legit protocols "
+    "(WebSocket upgrades, custom daemons) may trip it once, then the "
+    "cooldown keeps it quiet.",
+    "Heuristique sur la tête ≤64 o seulement — des protocoles légitimes "
+    "exotiques (upgrades WebSocket, démons custom) peuvent déclencher une "
+    "fois puis le cooldown les tait.",
+    ["Inspect the process — legit apps use their own ports",
+     "Correlate with HIGH_ENTROPY/DNS_TUNNEL on the same host",
+     "Block the flow if the process can't be explained"],
+    ["Inspecter le processus — les apps légitimes utilisent leurs ports",
+     "Corréler avec HIGH_ENTROPY/DNS_TUNNEL sur le même hôte",
+     "Bloquer le flux si le processus est inexplicable"]),
 }
 
 

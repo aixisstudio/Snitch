@@ -332,10 +332,10 @@ class TestMacosReal:
 @pytest.mark.skipif(SYSTEM != "linux", reason="linux only")
 class TestLinuxV15Real:
     """EN: v1.5 primitives on a real kernel — nftables, firejail,
-    netfilterqueue, bcc/cgroup. All probe availability first and skip
+    nfqueue, bcc/cgroup. All probe availability first and skip
     honestly; they never fake a pass.
     FR: Primitives v1.5 sur un vrai noyau — nftables, firejail,
-    netfilterqueue, bcc/cgroup. Sondes d'abord, skip honnête sinon."""
+    nfqueue, bcc/cgroup. Sondes d'abord, skip honnête sinon."""
 
     def test_nftables_table_lifecycle(self):
         """EN: If `nft` exists, a dedicated `inet snitch` table can be
@@ -377,10 +377,11 @@ class TestLinuxV15Real:
 
     def test_netfilterqueue_available_probe(self):
         """EN: askmode.available() must answer honestly on a real Linux
-        box — either (True,"") when root+libnetfilter_queue+NetfilterQueue
-        are all present, or (False, <reason>) that names what's missing.
-        FR: askmode.available() répond honnêtement — True ou une raison
-        nommant ce qui manque."""
+        box — (True,"") when root+iptables are present (the NFQUEUE
+        client is pure Python — no package to miss), or (False, <reason>)
+        naming what's missing. / FR: askmode.available() répond
+        honnêtement — True si root+iptables (client NFQUEUE pur Python),
+        sinon une raison nommant ce qui manque."""
         from detection import askmode
         ok, why = askmode.available()
         if ok:
@@ -388,6 +389,22 @@ class TestLinuxV15Real:
             assert _os.geteuid() == 0
         else:
             assert why and isinstance(why, str)
+
+    def test_pure_nfqueue_bind_probe(self):
+        """EN: The pure-Python NFQUEUE client binds a scratch queue for
+        real when root — honest proof the embedded netlink code works.
+        FR: Le client NFQUEUE pur Python bind réellement une file quand
+        root — preuve honnête que le code netlink embarqué marche."""
+        import os as _os
+        if _os.geteuid() != 0:
+            pytest.skip("needs root for NETLINK_NETFILTER bind")
+        from detection.nfqueue import NfqSocket
+        s = NfqSocket(9)                              # EN: scratch queue
+        try:
+            s.open()
+            s.bind_queue(timeout=2.0)                 # EN: ACK-verified
+        finally:
+            s.close()
 
     def test_ebpf_enforce_available_probe(self):
         """EN: ebpf_enforce.available() reports a concrete reason —

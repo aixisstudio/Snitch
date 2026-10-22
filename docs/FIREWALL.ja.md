@@ -121,7 +121,7 @@ OS ネイティブファイアウォールへ best-effort で適用されます:
 - **高エントロピー監視** — 非TLSチャネルで ≥48 B・≥4.7ビット/バイトのペイロード → `HIGH_ENTROPY`；ホスト毎10分クールダウン。
 - **ICMPトンネル検知** — ≥24 Bペイロードのエコーが5分で3回以上 → `ICMP_TUNNEL`。
 - **MLフロー異常** — 純Pythonのisolation forest（64本、依存ゼロ）が自フロー要約をスコアリング；384フロー未満では不活性、0.62で `ML_ANOMALY`。ベースライン偏差でありマルウェア分類器では**ありません**。
-- **Ask-on-Connect（Linux、オプトイン）** — `ask_enabled` + root + `python-netfilterqueue`：新規送信フローをNFQUEUE 7に `POST /security/ask/verdict` まで保留；タイムアウト15秒、fail-closed（`ask_failopen=1`で反転）。Windows/macOSは `contrib/` の署名済みcallout/NetworkExtensionが必要。
+- **Ask-on-Connect（Linux、オプトイン）** — `ask_enabled` + root + iptables：新規送信フローをNFQUEUE 7に `POST /security/ask/verdict` まで保留 — NFQUEUEクライアントは**純粋Python**（`detection/nfqueue.py`、AF_NETLINK）で `python-netfilterqueue` 不要；タイムアウト15秒、fail-closed（`ask_failopen=1`で反転）。Windows/macOSは `contrib/` の署名済みcallout/NetworkExtensionが必要。
 - **eBPF cgroupエンフォースメント（Linux、オプトイン）** — `POST /security/ebpf/isolate {pid}` + `/security/ebpf/block {ip}`：snitch cgroupへattach — カーネルdropは隔離プロセスのみ。
 - **ハロウィングチェック（Linux）** — `POST /security/hollow {pid}` が `/proc/<pid>/mem` のfile-backed実行可能ページをディスクと比較。
 - **IOCピア同期（オプトイン）** — `gossip_peers` ≤32 + `gossip_enabled`：Merkleプルーフパックを5分毎に認証HTTP(S)で — 探索なし、ZKプロトコルではありません。
@@ -130,3 +130,12 @@ OS ネイティブファイアウォールへ best-effort で適用されます:
 - **nftablesバックエンド** — `nft` があれば専用 `inet snitch` テーブル（iptablesの代わり）。
 - **アクション可能アラート** — 構造化 `actions`（IPブロック、終了/一時停止、ask判定）をワンクリックボタンとして表示。
 - **カスタムルールの `asn`/`country`** — ローカルgeo DB、`action=block` と組み合わせてgeoフェンスに。
+- **DGAヒューリスティック** — 解決されたDNS名とTLS SNIを字彙特徴
+  （エントロピー、母音率、子音連鎖、数字）でスコア → `DGA_SUSPECT`。
+  完全ローカル；WHOISやドメイン年齢なし。
+- **偽装プロトコル** — ≤64バイトのペイロード先頭がポートの示す
+  プロトコル（HTTP/80、DNS/53、SSH/22、TLS/443+853、メールASCII）と
+  一致必須 → `PROTO_MISMATCH`、フロー毎にクールダウン。
+- **ボリュームキルスイッチ（オプトイン）** — `kill_switch_enabled` が
+  `UPLOAD_SPIKE` をリモートIPへの実ファイアウォールブロックに変換
+  （重複排除、ベストエフォート）。デフォルトでオフ。

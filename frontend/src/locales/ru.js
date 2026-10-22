@@ -428,6 +428,8 @@ export default {
   alertmsg_ICMP_TUNNEL: d => `Возможный ICMP-туннель: повторные объёмные эхо-пакеты с ${d.ip}`,
   alertmsg_ML_ANOMALY: d => `ML-аномалия потока: ${d.process || '?'} → ${d.ip} (оценка ${d.score})`,
   alertmsg_ASK_VERDICT: d => `Нужен вердикт: ${d.process || 'процесс'} → ${d.remote_ip}:${d.remote_port}/${d.proto} (авторешение через ${d.timeout_s}с)`,
+  alertmsg_DGA_SUSPECT: d => `Домен с признаками DGA ${d.label || d.name} (${(d.reasons || []).join(', ')})`,
+  alertmsg_PROTO_MISMATCH: d => `Замаскированный протокол: ${d.reason} — ${d.process || '?'} → ${d.ip}:${d.port}`,
   alert_act_block: 'Блокировать IP',
   alert_act_kill: 'Убить',
   alert_act_suspend: 'Приостановить',
@@ -450,4 +452,6 @@ export default {
   gs_hint: 'Отправлять солёные Merkle-пакеты доказательств явно спаренным экземплярам Snitch каждые 5 мин — только хеш-коммитменты, никогда сырые индикаторы.',
   gs_peers_ph: 'хост:порт, через запятую',
   gs_privacy: 'Opt-in обмен внутри флота — пакеты уходят только перечисленным здесь пирам.',
+  ks_title: 'Килл-свитч по объёму',
+  ks_hint: 'Блокирует удалённый IP (реальное правило файрвола) при всплеске исходящего трафика — выключено по умолчанию',
 }

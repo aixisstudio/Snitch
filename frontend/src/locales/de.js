@@ -428,6 +428,8 @@ export default {
   alertmsg_ICMP_TUNNEL: d => `Möglicher ICMP-Tunnel: wiederholte große Echo-Payloads mit ${d.ip}`,
   alertmsg_ML_ANOMALY: d => `ML-Flussanomalie: ${d.process || '?'} → ${d.ip} (Score ${d.score})`,
   alertmsg_ASK_VERDICT: d => `Entscheid nötig: ${d.process || 'ein Prozess'} → ${d.remote_ip}:${d.remote_port}/${d.proto} (Auto-Entscheid in ${d.timeout_s}s)`,
+  alertmsg_DGA_SUSPECT: d => `DGA-verdächtige Domain ${d.label || d.name} (${(d.reasons || []).join(', ')})`,
+  alertmsg_PROTO_MISMATCH: d => `Getarntes Protokoll: ${d.reason} — ${d.process || '?'} → ${d.ip}:${d.port}`,
   alert_act_block: 'IP blockieren',
   alert_act_kill: 'Beenden',
   alert_act_suspend: 'Anhalten',
@@ -450,4 +452,6 @@ export default {
   gs_hint: 'Gesalzene Merkle-Proof-Pakete alle 5 Min an explizit gepaarte Snitch-Instanzen pushen — nur Hash-Commitments, nie rohe Indikatoren.',
   gs_peers_ph: 'host:port, kommagetrennt',
   gs_privacy: 'Opt-in Flotten-Sharing — Pakete gehen nur an die hier gelisteten Peers.',
+  ks_title: 'Volumen-Kill-Switch',
+  ks_hint: 'Blockiert die Remote-IP (echte Firewall-Regel) bei einem Upload-Spike — standardmäßig aus',
 }

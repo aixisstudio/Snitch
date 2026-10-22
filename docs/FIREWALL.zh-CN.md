@@ -114,7 +114,7 @@ Snitch **不**在用户态过滤数据包。规则会被尽力下发到操作系
 - **高熵监视** — 非 TLS 通道上 ≥48 B、≥4.7 比特/字节的载荷 → `HIGH_ENTROPY`；每主机 10 分钟冷却。
 - **ICMP 隧道启发式** — 载荷 ≥24 B 的 echo 类型，5 分钟内 ≥3 次 → `ICMP_TUNNEL`。
 - **ML 流异常** — 纯 Python isolation forest（64 棵树、零依赖）对您自己的流摘要打分；<384 流时惰性，0.62 触发 `ML_ANOMALY`。基线偏差，**不是**恶意软件分类器。
-- **Ask-on-connect（Linux，可选）** — `ask_enabled` + root + `python-netfilterqueue`：新出站流在 NFQUEUE 7 挂起至 `POST /security/ask/verdict`；超时 15 秒，默认拒绝（`ask_failopen=1` 反转）。Windows/macOS 需要 `contrib/` 中的签名 callout/NetworkExtension。
+- **Ask-on-connect（Linux，可选）** — `ask_enabled` + root + iptables：新出站流在 NFQUEUE 7 挂起至 `POST /security/ask/verdict` — NFQUEUE 客户端为**纯 Python**（`detection/nfqueue.py`，AF_NETLINK），无需 `python-netfilterqueue`；超时 15 秒，默认拒绝（`ask_failopen=1` 反转）。Windows/macOS 需要 `contrib/` 中的签名 callout/NetworkExtension。
 - **eBPF cgroup 执行（Linux，可选）** — `POST /security/ebpf/isolate {pid}` + `/security/ebpf/block {ip}`：程序挂载到 snitch cgroup — 内核丢弃仅作用于被隔离进程。
 - **空心化检查（Linux）** — `POST /security/hollow {pid}` 对比 `/proc/<pid>/mem` 中文件映射的可执行页与磁盘。
 - **IOC 节点同步（可选）** — `gossip_peers` ≤32 + `gossip_enabled`：每 5 分钟经认证 HTTP(S) 推送 Merkle 证明包 — 无发现机制，非 ZK。
@@ -123,3 +123,11 @@ Snitch **不**在用户态过滤数据包。规则会被尽力下发到操作系
 - **nftables 后端** — 有 `nft` 时使用专用 `inet snitch` 表替代 iptables。
 - **可操作告警** — 结构化 `actions`（封锁 IP、终止/挂起、ask 判定）以一键按钮呈现。
 - **自定义规则的 `asn`/`country`** — 本地 geo 数据库，可与 `action=block` 组成地理围栏。
+- **DGA 启发式** — 已解析的 DNS 名与 TLS SNI 按词汇特征评分（熵、
+  元音比、辅音连缀、数字）→ `DGA_SUSPECT`。纯本地启发式；无 WHOIS
+  或域名年龄数据。
+- **伪装协议** — ≤64 字节负载头部必须与端口声明的协议相符
+  （HTTP/80、DNS/53、SSH/22、TLS/443+853、邮件 ASCII 命令）→
+  `PROTO_MISMATCH`，按流冷却。
+- **流量终止开关（可选）** — `kill_switch_enabled` 将 `UPLOAD_SPIKE`
+  变为对远程 IP 的真实防火墙封锁（去重、尽力而为）。默认关闭。

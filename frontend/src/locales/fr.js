@@ -428,6 +428,8 @@ export default {  // Navigation
   alertmsg_ICMP_TUNNEL: d => `Tunnel ICMP possible : échos répétés à gros payload avec ${d.ip}`,
   alertmsg_ML_ANOMALY: d => `Anomalie ML de flux : ${d.process || '?'} → ${d.ip} (score ${d.score})`,
   alertmsg_ASK_VERDICT: d => `Verdict requis : ${d.process || 'un processus'} → ${d.remote_ip}:${d.remote_port}/${d.proto} (décision auto dans ${d.timeout_s}s)`,
+  alertmsg_DGA_SUSPECT: d => `Domaine à aspect DGA ${d.label || d.name} (${(d.reasons || []).join(', ')})`,
+  alertmsg_PROTO_MISMATCH: d => `Protocole déguisé : ${d.reason} — ${d.process || '?'} → ${d.ip}:${d.port}`,
   alert_act_block: "Bloquer l'IP",
   alert_act_kill: 'Tuer',
   alert_act_suspend: 'Suspendre',
@@ -450,4 +452,6 @@ export default {  // Navigation
   gs_hint: "Pousser les paquets Merkle salés vers des instances Snitch explicitement appairées toutes les 5 min — engagements de hash seulement, jamais d'indicateurs bruts.",
   gs_peers_ph: 'hôte:port, séparés par des virgules',
   gs_privacy: 'Partage de flotte opt-in — les paquets ne partent que vers les pairs listés ici.',
+  ks_title: 'Kill-switch de volume',
+  ks_hint: 'Bloque l\u2019IP distante (vraie règle pare-feu) quand un pic d\u2019envoi se déclenche — désactivé par défaut',
 }

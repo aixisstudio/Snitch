@@ -432,6 +432,8 @@ export default {  // Navigation
   alertmsg_ICMP_TUNNEL: d => `Possible ICMP tunnelling: repeated fat echo payloads with ${d.ip}`,
   alertmsg_ML_ANOMALY: d => `ML flow anomaly: ${d.process || '?'} → ${d.ip} (score ${d.score})`,
   alertmsg_ASK_VERDICT: d => `Verdict needed: ${d.process || 'a process'} → ${d.remote_ip}:${d.remote_port}/${d.proto} (auto-decision in ${d.timeout_s}s)`,
+  alertmsg_DGA_SUSPECT: d => `DGA-looking domain ${d.label || d.name} (${(d.reasons || []).join(', ')})`,
+  alertmsg_PROTO_MISMATCH: d => `Protocol mismatch: ${d.reason} — ${d.process || '?'} → ${d.ip}:${d.port}`,
   alert_act_block: 'Block IP',
   alert_act_kill: 'Kill',
   alert_act_suspend: 'Suspend',
@@ -454,4 +456,6 @@ export default {  // Navigation
   gs_hint: 'Push salted-Merkle proof packs to explicitly paired Snitch instances every 5 min — hash commitments only, never raw indicators.',
   gs_peers_ph: 'host:port, comma-separated',
   gs_privacy: 'Opt-in fleet sharing — packs leave only for the peers you list here.',
+  ks_title: 'Volume kill-switch',
+  ks_hint: 'Auto-block the remote IP (real firewall rule) when an upload spike fires — off by default',
 }

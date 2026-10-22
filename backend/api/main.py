@@ -103,10 +103,12 @@ from detection.llm_local import LocalSlm
 from detection.miner import MinerDetector
 from detection.mlflow import FlowAnomaly
 from detection import askmode
+from detection import dga
 from detection import ebpf_enforce
 from detection import hollow as hollowmod
 from detection.gossip import PeerSync
 from detection import perfprobe
+from detection import protomatch
 from detection.sinkresponder import SinkholeResponder
 from detection.threatintel import ThreatIntel
 from api.notify import notifier
@@ -193,6 +195,13 @@ ebpf_enforcer = ebpf_enforce.EbpfEnforcer()
 _rule_blocks: set[tuple] = set()
 _entropy_cooldown: dict[str, float] = {}
 _icmp_window: dict[str, list] = {}
+_dga_seen: dict[str, float] = {}            # EN: name → last alert ts
+_proto_cooldown: dict[tuple, float] = {}    # EN: (ip, port) → last ts
+# EN: Opt-in volume kill-switch — UPLOAD_SPIKE installs a real firewall
+#     block on the remote IP instead of only alerting. Off by default.
+# FR: Kill-switch de volume opt-in — UPLOAD_SPIKE installe un vrai blocage
+#     pare-feu sur l'IP distante. Désactivé par défaut.
+_kill_switch = False
 # EN: IOC peer-sync cadence — fixed 5 min; activation is governed by the
 #     `gossip_enabled` setting, not by this constant.
 # FR: Cadence de sync IOC — 5 min fixe ; l'activation relève du réglage
@@ -878,6 +887,31 @@ def _process_batch(packets: list[Packet]) -> None:
     #     d'intégrité une fois par tick (elle déduplique par processus).
     seen_pids: dict[int, str] = {}
 
+    def _emit(a: Alert, notify: bool = False) -> None:
+        """EN: Flag, persist and queue one alert — the standard emit path.
+        FR: Marque, persiste et file une alerte — chemin d'émission type."""
+        _flag_alert(a, nodes)
+        ad = a.to_dict()
+        db.log_alert(ad)
+        out_alerts.append(ad)
+        if notify:
+            asyncio.get_running_loop().create_task(_notify(ad))
+
+    def _dga_check(name: str) -> Optional[dict]:
+        """EN: DGA lexical score + 1 h per-name cooldown — finding or None.
+        FR: Score lexical DGA + cooldown 1 h par nom — finding ou None."""
+        hit = dga.score(name)
+        if not hit:
+            return None
+        low = name.rstrip(".").lower()
+        now_s = time.monotonic()
+        if now_s - _dga_seen.get(low, 0) < 3600:
+            return None
+        if len(_dga_seen) >= 4096:
+            _dga_seen.pop(next(iter(_dga_seen)))
+        _dga_seen[low] = now_s
+        return hit
+
     for pkt in packets:
         if pkt.process_name and pkt.process_name in _excluded_processes:
             _drop_stats["excluded_process"] += 1
@@ -918,6 +952,22 @@ def _process_batch(packets: list[Packet]) -> None:
                     dns53.append((name, ip, _ttl))
             if dns53:
                 learn_dns_answers(dns53)
+                # EN: DGA lexical heuristic on resolved names — random-looking
+                #     domains are a classic C2/exfil signal. Bounded: one
+                #     alert per name per hour (see _dga_check).
+                # FR: Heuristique lexicale DGA sur les noms résolus — les
+                #     domaines à aspect aléatoire sont un signal C2/exfil.
+                for name, _ip, _ttl in dns53:
+                    hit = _dga_check(name)
+                    if hit:
+                        _emit(Alert(
+                            type="DGA_SUSPECT", severity="info",
+                            message=f"DGA-looking domain {hit['label']} "
+                                    f"({', '.join(hit['reasons'])}) via "
+                                    f"{name}",
+                            node_id=remote_ip,
+                            details={"name": name, "ip": remote_ip,
+                                     **hit}), notify=True)
         if pkt.dhcp:
             _learn_dhcp_name(*pkt.dhcp, touched_devices)
 
@@ -930,6 +980,17 @@ def _process_batch(packets: list[Packet]) -> None:
 
         if pkt.sni:
             learn_sni(remote_ip, pkt.sni)
+            hit = _dga_check(pkt.sni)
+            if hit:
+                _emit(Alert(
+                    type="DGA_SUSPECT", severity="info",
+                    message=f"DGA-looking SNI {hit['label']} "
+                            f"({', '.join(hit['reasons'])}) — "
+                            f"{pkt.process_name or '?'} → {remote_ip}",
+                    node_id=remote_ip,
+                    details={"name": pkt.sni, "ip": remote_ip,
+                             "process": pkt.process_name, "pid": pkt.pid,
+                             **hit}), notify=True)
 
         # ── LAN accounting / Comptabilisation LAN ───────────────────────────
         if is_private(remote_ip):
@@ -1036,6 +1097,21 @@ def _process_batch(packets: list[Packet]) -> None:
                     and not is_private(remote_ip)
                     and ti.begin_check(remote_ip)):
                 asyncio.get_running_loop().create_task(_ti_check(remote_ip))
+            # EN: Volume kill-switch (opt-in setting kill_switch_enabled) —
+            #     an UPLOAD_SPIKE additionally installs a REAL firewall
+            #     block on the remote IP, deduped, best effort. Off by
+            #     default: auto-blocking traffic is a deliberate choice.
+            # FR: Kill-switch de volume (réglage opt-in) — UPLOAD_SPIKE
+            #     installe en plus un vrai blocage pare-feu sur l'IP
+            #     distante, dédupliqué, au mieux. Off par défaut.
+            if (alert.type == "UPLOAD_SPIKE" and _kill_switch
+                    and pkt.direction == "out"
+                    and not is_private(remote_ip)):
+                bk = ("killswitch", remote_ip)
+                if bk not in _rule_blocks and len(_rule_blocks) < 4096:
+                    _rule_blocks.add(bk)
+                    asyncio.get_running_loop().run_in_executor(
+                        None, fw.add_rule, "ip", remote_ip, "block", 64)
 
         # EN: Firewall visibility — a packet matching an active rule (or the
         #     lockdown) raises BLOCKED_ATTEMPT. This flags policy hits; actual
@@ -1173,6 +1249,32 @@ def _process_batch(packets: list[Packet]) -> None:
                     ad = a.to_dict()
                     db.log_alert(ad)
                     out_alerts.append(ad)
+
+        # EN: Disguised-protocol check — the payload head must match what
+        #     the well-known port advertises (HTTP/80, DNS/53, SSH/22,
+        #     TLS/443, mail ASCII commands; see detection/protomatch.py).
+        #     One alert per (ip, port) per 10 min. / FR: Contrôle de
+        #     protocole déguisé — la tête du payload doit correspondre au
+        #     protocole annoncé par le port. Une alerte / (ip, port) / 10 min.
+        if pkt.app_head:
+            reason = protomatch.check(pkt.remote_port or 0, pkt.protocol,
+                                      pkt.app_head)
+            pk = (remote_ip, pkt.remote_port)
+            now_s = time.monotonic()
+            if reason and now_s - _proto_cooldown.get(pk, 0) > 600:
+                _proto_cooldown[pk] = now_s
+                if len(_proto_cooldown) >= 4096:
+                    _proto_cooldown.pop(next(iter(_proto_cooldown)))
+                _emit(Alert(
+                    type="PROTO_MISMATCH", severity="info",
+                    message=f"Protocol mismatch: {reason} — "
+                            f"{pkt.process_name or '?'} → {remote_ip}:"
+                            f"{pkt.remote_port}",
+                    node_id=remote_ip,
+                    details={"ip": remote_ip, "port": pkt.remote_port,
+                             "reason": reason,
+                             "process": pkt.process_name, "pid": pkt.pid}),
+                    notify=True)
 
         # EN: ICMP tunnel heuristic — echo requests/replies SHOULD carry ~0
         #     or timestamp-sized payloads; bulk data or a sustained stream
@@ -1739,6 +1841,11 @@ def _load_settings() -> None:
     detector.set_watchlist(_watchlist)
     detector.set_upload_threshold_mb(
         float(db.get_setting("upload_threshold_mb", 50)))
+    global _kill_switch
+    # EN: Opt-in volume kill-switch — OFF unless the user asked for real
+    #     auto-blocking on upload spikes. / FR: Kill-switch de volume
+    #     opt-in — OFF sauf demande explicite de blocage auto.
+    _kill_switch = bool(db.get_setting("kill_switch_enabled", False))
     # EN: Security modules — firewall rules/lockdown, opt-in threat intel,
     #     learned process baselines and the external webhook.
     # FR: Modules de sécurité — règles/lockdown pare-feu, threat intel opt-in,
@@ -1977,6 +2084,13 @@ async def post_settings(body: SettingsBody) -> dict:
             ask_mode.configure(
                 timeout=db.get_setting("ask_timeout", 15),
                 failopen=bool(db.get_setting("ask_failopen", False)))
+        if key == "kill_switch_enabled":
+            # EN: Live toggle — UPLOAD_SPIKE stops alerting only and
+            #     installs a real firewall block on the remote IP.
+            # FR: Bascule à chaud — UPLOAD_SPIKE installe un vrai blocage
+            #     pare-feu au lieu de seulement alerter.
+            global _kill_switch
+            _kill_switch = bool(value)
         if key == "integrity_watch":
             integrity.configure(bool(value))
         if key == "ebpf_probe":

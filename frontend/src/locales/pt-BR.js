@@ -428,6 +428,8 @@ export default {
   alertmsg_ICMP_TUNNEL: d => `Possível túnel ICMP: ecos repetidos com payloads grandes com ${d.ip}`,
   alertmsg_ML_ANOMALY: d => `Anomalia ML de fluxo: ${d.process || '?'} → ${d.ip} (score ${d.score})`,
   alertmsg_ASK_VERDICT: d => `Veredito necessário: ${d.process || 'um processo'} → ${d.remote_ip}:${d.remote_port}/${d.proto} (decisão automática em ${d.timeout_s}s)`,
+  alertmsg_DGA_SUSPECT: d => `Domínio com cara de DGA ${d.label || d.name} (${(d.reasons || []).join(', ')})`,
+  alertmsg_PROTO_MISMATCH: d => `Protocolo disfarçado: ${d.reason} — ${d.process || '?'} → ${d.ip}:${d.port}`,
   alert_act_block: 'Bloquear IP',
   alert_act_kill: 'Matar',
   alert_act_suspend: 'Suspender',
@@ -450,4 +452,6 @@ export default {
   gs_hint: 'Envia pacotes Merkle com sal a instâncias Snitch pareadas explicitamente a cada 5 min — só compromissos hash, nunca indicadores brutos.',
   gs_peers_ph: 'host:porta, separados por vírgula',
   gs_privacy: 'Compartilhamento opt-in — os pacotes só saem para os pares listados aqui.',
+  ks_title: 'Kill-switch de volume',
+  ks_hint: 'Bloqueia o IP remoto (regra de firewall real) quando um pico de upload dispara — desativado por padrão',
 }
