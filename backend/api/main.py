@@ -437,6 +437,14 @@ def _learn_dhcp_name(hostname: str, req_ip: Optional[str], mac: str,
         Si l'appareil est déjà connu (par IP demandée ou MAC), on le nomme ;
         sinon on retient le couple MAC→nom pour la prochaine découverte.
     """
+    # EN: A DHCP message may carry a requested IP but NO option 12 — bail
+    #     out early, otherwise the empty name would overwrite a real one
+    #     already stored in _pending_mac_names (name learned then lost).
+    # FR: Un message DHCP peut porter une IP demandée mais PAS d'option 12 —
+    #     sortir tôt, sinon le nom vide écraserait un vrai nom déjà stocké
+    #     dans _pending_mac_names (nom appris puis perdu).
+    if not hostname:
+        return
     if req_ip and is_private(req_ip):
         _learn_lan_hostname(req_ip, hostname, touched_devices)
         return
