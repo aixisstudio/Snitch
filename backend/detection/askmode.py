@@ -137,10 +137,14 @@ class AskMode:
         self._exempt = []
         for ip in (exempt_ips or [])[:64]:
             try:
-                ipaddress.ip_network(str(ip), strict=False)
+                # EN: store the PARSER-PRODUCED form — the argv value is a
+                #     normalized CIDR literal, not the raw input string.
+                # FR: on stocke la forme NORMALISÉE par le parseur — la
+                #     valeur argv est un littéral CIDR, pas l'entrée brute.
+                self._exempt.append(
+                    str(ipaddress.ip_network(str(ip), strict=False)))
             except ValueError:
                 continue
-            self._exempt.append(str(ip))
         import subprocess
         from .nfqueue import NfqSocket                        # noqa: PLC0415
         try:
