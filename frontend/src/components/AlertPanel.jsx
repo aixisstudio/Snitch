@@ -42,6 +42,12 @@ const TYPE_ICONS = {
   PORT_SCAN:          ScanLine,
   UPLOAD_SPIKE:       TrendingUp,
   WATCHLIST_HIT:      ShieldAlert,
+  BLOCKED_ATTEMPT:    ShieldAlert,
+  THREAT_HIT:         ShieldAlert,
+  DNS_TUNNEL:         ScanLine,
+  CLEARTEXT:          Unlock,
+  BASELINE_DEVIATION: Activity,
+  LOCKDOWN:           AlertTriangle,
 }
 
 export function AlertBell({ unread, onClick }) {

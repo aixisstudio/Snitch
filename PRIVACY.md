@@ -7,8 +7,9 @@ Snitch is a privacy tool — it must never leak the very data it helps you monit
 **Telemetry: none.** Snitch contains no analytics, no crash reporting, no
 phone-home of any kind.
 
-**Outbound network calls made by Snitch: two, both optional.** Everything
-below is passive observation or user-triggered — there is no silent traffic:
+**Outbound network calls made by Snitch: all optional, all off by
+default.** Everything below is passive observation or user-triggered —
+there is no silent traffic:
 
 - captures packets on your local interfaces (passive observation),
 - reads your system ARP/neighbour table (no active scanning),
@@ -25,6 +26,18 @@ and the backend itself never check for updates.
 
 The **GeoIP database download** (`Settings → Geolocation`) fetches ~50 MB
 from db-ip.com — only when you click it, with an explicit consent flag.
+
+**Threat intelligence (opt-in, off by default).** When you configure a
+provider (AbuseIPDB, AlienVault OTX or VirusTotal) *and* paste your own API key in
+Settings, Snitch queries that provider for the reputation of newly-seen
+public hosts — sending them the queried IP only. Verdicts are cached
+locally; the key is stored in `snitch.db` (never logged, masked in the UI).
+With no provider or no key, zero lookups are made — `ti.check()` is a no-op.
+
+**External webhooks (opt-in, off by default).** When you paste a webhook
+URL (Discord, Slack, Telegram bot endpoint or any URL) and flip the switch,
+warning/critical alert texts are POSTed to that endpoint in real time.
+Nothing is sent while the switch is off.
 
 **Geolocation is offline-only.** Once a DB-IP Lite or MaxMind GeoLite2
 `.mmdb` file sits in `<data_dir>/geo/`, lookups happen locally against that
@@ -54,8 +67,9 @@ données qu'il vous aide à surveiller.
 **Télémétrie : aucune.** Pas d'analytics, pas de rapports de crash, aucun
 appel « maison » d'aucune sorte.
 
-**Appels réseau émis par Snitch : deux, tous deux optionnels.** Tout le
-reste est observation passive ou déclenché par vous — aucun trafic silencieux :
+**Appels réseau émis par Snitch : tous optionnels, tous désactivés par
+défaut.** Tout le reste est observation passive ou déclenché par vous —
+aucun trafic silencieux :
 
 - capturer les paquets sur vos interfaces locales (observation passive),
 - lire la table ARP/voisinage système (pas de scan actif),
@@ -73,6 +87,20 @@ puis toutes les 6 h (electron-updater, lecture des fichiers publics
 **Le téléchargement de la base GeoIP** (*Réglages → Géolocalisation*)
 récupère ~50 Mo depuis db-ip.com — uniquement à votre clic, avec un
 consentement explicite.
+
+**Threat intelligence (opt-in, désactivé par défaut).** Quand vous
+configurez un fournisseur (AbuseIPDB, AlienVault OTX ou VirusTotal) *et* collez votre
+propre clé API dans les Réglages, Snitch interroge ce fournisseur sur la
+réputation des nouveaux hôtes publics — seule l'IP interrogée lui est
+envoyée. Les verdicts sont cachés localement ; la clé est stockée dans
+`snitch.db` (jamais journalisée, masquée dans l'UI). Sans fournisseur ni
+clé, aucune requête n'est faite — `ti.check()` est inerte.
+
+**Webhooks externes (opt-in, désactivés par défaut).** Quand vous collez
+une URL de webhook (Discord, Slack, endpoint de bot Telegram ou toute URL)
+et basculez l'interrupteur, les textes des alertes warning/critiques sont
+POSTés vers cet endpoint en temps réel. Rien n'est envoyé tant que
+l'interrupteur est éteint.
 
 **La géolocalisation est 100 % hors ligne.** Une fois un fichier `.mmdb`
 DB-IP Lite ou MaxMind GeoLite2 dans `<data_dir>/geo/`, les recherches se

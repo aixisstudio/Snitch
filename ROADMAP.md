@@ -13,6 +13,8 @@
 
 Also live / également en place : Docker image on GHCR, Homebrew tap (`brew install --cask aixisstudio/tap/snitch`), winget package [submitted](https://github.com/microsoft/winget-pkgs/pull/455520), zh-CN README, GitHub Discussions.
 
+| **v1.2 (main, untagged)** | **Security & threat-hunting suite** — OS-firewall orchestration (rules IP/CIDR/domain/process/port via `netsh`/`iptables`/`pf`, best-effort privileges), lockdown panic switch, kill/suspend process actions, opt-in threat intel (AbuseIPDB/OTX), opt-in webhooks (Discord/Slack/Telegram/generic), DNS-tunnel & cleartext & country-baseline detection, security audit report, forensics export (process tree + SHA-256), 8-language UI (`locales/` files) / **suite sécurité & chasse aux menaces** — orchestration pare-feu OS, bouton lockdown, actions kill/suspend, threat intel opt-in, webhooks opt-in, détection tunnel DNS / trafic clair / déviation pays, audit de sécurité, export forensique, UI en 8 langues |
+
 ## 🚧 v1.x — in progress / en cours
 
 - [x] **Signed Windows installer** — CI wired for [SignPath](https://signpath.org) OSS (free Authenticode for approved projects); activates once the application is accepted — see `docs/SIGNING.md` / CI branchée sur SignPath OSS (signature Authenticode gratuite pour projets acceptés) ; s'active dès l'acceptation — voir `docs/SIGNING.md`
@@ -31,17 +33,40 @@ Also live / également en place : Docker image on GHCR, Homebrew tap (`brew inst
 - ~~Per-process bandwidth alert~~ — shipped as `UPLOAD_SPIKE` / livré via `UPLOAD_SPIKE`
 - Custom alert rules in the UI / règles d'alerte personnalisées dans l'UI
 - ~~Light theme / thème clair~~ — shipped in v1.0.7 / livré en v1.0.7
-- ~~More languages~~ — Spanish shipped; more welcome via `frontend/src/i18n.jsx` / espagnol livré ; d'autres bienvenues via `frontend/src/i18n.jsx`
+- ~~More languages~~ — 8 locales shipped in `frontend/src/locales/`; more welcome via a single-file PR / 8 locales livrées dans `frontend/src/locales/` ; d'autres bienvenues via une PR d'un seul fichier
 - Optional remote pairing for headless hosts — consent-gated, token-protected / appairage optionnel d'hôtes sans écran — avec consentement et jeton
 - Map layers: ASN / organisation view / couches de carte : vue ASN / organisation
+- Blocklist imports (StevenBlack hosts, EasyList) — needs a privacy/licensing review first / import de blocklists — revue vie privée/licence requise
+- Firewall profiles (strict/travel vs developer/permissive) / profils pare-feu (strict/voyage vs dev/permissif)
+
+## � Research — documented, not implemented / documenté, pas implémenté
+
+Ideas that would take Snitch toward a desktop EDR/XDR. They are tracked
+here honestly — **none of them is implemented**, each needs its own design,
+native components and often a second binary artifact / Idées qui mèneraient
+Snitch vers un EDR/XDR de bureau. Suivies ici honnêtement — **aucune n'est
+implémentée**, chacune exige sa conception, des composants natifs et souvent
+un second artefact binaire :
+
+- **eBPF probes (Linux)** — `sys_enter_connect`/`accept` kernel-space capture, bypass-resistant; needs a compiled BPF program + root / sondes eBPF — capture noyau in-contournable ; exige un programme BPF compilé + root
+- **WFP callout (Windows)** — real kernel packet filtering instead of `netsh` rule orchestration; needs a signed kernel driver / callout WFP — filtrage noyau réel au lieu de l'orchestration `netsh` ; exige un driver signé
+- **NetworkExtension (macOS)** — `NEFilterProvider` for per-bundle filtering; needs Apple Developer ID + entitlements / `NEFilterProvider` pour filtrer par bundle ; exige Developer ID + entitlements
+- **Memory/flow correlation** — unsigned-DLL / `PAGE_EXECUTE_READWRITE` inspection crossed with suspicious connections / corrélation mémoire/flux — inspection des régions exécutables croisée avec les connexions
+- **Dynamic Taint Analysis** — prove exfiltration byte-for-byte; heavy research / analyse de teinture dynamique — prouver l'exfiltration octet par octet ; recherche lourde
+- **Local SecOps SLM** — a 1–3 B param model explaining alerts in natural language / SLM SecOps local — un modèle 1–3 Md paramètres expliquant les alertes en langage naturel
+- **ZKP fleet intel** — share detections across a peer fleet without revealing endpoints / intel de flotte en ZKP — partager les détections sans révéler les endpoints
+- **PMU/hardware counters** — ransomware tells below the OS (speculation, crypto bursts) / compteurs matériels PMU — signaux de ransomware sous l'OS
+- **Merkle integrity of loaded modules** — detect hot-patched DLLs before first packet / intégrité Merkle des modules chargés — détecter les DLL patchées avant le premier paquet
+- **Sinkholing / micro-containment** — redirect a suspicious flow to a local honeypot instead of killing it / sinkholing / micro-confinement — rediriger un flux suspect vers un honeypot local au lieu de le tuer
+- **PCAP export** stays in scope above / l'export PCAP reste dans le périmètre ci-dessus
 
 ## 🚫 Out of scope / hors périmètre
 
 Deliberately, by design / volontairement, par conception :
 
-- **Blocking / firewall rules** — Snitch *observes and explains*; it does not block. Pair it with [OpenSnitch](https://github.com/evilsocket/opensnitch) or [Portmaster](https://safing.io/) if you need blocking. / **Blocage / pare-feu** — Snitch *observe et explique*, il ne bloque pas. Combinez-le avec OpenSnitch ou Portmaster si vous voulez bloquer.
 - **Telemetry, analytics, accounts, cloud sync** — never. / **Télémétrie, analytics, comptes, synchro cloud** — jamais.
 - **Passive network-wide IDS** — Snitch watches *this* machine, not the whole network. / **IDS passif à l'échelle du réseau** — Snitch observe *cette* machine, pas tout le réseau.
+- **User-space packet filtering** — blocking is delegated to the OS-native firewall (or future kernel components), never reimplemented. / **Filtrage de paquets en user-space** — le blocage est délégué au pare-feu natif de l'OS (ou à de futurs composants noyau), jamais réimplémenté.
 
 ## 🤝 Contributing / contribuer
 

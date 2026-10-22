@@ -3,7 +3,11 @@
 ## English
 
 Thanks for your interest! Snitch is a bilingual (EN/FR) project — code
-comments and user-facing text should exist in both languages where practical.
+comments and user-facing text should exist in both languages where
+practical. The UI ships 8 locales under `frontend/src/locales/` — a new
+language is a single file copied from `en.js` (keep key parity) plus an
+entry in `LANGS`/`LANG_NAMES` in `frontend/src/i18n.jsx`. Translation PRs
+are very welcome.
 
 **Ground rules**
 
@@ -30,7 +34,10 @@ Frontend: `npm run dev` → http://localhost:5173/?token=<token from backend out
 
 Merci de votre intérêt ! Snitch est un projet bilingue (EN/FR) — les
 commentaires de code et les textes utilisateur doivent exister dans les deux
-langues autant que possible.
+langues autant que possible. L'UI compte 8 locales dans
+`frontend/src/locales/` — une nouvelle langue = un nouveau fichier copiant
+`en.js` (gardez les clés en parité) + une entrée dans `LANGS`/`LANG_NAMES`
+de `frontend/src/i18n.jsx`.
 
 **Règles de base**
 

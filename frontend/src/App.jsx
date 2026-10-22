@@ -22,6 +22,7 @@ import Sidebar, { matchesFilter } from './components/Sidebar'
 import SearchBar from './components/SearchBar'
 import { AlertBell, AlertPanel, AlertToasts } from './components/AlertPanel'
 import { SettingsButton, SettingsPanel } from './components/Settings'
+import { FirewallButton, FirewallPanel } from './components/Firewall'
 import Onboarding from './components/Onboarding'
 import Timeline from './components/Timeline'
 import Dropdown from './components/Dropdown'
@@ -30,7 +31,7 @@ import { useWebSocket } from './hooks/useWebSocket'
 import { computePrivacyScore } from './scoring/privacy'
 // EN: WS URL is resolved dynamically (port + ws/wss) via api.js wsBase().
 // FR: L'URL WS est résolue dynamiquement (port + ws/wss) via wsBase() d'api.js.
-import { useT } from './i18n'
+import { useT, LANGS, LANG_NAMES } from './i18n'
 
 export default function App() {
   const { nodes, edges, lanDevices, packets, alerts, unread, clearUnread, status, bandwidth, capturing, toggleCapture, portFilter, updatePortFilter, excludedProcesses, updateProcessFilter, whitelistedIps, updateIpWhitelist, media, ssid, iface, watchlist, updateWatchlist } = useWebSocket(null)  // EN: null → resolves the dynamic port/scheme via wsBase()
@@ -39,6 +40,8 @@ export default function App() {
   const [view, setView] = useState('graph')
   const [showAlerts, setShowAlerts] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
+  const [showFirewall, setShowFirewall] = useState(false)
+  const [lockdown, setLockdown] = useState(false)
   // EN: First-run explainer — shown once, flag persisted in localStorage.
   // FR: Explications de premier lancement — affichées une fois, drapeau
   //     persisté en localStorage.
@@ -199,6 +202,7 @@ export default function App() {
             <ProcessFilter excluded={excludedProcesses} onChange={updateProcessFilter} nodes={nodes} />
             <PortFilter ports={portFilter} onUpdate={updatePortFilter} />
             <IPWhitelist ips={whitelistedIps} onUpdate={updateIpWhitelist} />
+            <FirewallButton onClick={() => setShowFirewall(v => !v)} lockdown={lockdown} />
             <CaptureToggle capturing={capturing} onToggle={toggleCapture} />
             <AlertBell unread={unread} onClick={handleBell} />
             <SettingsButton onClick={() => setShowSettings(v => !v)} />
@@ -212,6 +216,10 @@ export default function App() {
           {showSettings && (
             <SettingsPanel onClose={() => setShowSettings(false)} lang={lang} setLang={setLang}
               watchlist={watchlist} onWatchlist={updateWatchlist} iface={iface} />
+          )}
+
+          {showFirewall && (
+            <FirewallPanel onClose={() => setShowFirewall(false)} onLockdownChange={setLockdown} />
           )}
 
           {showOnboarding && <Onboarding onDone={() => setShowOnboarding(false)} />}
@@ -752,28 +760,23 @@ function ThemeToggle() {
   )
 }
 
-/** EN: EN/FR/ES language toggle — the headline feature.
- *  FR: Bascule de langue EN/FR/ES — la fonctionnalité vedette. */
+/** EN: Language picker — a compact dropdown now that eight locales exist.
+ *  FR: Sélecteur de langue — menu déroulant compact désormais que huit
+ *      locales existent. */
 function LangToggle() {
   const { lang, setLang } = useT()
   return (
-    <div style={{
-      display: 'flex', background: 'var(--surface)',
-      border: '1px solid var(--border)', borderRadius: 20, overflow: 'hidden',
-    }}>
-      {['en', 'fr', 'es'].map(l => (
-        <button key={l} onClick={() => setLang(l)} style={{
-          background: lang === l ? '#3b82f6' : 'transparent',
-          border: 'none', cursor: 'pointer',
-          color: lang === l ? '#fff' : 'var(--text-muted)',
-          padding: '5px 12px', fontSize: 11, fontWeight: 600,
-          textTransform: 'uppercase',
-          transition: 'background 0.15s',
-        }}>
-          {l}
-        </button>
+    <select value={lang} onChange={e => setLang(e.target.value)}
+      aria-label="Language / Langue" style={{
+        background: 'var(--surface)', border: '1px solid var(--border)',
+        borderRadius: 20, color: 'var(--text-muted)',
+        padding: '5px 10px', fontSize: 11, fontWeight: 600,
+        cursor: 'pointer', outline: 'none',
+      }}>
+      {LANGS.map(l => (
+        <option key={l} value={l}>{LANG_NAMES[l]}</option>
       ))}
-    </div>
+    </select>
   )
 }
 

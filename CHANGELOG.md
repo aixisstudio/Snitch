@@ -4,6 +4,21 @@ All notable changes to Snitch. / Toutes les modifications notables de Snitch.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/) — EN/FR.
 
+## [Unreleased]
+
+### Added / Ajouté
+
+- **Outbound firewall orchestration / Orchestration du pare-feu sortant** — user rules (`ip`, `cidr`, `domain`, `process`, `port`) applied to the OS-native firewall best-effort: `netsh advfirewall` on Windows, `iptables` on Linux, a generated `pf` anchor on macOS. Persisted, re-applied at startup, honest `applied=False` when privileges are missing (matching + `BLOCKED_ATTEMPT` counters still work). / Règles utilisateur (`ip`, `cidr`, `domain`, `process`, `port`) appliquées au pare-feu natif OS au mieux : `netsh` sous Windows, `iptables` sous Linux, ancre `pf` sous macOS. Persistées, réappliquées au démarrage, `applied=False` honnête sans privilèges (matching + compteurs `BLOCKED_ATTEMPT` actifs).
+- **Lockdown / Confinement** — panic switch dropping outbound traffic to public IPs while keeping loopback/LAN alive (Linux `SNITCH_LOCK` chain, `netsh` rules, `pf` anchor). / Interrupteur panique coupant le trafic sortant vers les IP publiques tout en préservant loopback/LAN.
+- **Process actions / Actions processus** — `POST /processes/kill` and `POST /processes/suspend` (by PID, refuses PIDs ≤ 3 and Snitch itself); kill/suspend buttons in the process list. / `POST /processes/kill` et `POST /processes/suspend` (par PID, refuse les PID ≤ 3 et Snitch) ; boutons kill/suspend dans la liste des processus.
+- **Threat intelligence (opt-in) / Threat intel (opt-in)** — reputation checks against AbuseIPDB, AlienVault OTX or VirusTotal with your own API key; off by default, one call per newly-seen public IP, bounded LRU cache + dedup, `THREAT_HIT` alerts on suspicious/malicious verdicts. / Vérifs de réputation via AbuseIPDB, AlienVault OTX ou VirusTotal avec votre clé ; désactivé par défaut, un appel par IP publique nouvelle, cache LRU borné + dédup, alertes `THREAT_HIT`.
+- **External webhooks (opt-in) / Webhooks externes (opt-in)** — warning/critical alerts POSTed live to Discord, Slack, Telegram (with chat ID) or any endpoint; off by default. / Alertes warning/critiques POSTées en direct vers Discord, Slack, Telegram ou tout endpoint ; désactivé par défaut.
+- **Detection additions / Ajouts de détection** — `DNS_TUNNEL` (oversized DNS names/labels), `CLEARTEXT` (FTP/Telnet/HTTP/plain-mail egress), `BASELINE_DEVIATION` (per-process learned country profile, persisted). / `DNS_TUNNEL` (noms/labels DNS surdimensionnés), `CLEARTEXT` (sorties FTP/Telnet/HTTP/mail en clair), `BASELINE_DEVIATION` (profil pays appris par processus, persisté).
+- **Security audit / Audit de sécurité** — `GET /security/audit` computes a 0–100 score plus plain-language recommendations from recent alerts and the live graph; surfaced in the Firewall panel. / `GET /security/audit` calcule un score 0–100 + recommandations en langage clair depuis les alertes récentes et le graphe ; affiché dans le panneau Pare-feu.
+- **Forensics export / Export forensique** — `GET /forensics/export?format=json|csv|stix` bundles process tree, executable SHA-256, matching alerts and traffic history; STIX is a minimal 2.1 bundle (indicators + observed-data) for SIEM import. / `GET /forensics/export?format=json|csv|stix` — arbre de processus, SHA-256 de l'exécutable, alertes et historique ; STIX = bundle 2.1 minimal pour SIEM.
+- **Firewall & security UI / UI pare-feu & sécurité** — dedicated panel: lockdown switch, rule create/toggle/delete, per-rule blocked counters, platform-support honesty, audit report, forensics download buttons; per-connection Block action in the sidebar. / Panneau dédié : lockdown, création/bascule/suppression de règles, compteurs bloqués par règle, honnêteté plateforme, rapport d'audit, boutons d'export forensique ; action Bloquer par connexion dans la sidebar.
+- **Five new UI locales / Cinq nouvelles locales** — de, ru, ja, pt-BR, zh-CN (8 total, 280-key parity-checked); dictionaries moved to `frontend/src/locales/*.js` so a new language is a single-file PR. / de, ru, ja, pt-BR, zh-CN (8 au total, parité 280 clés) ; dictionnaires déplacés vers `frontend/src/locales/*.js` — une nouvelle langue = PR d'un fichier.
+
 ## [1.1.0] — 2026-10-22
 
 ### Added / Ajouté

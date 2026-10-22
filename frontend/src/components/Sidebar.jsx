@@ -9,10 +9,11 @@
  *     listes déroulantes appareils LAN + hôtes externes, et le flux de
  *     paquets récents.
  */
-import { Wifi, Smartphone, Monitor, Tv, Cpu, HelpCircle, ShieldOff } from 'lucide-react'
+import { Wifi, Smartphone, Monitor, Tv, Cpu, HelpCircle, ShieldOff, Shield, Skull, PauseCircle } from 'lucide-react'
 import PrivacyScore from './PrivacyScore'
 import BandwidthChart from './BandwidthChart'
 import { useT } from '../i18n'
+import { apiBase, authHeaders } from '../api'
 
 // EN: Lucide icon per LAN device type. / FR: Icône Lucide par type d'appareil LAN.
 const DEVICE_ICONS = {
@@ -288,8 +289,40 @@ function NodeRow({ node }) {
   )
 }
 
-/** EN: Selected-node fields + top processes + whitelist action.
- *  FR: Champs du nœud sélectionné + top processus + action de whitelist. */
+/**
+ * EN: Incident-response actions — block a remote IP via /firewall/rules and
+ *     kill/suspend a process via /processes/*. Both are authenticated POSTs;
+ *     failures are ignored silently (the backend returns 400 with detail).
+ * FR: Actions de réponse à incident — bloquer une IP via /firewall/rules et
+ *     tuer/suspendre un processus via /processes/*. POSTs authentifiés ; les
+ *     échecs sont ignorés en silence (le backend renvoie 400 avec détail).
+ */
+async function blockIp(ip) {
+  if (!ip) return
+  const base = await apiBase()
+  try {
+    await fetch(`${base}/firewall/rules`, {
+      method: 'POST',
+      headers: await authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ kind: 'ip', value: ip }),
+    })
+  } catch { /* best effort */ }
+}
+
+async function procAction(action, pid) {
+  if (!pid) return
+  const base = await apiBase()
+  try {
+    await fetch(`${base}/processes/${action}`, {
+      method: 'POST',
+      headers: await authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ pid }),
+    })
+  } catch { /* best effort */ }
+}
+
+/** EN: Selected-node fields + top processes + whitelist/block actions.
+ *  FR: Champs du nœud sélectionné + top processus + actions whitelist/blocage. */
 function NodeDetail({ node, onWhitelist }) {
   const { t } = useT()
   const fields = [
@@ -355,27 +388,58 @@ function NodeDetail({ node, onWhitelist }) {
           </div>
           {processes.map(([name, stats]) => (
             <div key={name} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3, alignItems: 'center' }}>
-              <span style={{ fontSize: 10, color: 'var(--text-dim)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 150 }}>
+              <span style={{ fontSize: 10, color: 'var(--text-dim)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 130 }}>
                 {name}
               </span>
-              <span style={{ fontSize: 9, color: 'var(--text-faint)', flexShrink: 0 }}>{fmt(stats.bytes)}</span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+                <span style={{ fontSize: 9, color: 'var(--text-faint)' }}>{fmt(stats.bytes)}</span>
+                {/* EN: Kill/suspend — only when a PID is known for the process.
+                    FR: Tuer/suspendre — seulement si un PID est connu. */}
+                {stats.pid && (
+                  <>
+                    <button onClick={() => procAction('suspend', stats.pid)}
+                      title={t('proc_suspend')} aria-label={t('proc_suspend')}
+                      style={{ background: 'none', border: 'none', color: '#f59e0b', cursor: 'pointer', padding: 0, display: 'flex' }}>
+                      <PauseCircle size={11} />
+                    </button>
+                    <button onClick={() => procAction('kill', stats.pid)}
+                      title={t('proc_kill')} aria-label={t('proc_kill')}
+                      style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: 0, display: 'flex' }}>
+                      <Skull size={11} />
+                    </button>
+                  </>
+                )}
+              </span>
             </div>
           ))}
         </>
       )}
 
-      {/* EN: "Mark as trusted" — sends the IP to the whitelist endpoint.
-          FR: « Marquer comme fiable » — envoie l'IP à l'endpoint de whitelist. */}
-      {node.id !== 'local' && node.ip && onWhitelist && (
-        <button onClick={() => onWhitelist(node.ip)} style={{
-          marginTop: 10, width: '100%', display: 'flex', alignItems: 'center',
-          justifyContent: 'center', gap: 6,
-          background: 'none', border: '1px solid #22c55e', borderRadius: 6,
-          padding: '5px 0', color: 'var(--green-text)', fontSize: 10, cursor: 'pointer',
-        }}>
-          <ShieldOff size={11} />
-          {t('whitelist_action')}
-        </button>
+      {/* EN: "Mark as trusted" + "Block" — whitelist and firewall rule.
+          FR: « Marquer comme fiable » + « Bloquer » — whitelist et règle pare-feu. */}
+      {node.id !== 'local' && node.ip && (
+        <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
+          {onWhitelist && (
+            <button onClick={() => onWhitelist(node.ip)} style={{
+              flex: 1, display: 'flex', alignItems: 'center',
+              justifyContent: 'center', gap: 6,
+              background: 'none', border: '1px solid #22c55e', borderRadius: 6,
+              padding: '5px 0', color: 'var(--green-text)', fontSize: 10, cursor: 'pointer',
+            }}>
+              <ShieldOff size={11} />
+              {t('whitelist_action')}
+            </button>
+          )}
+          <button onClick={() => blockIp(node.ip || node.id)} style={{
+            flex: 1, display: 'flex', alignItems: 'center',
+            justifyContent: 'center', gap: 6,
+            background: 'none', border: '1px solid #ef4444', borderRadius: 6,
+            padding: '5px 0', color: 'var(--red-text)', fontSize: 10, cursor: 'pointer',
+          }}>
+            <Shield size={11} />
+            {t('block_action')}
+          </button>
+        </div>
       )}
     </div>
   )

@@ -208,6 +208,45 @@ MAX_SEEN_PROC_CONNS = 50_000
 MAX_TRACKED_IPS = 10_000
 MAX_COOLDOWN_KEYS = 10_000
 
+# ── DNS tunneling / Tunneling DNS ────────────────────────────────────────────
+# EN: DNS tunnels hide payloads in hostnames (base32/base64-encoded data
+#     smuggled through a resolver). Heuristics: absurdly long full names or
+#     single labels — legit names almost never exceed ~50 chars or have a
+#     > 40-char label.
+# FR: Les tunnels DNS cachent des données dans les noms d'hôtes (données
+#     encodées base32/base64 passées par un résolveur). Heuristiques : noms
+#     complets absurdement longs ou labels uniques longs — les noms légitimes
+#     dépassent rarement ~50 car. ou n'ont pas de label > 40 car.
+DNS_NAME_MAX = 60
+DNS_LABEL_MAX = 40
+
+# ── Cleartext protocols / Protocoles en clair ────────────────────────────────
+# EN: Remote ports whose traffic is unencrypted by design — useful for a
+#     "hardening" audit: any process still talking FTP/Telnet/HTTP/plain
+#     mail deserves a look.
+# FR: Ports distants dont le trafic est non chiffré par nature — utile pour
+#     un audit « hardening » : tout processus parlant encore FTP/Telnet/HTTP
+#     ou mail en clair mérite un coup d'œil.
+CLEARTEXT_PORTS = {
+    21: "FTP", 23: "Telnet", 25: "SMTP", 80: "HTTP",
+    110: "POP3", 143: "IMAP", 389: "LDAP",
+}
+CLEARTEXT_COOLDOWN = 3600
+
+# ── Application baseline / Base applicative ──────────────────────────────────
+# EN: Per-process learned profile — which countries a process normally talks
+#     to. The first BASELINE_LEARN_MIN packets teach the profile silently;
+#     afterwards a NEW country for a known process raises BASELINE_DEVIATION
+#     (e.g. Slack suddenly reaching a residential IP range abroad).
+# FR: Profil appris par processus — les pays avec lesquels un processus
+#     parle normalement. Les BASELINE_LEARN_MIN premiers paquets enseignent
+#     le profil en silence ; ensuite un NOUVEAU pays pour un processus connu
+#     lève BASELINE_DEVIATION (ex. Slack qui joint soudain une IP
+#     résidentielle à l'étranger).
+BASELINE_LEARN_MIN = 10
+BASELINE_MAX_PROCS = 2_000
+BASELINE_COOLDOWN = 900
+
 
 class BoundedSet:
     """
@@ -307,6 +346,14 @@ class AnomalyDetector:
         self._watch_ips: set[str] = set()
         self._watch_domains: set[str] = set()
 
+        # EN: Per-process baselines — proc → {"countries": set, "ports": set,
+        #     "seen": int}. Persisted via the settings table by the API layer
+        #     (dump_baselines/load_baselines). Bounded by BASELINE_MAX_PROCS.
+        # FR: Bases par processus — proc → {"countries": set, "ports": set,
+        #     "seen": int}. Persistées via la table settings par la couche API
+        #     (dump_baselines/load_baselines). Bornées par BASELINE_MAX_PROCS.
+        self._baselines: OrderedDict[str, dict] = OrderedDict()
+
         # EN: User suppressions — persisted in the settings table, loaded at
         #     startup. An entry is {"type": "BEACON"|None, "ip": "1.2.3.4"|None};
         #     a packet is suppressed when BOTH non-None fields match.
@@ -372,6 +419,31 @@ class AnomalyDetector:
                     self._watch_ips.add(s)
                 except ValueError:
                     self._watch_domains.add(s)
+
+    def load_baselines(self, data: dict) -> None:
+        """EN: Restore persisted baselines (from settings). Values arrive as
+            JSON lists — converted back to sets.
+        FR: Restaurer les bases persistées — les listes JSON redeviennent des
+        ensembles."""
+        with self._lock:
+            self._baselines = OrderedDict()
+            for proc, prof in (data or {}).items():
+                if not isinstance(prof, dict):
+                    continue
+                self._baselines[proc] = {
+                    "countries": set(prof.get("countries", [])),
+                    "ports": set(prof.get("ports", [])),
+                    "seen": int(prof.get("seen", 0)),
+                }
+
+    def dump_baselines(self) -> dict:
+        """EN: JSON-safe snapshot for persistence (called by the flush loop).
+        FR: Instantané JSON pour la persistance (appelé par la boucle flush)."""
+        with self._lock:
+            return {proc: {"countries": sorted(p["countries"]),
+                           "ports": sorted(p["ports"]),
+                           "seen": p["seen"]}
+                    for proc, p in list(self._baselines.items())[:BASELINE_MAX_PROCS]}
 
     def forget(self, ip: str) -> None:
         """
@@ -439,6 +511,9 @@ class AnomalyDetector:
             alerts += self._check_media_exfil(pkt, remote_ip, geo)
             alerts += self._check_upload_spike(pkt, remote_ip, geo)
             alerts += self._check_watchlist(pkt, remote_ip, geo)
+            alerts += self._check_dns_tunnel(pkt, remote_ip, geo)
+            alerts += self._check_cleartext(pkt, remote_ip, geo)
+            alerts += self._check_baseline(pkt, remote_ip, geo)
             # EN: Drop suppressed alerts before recording — persisted
             #     "ignore this host/type" rules from the UI.
             # FR: Écarter les alertes supprimées avant l'enregistrement —
@@ -836,6 +911,132 @@ class AnomalyDetector:
         )]
 
     # ── Helpers / Utilitaires ────────────────────────────────────────────────
+
+    def _check_dns_tunnel(self, pkt: Packet, remote_ip: str, geo: dict) -> list[Alert]:
+        """
+        EN: DNS-tunneling heuristic — data smuggled inside queried hostnames
+            shows up as absurdly long names/labels (base32/base64 chunks).
+            The parser hands us answer names, which echo the queried name,
+            so responses are enough. One alert per offender per cooldown.
+        FR: Heuristique de tunneling DNS — les données passées dans les noms
+            interrogés donnent des noms/labels absurdement longs (chunks
+            base32/base64). Le parseur fournit les noms des réponses, qui
+            reflètent le nom interrogé — les réponses suffisent. Une alerte
+            par contrevenant par cooldown.
+        """
+        if not pkt.dns:
+            return []
+        worst = ""
+        for name, _ip, _ttl in pkt.dns:
+            if not name or len(name) <= DNS_NAME_MAX and \
+                    all(len(lbl) <= DNS_LABEL_MAX for lbl in name.split(".")):
+                continue
+            if len(name) > len(worst):
+                worst = name
+        if not worst:
+            return []
+        if not self._cooldown_ok(f"dnstunnel:{remote_ip}", cooldown=600):
+            return []
+        proc = pkt.process_name or "unknown"
+        return [Alert(
+            type="DNS_TUNNEL",
+            severity="warning",
+            message=f"Possible DNS tunneling: oversized name '{worst[:60]}…' queried by {proc}",
+            node_id=remote_ip,
+            details={"ip": remote_ip, "name": worst, "process": proc,
+                     "length": len(worst)},
+        )]
+
+    def _check_cleartext(self, pkt: Packet, remote_ip: str, geo: dict) -> list[Alert]:
+        """
+        EN: Unencrypted-by-design remote ports — flagged at INFO level for the
+            hardening audit (a plaintext channel is a risk finding, not an
+            attack). Once per destination per hour.
+        FR: Ports distants non chiffrés par nature — signalés en INFO pour
+            l'audit de durcissement (un canal en clair est un constat de
+            risque, pas une attaque). Une fois par destination par heure.
+        """
+        if pkt.direction != "out" or pkt.protocol != "TCP":
+            return []
+        proto = CLEARTEXT_PORTS.get(pkt.dst_port or 0)
+        if not proto:
+            return []
+        if not self._cooldown_ok(f"cleartext:{remote_ip}:{pkt.dst_port}",
+                                 cooldown=CLEARTEXT_COOLDOWN):
+            return []
+        label = geo.get("hostname") or remote_ip
+        proc = pkt.process_name or "unknown"
+        return [Alert(
+            type="CLEARTEXT",
+            severity="info",
+            message=f"Unencrypted {proto} connection to {label} by {proc}",
+            node_id=remote_ip,
+            details={"ip": remote_ip, "host": label, "port": pkt.dst_port,
+                     "proto": proto, "process": proc},
+        )]
+
+    def _check_baseline(self, pkt: Packet, remote_ip: str, geo: dict) -> list[Alert]:
+        """
+        EN: Application profiling — learn each process's normal destination
+            countries during its first BASELINE_LEARN_MIN packets, then alert
+            when a KNOWN process reaches a NEW country. Ports are learned
+            silently (they legitimately vary); only geography deviates an
+            alert — "Slack shouldn't talk to a residential IP abroad".
+        FR: Profilage applicatif — apprendre les pays de destination
+            normaux de chaque processus sur ses BASELINE_LEARN_MIN premiers
+            paquets, puis alerter quand un processus CONNU joint un NOUVEAU
+            pays. Les ports sont appris en silence (ils varient
+            légitimement) — seule la géographie dévie en alerte.
+        """
+        proc = (pkt.process_name or "").strip()
+        if not proc:
+            return []
+        key = proc.lower()
+        if len(self._baselines) > BASELINE_MAX_PROCS and key not in self._baselines:
+            return []
+
+        prof = self._baselines.get(key)
+        if prof is None:
+            prof = {"countries": set(), "ports": set(), "seen": 0}
+            self._baselines[key] = prof
+        self._baselines.move_to_end(key)
+
+        country = (geo.get("country_code") or geo.get("country") or "").strip().upper()
+        port = pkt.dst_port if pkt.direction == "out" else pkt.src_port
+        prof["seen"] += 1
+        if port:
+            prof["ports"].add(int(port))
+            if len(prof["ports"]) > 64:
+                prof["ports"] = set(list(prof["ports"])[-64:])
+
+        # EN: Still learning — record, don't alert.
+        # FR: Apprentissage en cours — enregistrer, ne pas alerter.
+        if prof["seen"] <= BASELINE_LEARN_MIN or not country or country == "??":
+            if country:
+                prof["countries"].add(country)
+            return []
+
+        if country in prof["countries"]:
+            return []
+        # EN: Learn the new country too (it may be legitimate travel/CDN),
+        #     but alert once — the analyst decides.
+        # FR: Apprendre aussi le nouveau pays (peut être un déplacement/CDN
+        #     légitime), mais alerter une fois — l'analyste décide.
+        prof["countries"].add(country)
+        if len(prof["countries"]) > 32:
+            prof["countries"] = set(list(prof["countries"])[-32:])
+        if not self._cooldown_ok(f"baseline:{key}:{country}",
+                                 cooldown=BASELINE_COOLDOWN):
+            return []
+        label = geo.get("hostname") or remote_ip
+        return [Alert(
+            type="BASELINE_DEVIATION",
+            severity="warning",
+            message=f"{proc} contacted a new country: {country} ({label})",
+            node_id=remote_ip,
+            details={"ip": remote_ip, "host": label, "process": proc,
+                     "country": country, "known": sorted(prof["countries"])},
+        )]
 
     def _cooldown_ok(self, key: str, cooldown: int = COOLDOWN) -> bool:
         """

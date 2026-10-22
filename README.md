@@ -31,11 +31,11 @@
 **Snitch** is a real-time network traffic visualizer.
 See every connection your computer makes — who it talks to, where they are, and which app is responsible.
 
-The entire interface is available in **English, French and Spanish**: use the `EN / FR / ES` toggle in the top-right toolbar.
+The entire interface is available in **English, Français, Español, Deutsch, Русский, 日本語, Português (BR) and 简体中文**: use the language picker in the top-right toolbar.
 
 ### Why Snitch?
 
-- **vs Little Snitch / Lulu** — those are macOS firewalls that *block* connections; Snitch *visualizes and explains* traffic, is cross-platform, free and open-source.
+- **vs Little Snitch / Lulu** — same idea (per-app outbound visibility + blocking rules), but Snitch is cross-platform, free and open-source. Blocking is orchestrated through the OS-native firewall (`netsh` / `iptables` / `pf`) — Snitch never filters in user-space.
 - **vs GlassWire** — Snitch is free, open-source (AGPL), requires no account and makes **zero outbound calls**; even geolocation is offline.
 - **vs Wireshark** — Snitch gives a live, high-level overview anyone can read, instead of raw packet dissection.
 - **vs cloud-based monitors** — everything runs on `127.0.0.1` behind a token; your traffic data never leaves the machine.
@@ -47,7 +47,15 @@ The entire interface is available in **English, French and Spanish**: use the `E
 | Force Graph | Live node graph — your machine at the center, every connection as a node |
 | World Map | Geolocated IPs with animated arcs on an interactive globe |
 | 15/30/60-min Timeline | Sliding history stored locally in SQLite (24 h retention) |
-| Anomaly Detection | Flags port scans, beaconing, potential exfiltration |
+| Anomaly Detection | Flags port scans, beaconing (regular-interval C2), potential exfiltration |
+| Advanced Detection | DNS-tunnelling heuristic, cleartext-port spotting, per-app country baseline deviation |
+| Firewall Orchestration | Block rules (IP/CIDR/domain/process/port) applied to the OS firewall — `netsh`/`iptables`/`pf`, persisted, per-rule blocked counters |
+| Lockdown Mode | Panic switch — flags & blocks all public outbound traffic, LAN stays up |
+| Incident Response | Kill / suspend a process, block an IP — one click from the connection detail |
+| Threat Intelligence | **Opt-in** reputation checks (AbuseIPDB / AlienVault OTX / VirusTotal) with your own API key — off by default, results cached |
+| Security Audit | Built-in hardening report — score, findings, plain-language recommendations |
+| Forensics Export | One-click investigation bundle — process tree + SHA-256 of the binary, history & matching alerts |
+| Webhook Alerting | **Opt-in** forwarding of warning/critical alerts to Discord, Slack, Telegram or any endpoint |
 | Process Attribution | Know which app generates which traffic (top 5 per connection) |
 | LAN Scanner | Passive discovery via the system ARP table (no broadcast scans) |
 | Privacy Score | Real-time score of your outgoing traffic exposure |
@@ -56,7 +64,7 @@ The entire interface is available in **English, French and Spanish**: use the `E
 | Settings Panel | Language, retention, filters, consent-gated GeoIP download, diagnostics |
 | Tracker Detection | Suffix-matched domain lists shipped as editable data files (`backend/classifier/lists/`) |
 | Bandwidth Monitor | Live MB/s sparkline |
-| EN / FR / ES UI | Full trilingual interface, one click to switch |
+| 8-language UI | EN · FR · ES · DE · RU · JA · PT-BR · ZH-CN — one click to switch, locales live in `frontend/src/locales/` |
 | Light / Dark Theme | Follows your OS preference by default, manual toggle persists |
 | Auto-Update | Desktop app checks GitHub Releases (opt-out in Settings; `SNITCH_NO_UPDATE=1`) |
 | QUIC / HTTP/3 | UDP/443 flows labeled honestly — QUIC SNI is encrypted and never read |
@@ -98,14 +106,16 @@ Or grab the latest release: **[github.com/aixisstudio/Snitch/releases](https://g
 - **API token** — every REST endpoint and the WebSocket require a token. Electron generates it per launch; in Docker/browser it's printed once in the backend logs and stored in `data/api_token.txt`. Open the UI with `http://localhost:8000/?token=<TOKEN>` (or enter it when prompted).
 - **Loopback-only by default** — the API binds `127.0.0.1` in every mode. Set `SNITCH_BIND=0.0.0.0` only if you explicitly want LAN access (token auth still applies).
 - **CORS/WebSocket origin allowlist** — only `localhost:5173`, the backend's own origin and Electron `file://` pages may connect.
-- **Geolocation is offline-only** — there is *no* online lookup. DB-IP Lite ([CC BY 4.0](https://db-ip.com/db/lite.php)) ships gzip'd in `backend/data/geo/` and is auto-extracted into `<data_dir>/geo/` on first launch — geo works out of the box, zero network calls. You may still drop newer `GeoLite2-City.mmdb`/`GeoLite2-ASN.mmdb` (MaxMind) into `<data_dir>/geo/`, or download a fresh DB-IP Lite from the Settings panel (explicit consent, the only possible outbound call).
-- **All data stays local** — `snitch.db` (24 h sliding window, configurable via `retention_hours` setting) and `data/logs/snitch.log` never leave the machine. No telemetry. The **only** possible outbound call is the opt-in DB-IP Lite download (Settings → "Download DB-IP Lite"), which requires an explicit click.
-- **Settings persist** — port filters, excluded processes, the IP whitelist, language and retention are stored in SQLite and restored on restart.
+- **Geolocation is offline-only** — there is *no* online lookup. DB-IP Lite ([CC BY 4.0](https://db-ip.com/db/lite.php)) ships gzip'd in `backend/data/geo/` and is auto-extracted into `<data_dir>/geo/` on first launch — geo works out of the box, zero network calls. You may still drop newer `GeoLite2-City.mmdb`/`GeoLite2-ASN.mmdb` (MaxMind) into `<data_dir>/geo/`, or download a fresh DB-IP Lite from the Settings panel (explicit consent; the other opt-in outbound calls — threat intel, webhooks, update checks — are listed in [PRIVACY.md](PRIVACY.md)).
+- **All data stays local** — `snitch.db` (24 h sliding window, configurable via `retention_hours` setting) and `data/logs/snitch.log` never leave the machine. No telemetry. Every outbound call is opt-in — DB-IP Lite download, threat-intel lookups, webhooks and update checks are each gated by your explicit action or a switch (see [PRIVACY.md](PRIVACY.md)).
+- **Settings persist** — port filters, excluded processes, the IP whitelist, firewall rules, language and retention are stored in SQLite and restored on restart.
+- **Firewall rules are best-effort** — the backend drives the OS firewall (`netsh advfirewall`, `iptables`, `pf` anchors); when privileges are missing the rule is kept and matched for *visibility* (BLOCKED_ATTEMPT alerts) and marked "not applied" instead of pretending enforcement. Lockdown keeps loopback + LAN alive so the UI stays reachable.
+- **Threat intelligence & webhooks are opt-in** — disabled by default; enabling a provider (AbuseIPDB/OTX/VirusTotal, your own API key) or a webhook adds outbound calls, documented in [PRIVACY.md](PRIVACY.md).
 - **Alert suppression** — each alert has an "Ignore this type/host" action; suppression rules are persisted (`alert_suppressions` table), applied before alerts are emitted or logged, and survivable across restarts via `POST /alerts/ignore` / `DELETE /alerts/ignore` / `GET /alerts/ignore`.
 - **History** — per-minute per-host and per-process byte/packet aggregates are kept in SQLite (`host_history`, `process_history`) for the retention window, powering the per-application view and `GET /history/host/{ip}` / `GET /history/process/{name}`.
 - **Diagnostics** — `GET /diagnostics` returns a JSON snapshot of the runtime (capture state, geo DB status, interface, versions, paths) with no secrets; the Settings panel can export it or open the log directory (Electron).
 - **LAN devices** are discovered passively from the system ARP table — no active broadcast scanning. Device names are learned from what devices broadcast themselves: mDNS `*.local` (Apple/Linux), LLMNR & NetBIOS names (Windows), DHCP hostname options, plus the full offline IEEE OUI vendor table, and your gateway is auto-detected as the router.
-- See [docs/threat-model.md](docs/threat-model.md) for the full threat model.
+- See [docs/threat-model.md](docs/threat-model.md) for the full threat model and [docs/FIREWALL.md](docs/FIREWALL.md) for the security suite (firewall orchestration, lockdown, threat intel, webhooks, audit, forensics).
 
 ### Docker (Linux)
 
@@ -229,11 +239,11 @@ snitch/
 **Snitch** est un visualiseur de trafic réseau en temps réel.
 Voyez chaque connexion que votre ordinateur établit — à qui il parle, où se trouvent les serveurs, et quelle application est responsable.
 
-Toute l'interface est disponible en **français, anglais et espagnol** : utilisez le sélecteur `EN / FR / ES` dans la barre d'outils en haut à droite.
+Toute l'interface est disponible en **English, Français, Español, Deutsch, Русский, 日本語, Português (BR) et 简体中文** : utilisez le sélecteur de langue dans la barre d'outils en haut à droite.
 
 ### Pourquoi Snitch ?
 
-- **vs Little Snitch / Lulu** — ce sont des pare-feux macOS qui *bloquent* les connexions ; Snitch *visualise et explique* le trafic, est multiplateforme, gratuit et open-source.
+- **vs Little Snitch / Lulu** — même idée (visibilité par app + règles de blocage sortantes), mais Snitch est multiplateforme, gratuit et open-source. Le blocage est orchestré via le pare-feu natif de l'OS (`netsh` / `iptables` / `pf`) — Snitch ne filtre jamais en user-space.
 - **vs GlassWire** — Snitch est gratuit, open-source (AGPL), sans compte et n'effectue **aucun appel sortant** ; même la géolocalisation est hors ligne.
 - **vs Wireshark** — Snitch offre une vue d'ensemble en direct lisible par tous, plutôt qu'une dissection brute de paquets.
 - **vs les moniteurs cloud** — tout tourne sur `127.0.0.1` derrière un jeton ; vos données de trafic ne quittent jamais la machine.
@@ -245,7 +255,15 @@ Toute l'interface est disponible en **français, anglais et espagnol** : utilise
 | Graphe de force | Graphe de nœuds en direct — votre machine au centre, chaque connexion comme nœud |
 | Carte du monde | IPs géolocalisées avec arcs animés sur un globe interactif |
 | Timeline 15/30/60 min | Historique glissant stocké localement dans SQLite (rétention 24 h) |
-| Détection d'anomalies | Signale scans de ports, beaconing, exfiltration potentielle |
+| Détection d'anomalies | Signale scans de ports, beaconing (C2 à intervalle régulier), exfiltration potentielle |
+| Détection avancée | Heuristique de tunnel DNS, repérage de trafic en clair, déviation de baseline pays par application |
+| Orchestration pare-feu | Règles de blocage (IP/CIDR/domaine/processus/port) appliquées au pare-feu OS — `netsh`/`iptables`/`pf`, persistées, compteurs de blocages |
+| Mode lockdown | Bouton panique — signale & bloque tout le trafic sortant public, le LAN reste actif |
+| Réponse à incident | Tuer / suspendre un processus, bloquer une IP — en un clic depuis le détail d'une connexion |
+| Threat intelligence | Vérifs de réputation **opt-in** (AbuseIPDB / AlienVault OTX / VirusTotal) avec votre propre clé API — désactivé par défaut, résultats cachés |
+| Audit de sécurité | Rapport de durcissement intégré — score, constats, recommandations en langage clair |
+| Export forensique | Paquet d'investigation en un clic — arbre de processus + SHA-256 du binaire, historique & alertes associées |
+| Webhook d'alertes | Relais **opt-in** des alertes warning/critiques vers Discord, Slack, Telegram ou tout endpoint |
 | Attribution processus | Sachez quelle app génère quel trafic (top 5 par connexion) |
 | Scanner LAN | Découverte passive via la table ARP système (aucun scan broadcast) |
 | Score de confidentialité | Score en temps réel de l'exposition de votre trafic sortant |
@@ -254,7 +272,7 @@ Toute l'interface est disponible en **français, anglais et espagnol** : utilise
 | Panneau Réglages | Langue, rétention, filtres, téléchargement GeoIP sous consentement, diagnostic |
 | Détection de trackers | Listes de domaines par suffixe, livrées en fichiers de données éditables (`backend/classifier/lists/`) |
 | Moniteur de débit | Sparkline MB/s en direct |
-| UI FR / EN / ES | Interface entièrement trilingue, bascule en un clic |
+| UI 8 langues | EN · FR · ES · DE · RU · JA · PT-BR · ZH-CN — bascule en un clic, locales dans `frontend/src/locales/` |
 | Thème clair / sombre | Suit la préférence système par défaut, bascule manuelle persistée |
 | Mise à jour auto | L'app bureau vérifie les releases GitHub (désactivable dans Réglages ; `SNITCH_NO_UPDATE=1`) |
 | QUIC / HTTP/3 | Flux UDP/443 étiquetés honnêtement — le SNI QUIC est chiffré, jamais lu |
@@ -291,14 +309,16 @@ Ou récupérez la dernière release : **[github.com/aixisstudio/Snitch/releases]
 - **Jeton API** — chaque endpoint REST et le WebSocket exigent un jeton. Electron le génère à chaque lancement ; sous Docker/navigateur il est affiché une fois dans les logs du backend et stocké dans `data/api_token.txt`. Ouvrez l'UI via `http://localhost:8000/?token=<JETON>` (ou saisissez-le à l'invite).
 - **Loopback uniquement par défaut** — l'API écoute sur `127.0.0.1` dans tous les modes. Ne mettez `SNITCH_BIND=0.0.0.0` que pour un accès LAN explicite (le jeton reste exigé).
 - **Liste blanche CORS/Origin WebSocket** — seuls `localhost:5173`, l'origine propre du backend et les pages `file://` d'Electron peuvent se connecter.
-- **Géolocalisation 100 % hors ligne** — *aucune* recherche en ligne. DB-IP Lite ([CC BY 4.0](https://db-ip.com/db/lite.php)) est embarquée gzipée dans `backend/data/geo/` et auto-extraite vers `<data_dir>/geo/` au premier lancement — la géo fonctionne d'emblée, zéro appel réseau. Vous pouvez toujours déposer des `GeoLite2-City.mmdb`/`GeoLite2-ASN.mmdb` (MaxMind) plus récents dans `<data_dir>/geo/`, ou télécharger une DB-IP Lite fraîche depuis Réglages (consentement explicite, seul appel sortant possible).
-- **Toutes les données restent locales** — `snitch.db` (fenêtre glissante de 24 h, configurable via le réglage `retention_hours`) et `data/logs/snitch.log` ne quittent jamais la machine. Pas de télémétrie. Le **seul** appel sortant possible est le téléchargement opt-in de DB-IP Lite (Réglages → « Télécharger DB-IP Lite »), qui exige un clic explicite.
-- **Réglages persistés** — filtres de ports, processus exclus, whitelist IP, langue et rétention sont stockés dans SQLite et restaurés au redémarrage.
+- **Géolocalisation 100 % hors ligne** — *aucune* recherche en ligne. DB-IP Lite ([CC BY 4.0](https://db-ip.com/db/lite.php)) est embarquée gzipée dans `backend/data/geo/` et auto-extraite vers `<data_dir>/geo/` au premier lancement — la géo fonctionne d'emblée, zéro appel réseau. Vous pouvez toujours déposer des `GeoLite2-City.mmdb`/`GeoLite2-ASN.mmdb` (MaxMind) plus récents dans `<data_dir>/geo/`, ou télécharger une DB-IP Lite fraîche depuis Réglages (consentement explicite ; les autres appels sortants opt-in — threat intel, webhooks, mises à jour — sont listés dans PRIVACY.md).
+- **Toutes les données restent locales** — `snitch.db` (fenêtre glissante de 24 h, configurable via le réglage `retention_hours`) et `data/logs/snitch.log` ne quittent jamais la machine. Pas de télémétrie. Chaque appel sortant est opt-in — téléchargement DB-IP Lite, vérifications threat-intel, webhooks et mises à jour sont chacun conditionnés à une action explicite ou un interrupteur (voir [PRIVACY.md](PRIVACY.md)).
+- **Réglages persistés** — filtres de ports, processus exclus, whitelist IP, règles pare-feu, langue et rétention sont stockés dans SQLite et restaurés au redémarrage.
+- **Règles pare-feu best-effort** — le backend pilote le pare-feu OS (`netsh advfirewall`, `iptables`, ancres `pf`) ; sans privilèges, la règle est conservée et évaluée pour la *visibilité* (alertes BLOCKED_ATTEMPT) et marquée « non appliquée » au lieu de simuler. Le lockdown conserve loopback + LAN pour garder l'UI joignable.
+- **Threat intel & webhooks opt-in** — désactivés par défaut ; activer un fournisseur (AbuseIPDB/OTX/VirusTotal, votre propre clé) ou un webhook ajoute des appels sortants, documentés dans [PRIVACY.md](PRIVACY.md).
 - **Suppression d'alertes** — chaque alerte offre « Ignorer ce type/cet hôte » ; les règles sont persistées (`alert_suppressions`), appliquées avant émission, et gérables via `POST /alerts/ignore`, `DELETE /alerts/ignore`, `GET /alerts/ignore`.
 - **Historique** — les agrégats octets/paquets par minute, par hôte et par processus sont conservés dans SQLite (`host_history`, `process_history`) sur la fenêtre de rétention, et alimentent la vue par application ainsi que `GET /history/host/{ip}` et `GET /history/process/{nom}`.
 - **Diagnostic** — `GET /diagnostics` renvoie un instantané JSON du runtime (état de capture, géo, interface, versions, chemins) sans secrets ; le panneau Réglages peut l'exporter ou ouvrir le dossier des logs (Electron).
 - **Appareils LAN** découverts passivement via la table ARP système — aucun scan broadcast actif. Les noms sont appris de ce que les appareils diffusent eux-mêmes : mDNS `*.local` (Apple/Linux), LLMNR et noms NetBIOS (Windows), option hostname DHCP, plus la table de fabricants IEEE OUI complète hors ligne ; votre passerelle est détectée automatiquement comme routeur.
-- Voir [docs/threat-model.md](docs/threat-model.md) pour le modèle de menace complet.
+- Voir [docs/threat-model.md](docs/threat-model.md) pour le modèle de menace complet et [docs/FIREWALL.md](docs/FIREWALL.md) pour la suite sécurité (orchestration pare-feu, lockdown, threat intel, webhooks, audit, forensique).
 
 ### Docker (Linux)
 

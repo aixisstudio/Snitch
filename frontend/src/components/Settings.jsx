@@ -14,7 +14,7 @@
  */
 import { useState, useEffect } from 'react'
 import { Settings as SettingsIcon, X, FolderOpen, Download, ShieldCheck } from 'lucide-react'
-import { useT } from '../i18n'
+import { useT, LANGS, LANG_NAMES } from '../i18n'
 import { apiBase, authHeaders } from '../api'
 
 export function SettingsButton({ onClick }) {
@@ -168,17 +168,13 @@ export function SettingsPanel({ onClose, lang, setLang, watchlist = [], onWatchl
         {/* Language / Langue */}
         <div style={row}>
           <div><div style={label}>{t('settings_language')}</div></div>
-          <div style={{ display: 'flex', gap: 4 }}>
-            {['en', 'fr', 'es'].map(l => (
-              <button key={l} onClick={() => { setLang(l); save('language', l) }} style={{
-                background: lang === l ? '#3b82f6' : 'var(--bg)',
-                border: '1px solid var(--border)', borderRadius: 6,
-                color: lang === l ? '#fff' : 'var(--text-muted)',
-                padding: '4px 12px', fontSize: 11, cursor: 'pointer',
-                textTransform: 'uppercase', fontWeight: 600,
-              }}>{l}</button>
-            ))}
-          </div>
+          <select
+            value={lang}
+            onChange={e => { setLang(e.target.value); save('language', e.target.value) }}
+            style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', padding: '4px 8px', fontSize: 11 }}
+          >
+            {LANGS.map(l => <option key={l} value={l}>{LANG_NAMES[l]}</option>)}
+          </select>
         </div>
 
         {/* Retention / Rétention */}
@@ -303,6 +299,106 @@ export function SettingsPanel({ onClose, lang, setLang, watchlist = [], onWatchl
               ))}
             </div>
           )}
+        </div>
+
+        {/* Threat intelligence / Renseignement sur les menaces */}
+        <div style={{ ...row, display: 'block' }}>
+          <div style={label}>{t('ti_title')}</div>
+          <div style={hint}>{t('ti_hint')}</div>
+          <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+            <select
+              value={settings?.ti_provider ?? 'none'}
+              onChange={e => {
+                const v = e.target.value
+                setSettings(s => ({ ...s, ti_provider: v }))
+                save('ti_provider', v)
+              }}
+              style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', padding: '4px 8px', fontSize: 11 }}
+            >
+              <option value="none">{t('ti_none')}</option>
+              <option value="abuseipdb">AbuseIPDB</option>
+              <option value="otx">AlienVault OTX</option>
+              <option value="virustotal">VirusTotal</option>
+            </select>
+            <form onSubmit={e => {
+              e.preventDefault()
+              const v = e.target.elements.tikey.value.trim()
+              save('ti_api_key', v)
+            }} style={{ flex: 1, display: 'flex', gap: 6 }}>
+              <input
+                name="tikey"
+                type="password"
+                defaultValue={settings?.ti_api_key ?? ''}
+                placeholder={t('ti_key_ph')}
+                aria-label={t('ti_key')}
+                autoComplete="off"
+                style={{ flex: 1, background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', padding: '4px 8px', fontSize: 11, outline: 'none' }}
+              />
+              <button type="submit" style={{
+                background: 'var(--bg)', border: '1px solid var(--border)',
+                borderRadius: 6, color: 'var(--text-dim)', padding: '4px 10px',
+                fontSize: 10, cursor: 'pointer',
+              }}>{t('save')}</button>
+            </form>
+          </div>
+          <div style={{ ...hint, marginTop: 4 }}>{t('ti_privacy')}</div>
+        </div>
+
+        {/* External webhook / Webhook externe */}
+        <div style={{ ...row, display: 'block' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <div style={label}>{t('wh_title')}</div>
+              <div style={hint}>{t('wh_hint')}</div>
+            </div>
+            <button
+              onClick={() => {
+                const v = !settings?.webhook_enabled
+                setSettings(s => ({ ...s, webhook_enabled: v }))
+                save('webhook_enabled', v)
+              }}
+              role="switch" aria-checked={!!settings?.webhook_enabled}
+              style={{
+                width: 36, height: 20, borderRadius: 10, border: 'none',
+                background: settings?.webhook_enabled ? '#3b82f6' : 'var(--bg)',
+                outline: '1px solid var(--border)', cursor: 'pointer',
+                position: 'relative', flexShrink: 0,
+              }}>
+              <div style={{
+                width: 14, height: 14, borderRadius: '50%', background: 'var(--text)',
+                position: 'absolute', top: 3, left: settings?.webhook_enabled ? 19 : 3,
+                transition: 'left 0.15s',
+              }} />
+            </button>
+          </div>
+          <form onSubmit={e => {
+            e.preventDefault()
+            save('webhook_url', e.target.elements.whurl.value.trim())
+            save('telegram_chat_id', e.target.elements.whchat?.value.trim() || '')
+          }} style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+            <input
+              name="whurl"
+              defaultValue={settings?.webhook_url ?? ''}
+              placeholder={t('wh_url_ph')}
+              aria-label={t('wh_url')}
+              style={{ flex: 1, background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', padding: '6px 10px', fontSize: 11, outline: 'none' }}
+            />
+            {(settings?.webhook_url || '').includes('telegram') && (
+              <input
+                name="whchat"
+                defaultValue={settings?.telegram_chat_id ?? ''}
+                placeholder={t('wh_chat_ph')}
+                aria-label={t('wh_chat')}
+                style={{ width: 90, background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', padding: '6px 10px', fontSize: 11, outline: 'none' }}
+              />
+            )}
+            <button type="submit" style={{
+              background: 'var(--bg)', border: '1px solid var(--border)',
+              borderRadius: 6, color: 'var(--text-dim)', padding: '6px 12px',
+              fontSize: 10, cursor: 'pointer',
+            }}>{t('save')}</button>
+          </form>
+          <div style={{ ...hint, marginTop: 4 }}>{t('wh_privacy')}</div>
         </div>
 
         {/* Updates (Electron only) / Mises à jour (Electron seul) */}

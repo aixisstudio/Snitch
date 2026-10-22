@@ -73,8 +73,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -87,7 +88,11 @@ from resolver.dns_geo import (enrich_ip, is_private, learn_dns_answers,
                               learn_sni, lookup_domain)
 from scanner.arp_scanner import ARPScanner, Device, default_gateway as _default_gateway
 from scanner.arp_scanner import READ_STATS as _arp_stats
-from detection.anomaly import AnomalyDetector
+from detection.anomaly import AnomalyDetector, Alert
+from detection.firewall import FirewallManager
+from detection.threatintel import ThreatIntel
+from api.notify import notifier
+from paths import data_dir
 import storage.db as db
 from version import __version__
 
@@ -105,6 +110,12 @@ enrichment_cache: dict[str, dict] = {}   # EN: remote_ip -> geo/hostname result
 _inflight_geo: set[str] = set()          # EN: IPs with a running enrich task
                                         # FR: IP avec une tâche d'enrichissement en cours
 detector = AnomalyDetector()
+# EN: Firewall orchestration + threat-intel reputation client — both loaded
+#     from persisted settings at startup (see _load_settings).
+# FR: Orchestration pare-feu + client de réputation threat-intel — chargés
+#     des réglages persistés au démarrage (voir _load_settings).
+fw = FirewallManager(data_dir())
+ti = ThreatIntel()
 _loop: asyncio.AbstractEventLoop | None = None
 _sniffer: PacketSniffer | None = None
 _scanner: ARPScanner | None = None
@@ -181,6 +192,38 @@ class IgnoreBody(BaseModel):
     FR: Charge utile de /alerts/ignore — supprimer un hôte, un type, ou les deux."""
     type: Optional[str] = None
     ip: Optional[str] = None
+
+
+class FirewallRuleBody(BaseModel):
+    """EN: /firewall/rules payload — block an IP, domain suffix or process.
+    FR: Charge utile de /firewall/rules — bloquer une IP, un suffixe de
+    domaine ou un processus."""
+    kind: str
+    value: str
+
+
+class FirewallToggleBody(BaseModel):
+    """EN: Enable/disable a single rule. / FR: Activer/désactiver une règle."""
+    enabled: bool = True
+
+
+class LockdownBody(BaseModel):
+    """EN: /firewall/lockdown payload — panic switch on/off.
+    FR: Charge utile de /firewall/lockdown — bouton panique on/off."""
+    on: bool = True
+
+
+class PidBody(BaseModel):
+    """EN: /processes/* payload — target PID for kill/suspend.
+    FR: Charge utile de /processes/* — PID cible pour tuer/suspendre."""
+    pid: int
+
+
+class ThreatCheckBody(BaseModel):
+    """EN: /security/threat_check payload — manual IP/domain reputation check.
+    FR: Charge utile de /security/threat_check — vérification manuelle de
+    réputation d'une IP/domaine."""
+    ip: str
 
 
 class GeoDownloadBody(BaseModel):
@@ -578,6 +621,55 @@ def _geo_for(ip: str) -> dict:
     return {"ip": ip, "hostname": lookup_domain(ip), "private": is_private(ip)}
 
 
+async def _ti_check(ip: str) -> None:
+    """
+    EN: Background threat-intel lookup for a newly-seen host. Runs the
+        blocking HTTP call in an executor; on a suspicious/malicious verdict
+        it raises, logs and broadcasts a THREAT_HIT alert. Silent on errors —
+        reputation is a bonus, never a dependency.
+    FR: Vérification threat-intel en fond pour un hôte nouvellement vu.
+        L'appel HTTP bloquant tourne dans un executor ; sur verdict suspect/
+        malveillant, une alerte THREAT_HIT est émise, journalisée et diffusée.
+        Silencieux en erreur — la réputation est un bonus, pas une dépendance.
+    """
+    loop = asyncio.get_running_loop()
+    try:
+        verdict = await loop.run_in_executor(None, ti.check, ip)
+    except Exception as exc:
+        logger.debug("ti.check failed for %s: %s", ip, exc)
+        return
+    if not verdict or verdict.get("verdict") not in ("malicious", "suspicious"):
+        return
+    alert = Alert(
+        type="THREAT_HIT",
+        severity="critical" if verdict["verdict"] == "malicious" else "warning",
+        message=f"Threat intel: {ip} reported {verdict['verdict']} "
+                f"({verdict.get('provider', '?')}: {verdict.get('detail', '')})",
+        node_id=ip,
+        details=verdict,
+    )
+    _flag_alert(alert, nodes)
+    d = alert.to_dict()
+    db.log_alert(d)
+    await broadcast({"type": "alert", "alert": d})
+    await _notify(d)
+
+
+async def _notify(alert_dict: dict) -> None:
+    """
+    EN: Forward one alert to the configured webhook (if any) — the blocking
+        POST happens in an executor so detection is never delayed.
+    FR: Relayer une alerte vers le webhook configuré (le cas échéant) — le
+        POST bloquant passe par un executor pour ne jamais retarder la
+        détection.
+    """
+    loop = asyncio.get_running_loop()
+    try:
+        await loop.run_in_executor(None, notifier.dispatch, alert_dict)
+    except Exception as exc:
+        logger.debug("webhook notify failed: %s", exc)
+
+
 def _process_batch(packets: list[Packet]) -> None:
     """
     EN: One drain tick — runs on the event-loop thread. Per packet: filters,
@@ -707,6 +799,10 @@ def _process_batch(packets: list[Packet]) -> None:
             proc = procs.setdefault(pkt.process_name, {"bytes": 0, "packets": 0})
             proc["bytes"] += pkt.size
             proc["packets"] += 1
+            # EN: Last-seen PID for the kill/suspend actions in the UI.
+            # FR: Dernier PID vu pour les actions tuer/suspendre de l'UI.
+            if pkt.pid:
+                proc["pid"] = pkt.pid
 
         edge_id = f"local-{node_id}-{pkt.protocol}"
         edge = edges.setdefault(edge_id, {
@@ -734,6 +830,45 @@ def _process_batch(packets: list[Packet]) -> None:
             alert_dict = alert.to_dict()
             db.log_alert(alert_dict)
             out_alerts.append(alert_dict)
+            # EN: Relay warning/critical alerts to the external webhook (opt-in).
+            # FR: Relayer les alertes warning/critical vers le webhook externe
+            #     (opt-in).
+            asyncio.get_running_loop().create_task(_notify(alert_dict))
+            # EN: A NEW_HOST alert marks the first sighting — the right moment
+            #     for an opt-in reputation lookup on public IPs.
+            # FR: Une alerte NEW_HOST marque une première vue — le bon moment
+            #     pour une vérif de réputation opt-in sur les IP publiques.
+            if (alert.type == "NEW_HOST" and ti.enabled
+                    and not is_private(remote_ip)
+                    and ti.begin_check(remote_ip)):
+                asyncio.get_running_loop().create_task(_ti_check(remote_ip))
+
+        # EN: Firewall visibility — a packet matching an active rule (or the
+        #     lockdown) raises BLOCKED_ATTEMPT. This flags policy hits; actual
+        #     dropping requires the optional privileged rule sync documented
+        #     in /firewall/status.
+        # FR: Visibilité pare-feu — un paquet correspondant à une règle active
+        #     (ou au lockdown) lève BLOCKED_ATTEMPT. Cela signale les violations
+        #     de politique ; le drop réel exige la synchro privilégiée
+        #     documentée dans /firewall/status.
+        fw_rule = fw.check_packet(pkt)
+        if fw_rule:
+            ctx = fw.note_blocked(fw_rule["id"])
+            if ctx:
+                matched = ctx.get("rule") or fw_rule
+                a = Alert(
+                    type="BLOCKED_ATTEMPT", severity="warning",
+                    message=f"Firewall rule matched: {matched.get('value')} "
+                            f"({matched.get('kind')}) — attempt #{ctx['count']}"
+                            + (" by " + pkt.process_name if pkt.process_name else ""),
+                    node_id=remote_ip,
+                    details={"rule": matched, "process": pkt.process_name,
+                             "direction": pkt.direction},
+                )
+                _flag_alert(a, nodes)
+                ad = a.to_dict()
+                db.log_alert(ad)
+                out_alerts.append(ad)
 
         touched_nodes[node_id] = node
         touched_edges[edge_id] = edge
@@ -742,6 +877,7 @@ def _process_batch(packets: list[Packet]) -> None:
             "protocol": pkt.protocol, "size": pkt.size,
             "direction": pkt.direction, "process": pkt.process_name,
             "remote_port": pkt.remote_port, "sni": pkt.sni,
+            "pid": pkt.pid,
             "timestamp": pkt.timestamp,
         })
 
@@ -938,6 +1074,11 @@ def _flush_loop() -> None:
         time.sleep(10)
         try:
             db.flush()
+            # EN: Snapshot learned process baselines — they power the
+            #     baseline-deviation alerts across restarts.
+            # FR: Sauvegarder les baselines de processus apprises — elles
+            #     alimentent les alertes de déviation entre redémarrages.
+            db.set_setting("app_baselines", detector.dump_baselines())
         except Exception as exc:
             logger.error("db flush failed: %s", exc)
 
@@ -1056,6 +1197,18 @@ def _load_settings() -> None:
     detector.set_watchlist(_watchlist)
     detector.set_upload_threshold_mb(
         float(db.get_setting("upload_threshold_mb", 50)))
+    # EN: Security modules — firewall rules/lockdown, opt-in threat intel,
+    #     learned process baselines and the external webhook.
+    # FR: Modules de sécurité — règles/lockdown pare-feu, threat intel opt-in,
+    #     baselines de processus apprises et webhook externe.
+    fw.load(db.get_setting("firewall_rules", []) or [],
+            bool(db.get_setting("firewall_lockdown", False)))
+    ti.configure(db.get_setting("ti_provider", "none") or "none",
+                 db.get_setting("ti_api_key", "") or "")
+    detector.load_baselines(db.get_setting("app_baselines", {}) or {})
+    notifier.configure(db.get_setting("webhook_url", "") or "",
+                       bool(db.get_setting("webhook_enabled", False)),
+                       db.get_setting("telegram_chat_id", "") or "")
     if _port_filter:
         logger.info("restored port filter: %s", _port_filter)
 
@@ -1217,6 +1370,17 @@ async def post_settings(body: SettingsBody) -> dict:
                 detector.set_upload_threshold_mb(float(value))
             except (TypeError, ValueError):
                 pass
+        # EN: Live-apply security settings — no restart needed when the user
+        #     toggles a provider, rotates a key or flips the webhook switch.
+        # FR: Appliquer à chaud les réglages de sécurité — pas de redémarrage
+        #     quand l'utilisateur change de fournisseur, de clé ou de webhook.
+        if key in ("ti_provider", "ti_api_key"):
+            ti.configure(db.get_setting("ti_provider", "none") or "none",
+                         db.get_setting("ti_api_key", "") or "")
+        if key in ("webhook_url", "webhook_enabled", "telegram_chat_id"):
+            notifier.configure(db.get_setting("webhook_url", "") or "",
+                               bool(db.get_setting("webhook_enabled", False)),
+                               db.get_setting("telegram_chat_id", "") or "")
     return {"ok": True}
 
 @app.get("/capture/status", dependencies=_AUTH)
@@ -1693,6 +1857,481 @@ async def geo_status() -> dict:
     geo_dir = data_dir() / "geo"
     present = sorted(p.name for p in geo_dir.glob("*.mmdb")) if geo_dir.exists() else []
     return {"databases": present, "dir": str(geo_dir)}
+
+
+# ── Security: firewall / process actions / threat intel / audit / forensics ──
+# EN: The firewall API manages user rules (IP / domain / process) and the
+#     lockdown panic switch. Rules are MATCHED live so the UI can show which
+#     connections violate policy; actually dropping packets needs the
+#     optional privileged sync shipped in tools/ (documented honestly in
+#     /firewall/status — we never claim kernel enforcement we don't have).
+# FR: L'API pare-feu gère les règles utilisateur (IP / domaine / processus)
+#     et le bouton panique. Les règles sont ÉVALUÉES en direct pour montrer
+#     quelles connexions violent la politique ; le drop réel exige la synchro
+#     privilégiée optionnelle de tools/ (documenté honnêtement dans
+#     /firewall/status — jamais de prétention à une application noyau absente).
+
+@app.get("/firewall/status", dependencies=_AUTH)
+async def firewall_status() -> dict:
+    """EN: Rules, lockdown and platform capability report.
+    FR: Règles, lockdown et rapport de capacité de la plateforme."""
+    return fw.status()
+
+
+@app.get("/firewall/rules", dependencies=_AUTH)
+async def firewall_rules() -> dict:
+    """EN: All rules + lockdown flag + privilege sync status.
+    FR: Toutes les règles + drapeau lockdown + état de la synchro privilégiée."""
+    rules, lockdown = fw.serialized()
+    return {"rules": rules, "lockdown": lockdown, "supported": fw.supported()}
+
+
+@app.post("/firewall/rules", dependencies=_AUTH)
+async def firewall_add_rule(body: FirewallRuleBody) -> dict:
+    """EN: Create a rule {kind: ip|domain|process, value}. Persisted.
+    FR: Créer une règle {kind: ip|domain|process, value}. Persistée."""
+    loop = asyncio.get_running_loop()
+    try:
+        rule = await loop.run_in_executor(None, fw.add_rule, body.kind, body.value)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    rules, lockdown = fw.serialized()
+    db.set_setting("firewall_rules", rules)
+    await broadcast({"type": "firewall", "rules": rules, "lockdown": lockdown})
+    return {"rule": rule, "rules": rules}
+
+
+@app.delete("/firewall/rules/{rule_id}", dependencies=_AUTH)
+async def firewall_del_rule(rule_id: str) -> dict:
+    """EN: Delete a rule. / FR: Supprimer une règle."""
+    loop = asyncio.get_running_loop()
+    removed = await loop.run_in_executor(None, fw.remove_rule, rule_id)
+    if not removed:
+        raise HTTPException(404, "rule not found")
+    rules, lockdown = fw.serialized()
+    db.set_setting("firewall_rules", rules)
+    await broadcast({"type": "firewall", "rules": rules, "lockdown": lockdown})
+    return {"ok": True, "rules": rules}
+
+
+@app.post("/firewall/rules/{rule_id}/toggle", dependencies=_AUTH)
+async def firewall_toggle_rule(rule_id: str, body: FirewallToggleBody) -> dict:
+    """EN: Enable/disable a rule without deleting it.
+    FR: Activer/désactiver une règle sans la supprimer."""
+    loop = asyncio.get_running_loop()
+    ok = await loop.run_in_executor(None, fw.toggle_rule, rule_id, body.enabled)
+    if not ok:
+        raise HTTPException(404, "rule not found")
+    rules, lockdown = fw.serialized()
+    db.set_setting("firewall_rules", rules)
+    await broadcast({"type": "firewall", "rules": rules, "lockdown": lockdown})
+    return {"ok": True, "rules": rules}
+
+
+@app.post("/firewall/lockdown", dependencies=_AUTH)
+async def firewall_lockdown(body: LockdownBody) -> dict:
+    """EN: Panic switch — while ON, every outbound packet is flagged
+        BLOCKED_ATTEMPT and (with privilege sync) actually dropped.
+        A LOCKDOWN alert is broadcast so every connected client shows it.
+    FR: Bouton panique — actif, chaque paquet sortant est signalé
+        BLOCKED_ATTEMPT et (avec la synchro privilégiée) réellement droppé.
+        Une alerte LOCKDOWN est diffusée pour l'afficher sur tous les clients."""
+    loop = asyncio.get_running_loop()
+    res = await loop.run_in_executor(None, fw.set_lockdown, body.on)
+    db.set_setting("firewall_lockdown", res["lockdown"])
+    if body.on:
+        alert = Alert(type="LOCKDOWN", severity="critical",
+                      message="Lockdown mode ENABLED — all outbound traffic blocked",
+                      details={"applied": res["ok"], "error": res["error"]})
+        d = alert.to_dict()
+        db.log_alert(d)
+        await broadcast({"type": "alert", "alert": d})
+    rules, lockdown = fw.serialized()
+    await broadcast({"type": "firewall", "rules": rules, "lockdown": lockdown})
+    return res
+
+
+@app.post("/processes/kill", dependencies=_AUTH)
+async def kill_process(body: PidBody) -> dict:
+    """EN: Kill a process by PID — incident-response action. Refuses to kill
+        PIDs 0..3 and Snitch itself. Requires normal OS privileges.
+    FR: Tuer un processus par PID — action de réponse à incident. Refuse les
+        PID 0..3 et Snitch lui-même. Exige les privilèges OS usuels."""
+    import psutil
+    if body.pid <= 3 or body.pid == os.getpid():
+        raise HTTPException(400, "refusing to kill a system/critical pid")
+    loop = asyncio.get_running_loop()
+
+    def _do() -> str:
+        p = psutil.Process(body.pid)
+        name = p.name()
+        p.kill()
+        return name
+    try:
+        name = await loop.run_in_executor(None, _do)
+    except Exception as exc:
+        raise HTTPException(400, f"kill failed: {exc}")
+    return {"ok": True, "pid": body.pid, "name": name}
+
+
+@app.post("/processes/suspend", dependencies=_AUTH)
+async def suspend_process(body: PidBody) -> dict:
+    """EN: Suspend/resume a process by PID (SIGSTOP/SIGCONT semantics).
+    FR: Suspendre/reprendre un processus par PID (sémantique SIGSTOP/SIGCONT)."""
+    import psutil
+    if body.pid <= 3 or body.pid == os.getpid():
+        raise HTTPException(400, "refusing to suspend a system/critical pid")
+    loop = asyncio.get_running_loop()
+
+    def _do() -> dict:
+        p = psutil.Process(body.pid)
+        name = p.name()
+        if p.status() == "stopped":
+            p.resume()
+            return {"name": name, "suspended": False}
+        p.suspend()
+        return {"name": name, "suspended": True}
+    try:
+        res = await loop.run_in_executor(None, _do)
+    except Exception as exc:
+        raise HTTPException(400, f"suspend failed: {exc}")
+    return {"ok": True, "pid": body.pid, **res}
+
+
+@app.get("/security/ti", dependencies=_AUTH)
+async def ti_status() -> dict:
+    """EN: Threat-intel configuration (provider, cache size, key masked).
+    FR: Configuration threat-intel (fournisseur, taille du cache, clé masquée)."""
+    return ti.config()
+
+
+@app.post("/security/threat_check", dependencies=_AUTH)
+async def threat_check(body: ThreatCheckBody) -> dict:
+    """EN: Manual reputation check for one IP/domain. Only actually queries
+        the provider when threat intel is enabled — otherwise it reports the
+        disabled state (and never makes a call).
+    FR: Vérification manuelle de réputation pour une IP/domaine. N'interroge
+        le fournisseur que si la threat intel est activée — sinon renvoie
+        l'état désactivé (et ne fait aucun appel)."""
+    loop = asyncio.get_running_loop()
+    verdict = await loop.run_in_executor(None, ti.check, body.ip)
+    return {"verdict": verdict, "config": ti.config()}
+
+
+@app.get("/security/audit", dependencies=_AUTH)
+async def security_audit() -> dict:
+    """EN: Hardening report computed from the last 500 alerts + live graph:
+        alert-type breakdown, high-risk-country contacts, cleartext usage,
+        unseen domains, firewall posture, and a defensible 0–100 score.
+    FR: Rapport de durcissement calculé sur les 500 dernières alertes + le
+        graphe : répartition par type, contacts vers pays à risque, trafic en
+        clair, domaines sans nom, posture pare-feu et score 0–100."""
+    loop = asyncio.get_running_loop()
+    alerts = await loop.run_in_executor(None, db.get_alerts, 500)
+    counts: dict[str, int] = {}
+    for a in alerts:
+        counts[a.get("type", "?")] = counts.get(a.get("type", "?"), 0) + 1
+    critical = sum(1 for a in alerts if a.get("severity") == "critical")
+    warning = sum(1 for a in alerts if a.get("severity") == "warning")
+
+    # EN: Nodes currently on the graph whose geo country is in the high-risk
+    #     watchlist — a finding worth surfacing, not an accusation.
+    # FR: Nœuds du graphe dont le pays géolocalisé est dans la liste à risque
+    #     — un constat à remonter, pas une accusation.
+    risky = sorted({
+        ip for ip, n in nodes.items()
+        if ip != "local" and (n.get("country_code") or "").upper()
+        in {"RU", "KP", "IR", "BY", "CU", "SY", "AF", "MM", "VE", "NI"}
+    })
+    unlabeled = sorted({
+        ip for ip, n in nodes.items()
+        if ip != "local" and not n.get("label") and not n.get("hostname")
+    })
+
+    rules, lockdown = fw.serialized()
+    active_rules = sum(1 for r in rules if r.get("enabled"))
+    blocked_total = sum(r.get("blocked_total", 0) for r in rules)
+
+    score = 100 - min(60, critical * 8) - min(20, warning) \
+        - min(10, len(risky)) - (5 if lockdown else 0)
+    score = max(0, score)
+
+    return {
+        "score": score,
+        "period": "last 500 alerts",
+        "alert_counts": counts,
+        "critical": critical, "warning": warning,
+        "findings": {
+            "high_risk_countries": risky,
+            "unresolved_hosts": unlabeled[:50],
+            "cleartext_alerts": counts.get("CLEARTEXT", 0),
+            "dns_tunnel_alerts": counts.get("DNS_TUNNEL", 0),
+            "threat_hits": counts.get("THREAT_HIT", 0),
+        },
+        "firewall": {
+            "active_rules": active_rules,
+            "lockdown": lockdown,
+            "blocked_attempts": blocked_total,
+            "supported": fw.supported(),
+            "platform": fw.status().get("platform"),
+        },
+        "threat_intel": ti.config(),
+        "recommendations": _audit_recommendations(
+            counts, risky, unlabeled, active_rules, lockdown),
+    }
+
+
+def _audit_recommendations(counts: dict, risky: list, unlabeled: list,
+                           active_rules: int, lockdown: bool) -> list[dict]:
+    """EN: Plain-language next steps derived from the findings.
+    FR: Étapes concrètes en langage clair dérivées des constats."""
+    recs: list[dict] = []
+    if lockdown:
+        recs.append({"level": "info", "text": "Lockdown is ON — every outbound "
+                     "attempt is being flagged. / Lockdown actif — chaque "
+                     "tentative sortante est signalée."})
+    if counts.get("CLEARTEXT"):
+        recs.append({"level": "high", "text": "Plain-text traffic on port 80 "
+                     "detected — prefer HTTPS or flag the destination. / "
+                     "Trafic en clair sur le port 80 détecté — privilégier "
+                     "HTTPS ou signaler la destination."})
+    if counts.get("DNS_TUNNEL"):
+        recs.append({"level": "high", "text": "Possible DNS tunnelling — "
+                     "inspect the flagged process and consider blocking it. / "
+                     "Tunnel DNS possible — inspecter le processus signalé et "
+                     "envisager de le bloquer."})
+    if counts.get("THREAT_HIT"):
+        recs.append({"level": "high", "text": "Threat intel flagged hosts — "
+                     "add firewall rules for the reported IPs. / La threat "
+                     "intel a signalé des hôtes — ajouter des règles pare-feu "
+                     "pour les IP rapportées."})
+    if counts.get("BEACON"):
+        recs.append({"level": "medium", "text": "Regular-interval connections "
+                     "(beaconing) observed — review the flagged process's "
+                     "executable hash in the forensics export. / Connexions à "
+                     "intervalle régulier (beaconing) observées — vérifier le "
+                     "hash de l'exécutable via l'export forensique."})
+    if risky:
+        recs.append({"level": "medium", "text": "Connections to high-risk "
+                     "countries observed — verify they match expected services "
+                     "(news, CDN, gaming). / Connexions vers des pays à risque "
+                     "observées — vérifier qu'elles correspondent à des "
+                     "services attendus."})
+    if active_rules == 0 and not lockdown:
+        recs.append({"level": "low", "text": "No firewall rules configured — "
+                     "create one from any connection row to harden egress. / "
+                     "Aucune règle pare-feu — en créer une depuis une ligne de "
+                     "connexion pour durcir les sorties."})
+    if len(unlabeled) > 20:
+        recs.append({"level": "low", "text": "Many hosts have no resolved "
+                     "domain — check the GeoIP database is downloaded. / "
+                     "Beaucoup d'hôtes sans domaine résolu — vérifier que la "
+                     "base GeoIP est téléchargée."})
+    return recs
+
+
+@app.get("/forensics/export", dependencies=_AUTH)
+async def forensics_export(process: Optional[str] = None,
+                           ip: Optional[str] = None,
+                           format: str = "json"):
+    """EN: One-click investigation bundle — process tree + SHA-256 of the
+        executable, matching alerts and traffic history. format=json (default)
+        returns the bundle; format=csv a flat spreadsheet; format=stix a
+        minimal STIX 2.1 bundle (indicators + observed-data) for SIEM import.
+        Local data only; nothing is sent anywhere.
+    FR: Paquet d'investigation en un clic — arbre de processus + SHA-256 de
+        l'exécutable, alertes et historique associés. format=json (défaut)
+        renvoie le bundle ; format=csv un tableur plat ; format=stix un
+        bundle STIX 2.1 minimal (indicateurs + observed-data) pour SIEM.
+        Données locales uniquement ; rien n'est envoyé nulle part."""
+    import hashlib
+    import psutil
+    loop = asyncio.get_running_loop()
+    bundle: dict = {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "version": __version__,
+        "host": socket.gethostname(),
+        "processes": [],
+        "alerts": [],
+        "history": {},
+    }
+
+    def _sha256(path: str) -> Optional[str]:
+        try:
+            h = hashlib.sha256()
+            with open(path, "rb") as f:
+                for chunk in iter(lambda: f.read(1 << 20), b""):
+                    h.update(chunk)
+            return h.hexdigest()
+        except Exception:
+            return None
+
+    if process:
+        def _procs() -> list[dict]:
+            out = []
+            for p in psutil.process_iter(["pid", "name", "exe", "ppid",
+                                          "cmdline", "create_time"]):
+                try:
+                    info = p.info
+                    if info["name"] != process:
+                        continue
+                    chain, cur = [], p.ppid()
+                    for _ in range(8):
+                        if not cur:
+                            break
+                        try:
+                            par = psutil.Process(cur)
+                            chain.append({"pid": par.pid, "name": par.name()})
+                            cur = par.ppid()
+                        except Exception:
+                            break
+                    out.append({
+                        "pid": info["pid"], "name": info["name"],
+                        "exe": info["exe"],
+                        "sha256": _sha256(info["exe"]) if info["exe"] else None,
+                        "cmdline": info["cmdline"],
+                        "started": info["create_time"],
+                        "parents": chain,
+                    })
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    continue
+            return out
+        bundle["processes"] = await loop.run_in_executor(None, _procs)
+        bundle["history"]["process"] = await loop.run_in_executor(
+            None, db.get_history, "process", process, 1440)
+    if ip:
+        bundle["history"]["host"] = await loop.run_in_executor(
+            None, db.get_history, "host", ip, 1440)
+        bundle["geo"] = enrichment_cache.get(ip)
+
+    all_alerts = await loop.run_in_executor(None, db.get_alerts, 500)
+    # EN: No filter → export every stored alert; with a filter, keep the
+    #     alerts mentioning the process or tied to the node.
+    # FR: Sans filtre → exporter toutes les alertes stockées ; avec filtre,
+    #     garder celles mentionnant le processus ou liées au nœud.
+    bundle["alerts"] = all_alerts if not (process or ip) else [
+        a for a in all_alerts
+        if (process and process in (a.get("message") or "")
+                + str(a.get("details") or ""))
+        or (ip and a.get("node_id") == ip)
+    ]
+
+    if format == "csv":
+        return _forensics_csv(bundle)
+    if format == "stix":
+        return _forensics_stix(bundle, ip=ip)
+    return bundle
+
+
+def _forensics_csv(bundle: dict) -> PlainTextResponse:
+    """EN: Flatten the bundle into one CSV (section, key/value rows) —
+        spreadsheet- and grep-friendly.
+    FR: Aplatir le bundle en un CSV (section, lignes clé/valeur) — lisible
+        en tableur comme en grep."""
+    import csv
+    import io
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["section", "field", "value"])
+    w.writerow(["meta", "generated_at", bundle["generated_at"]])
+    w.writerow(["meta", "version", bundle["version"]])
+    w.writerow(["meta", "host", bundle["host"]])
+    for p in bundle.get("processes", []):
+        for field in ("pid", "name", "exe", "sha256", "cmdline", "started"):
+            val = p.get(field)
+            w.writerow(["process", field,
+                        " ".join(val) if isinstance(val, list) else val])
+        for par in p.get("parents", []):
+            w.writerow(["process", "parent",
+                        f"{par.get('name')} (pid {par.get('pid')})"])
+    for section, rows in (bundle.get("history") or {}).items():
+        for row in rows:
+            w.writerow([f"history_{section}", row.get("bucket", ""),
+                        json.dumps(row, ensure_ascii=False)])
+    for a in bundle.get("alerts", []):
+        w.writerow(["alert", a.get("type", ""), a.get("message", "")])
+    return PlainTextResponse(
+        buf.getvalue(), media_type="text/csv",
+        headers={"Content-Disposition":
+                 'attachment; filename="snitch-forensics.csv"'})
+
+
+def _forensics_stix(bundle: dict, ip: Optional[str] = None) -> dict:
+    """EN: Minimal STIX 2.1 bundle — an identity for Snitch, indicators for
+        the flagged IPs/hashes and observed-data sightings. Enough for a
+        SIEM to ingest; deliberately not a full graph.
+    FR: Bundle STIX 2.1 minimal — une identity pour Snitch, des indicateurs
+        pour les IP/hashes signalés et des observed-data. Suffisant pour un
+        SIEM ; volontairement pas un graphe complet."""
+    import uuid
+    ts = bundle["generated_at"]
+    _uid = lambda s: str(uuid.uuid5(uuid.NAMESPACE_DNS, f"snitch.local/{s}"))
+    objects: list[dict] = [{
+        "type": "identity", "spec_version": "2.1",
+        "id": f"identity--{_uid('exporter')}",
+        "created": ts, "modified": ts,
+        "name": "Snitch local forensics export",
+        "identity_class": "system",
+    }]
+    # EN: One indicator per flagged IP (alert node_id that looks like an
+    #     address) + one per process hash — STIX patterning expressions.
+    # FR: Un indicateur par IP signalée (node_id d'alerte ressemblant à une
+    #     adresse) + un par hash de processus — expressions STIX patterning.
+    seen: set[str] = set()
+    for i, a in enumerate(bundle.get("alerts", [])):
+        node = a.get("node_id") or ""
+        try:
+            ipaddress.ip_address(node)
+        except ValueError:
+            continue
+        if node in seen:
+            continue
+        seen.add(node)
+        objects.append({
+            "type": "indicator", "spec_version": "2.1",
+            "id": f"indicator--{_uid(node)}",
+            "created": ts, "modified": ts,
+            "name": f"Snitch alert: {a.get('type', 'ALERT')} → {node}",
+            "description": a.get("message", "")[:500],
+            "pattern": f"[ipv4-addr:value = '{node}']"
+                       if ":" not in node
+                       else f"[ipv6-addr:value = '{node}']",
+            "pattern_type": "stix",
+            "valid_from": ts,
+        })
+    if ip:
+        try:
+            ipaddress.ip_address(ip)
+            objects.append({
+                "type": "observed-data", "spec_version": "2.1",
+                "id": f"observed-data--{_uid('obs/' + ip)}",
+                "created": ts, "modified": ts,
+                "first_observed": ts, "last_observed": ts,
+                "number_observed": 1,
+                "objects": {
+                    "0": {"type": "ipv4-addr" if ":" not in ip else "ipv6-addr",
+                          "value": ip},
+                },
+            })
+        except ValueError:
+            pass
+    for i, p in enumerate(bundle.get("processes", [])):
+        if not p.get("sha256"):
+            continue
+        objects.append({
+            "type": "indicator", "spec_version": "2.1",
+            "id": f"indicator--{_uid('sha256/' + p['sha256'])}",
+            "created": ts, "modified": ts,
+            "name": f"Snitch process: {p.get('name')}",
+            "pattern": f"[file:hashes.'SHA-256' = '{p['sha256']}']",
+            "pattern_type": "stix",
+            "valid_from": ts,
+        })
+    return {
+        "type": "bundle",
+        "id": f"bundle--{_uid('bundle/' + ts)}",
+        "objects": objects,
+    }
 
 
 # ── WebSocket ────────────────────────────────────────────────────────────────
