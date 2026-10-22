@@ -58,12 +58,14 @@ FR: Cœur du backend. Détenir l'état du graphe en mémoire (nœuds / arêtes /
 """
 
 import asyncio
+import hashlib
 import math
 import ipaddress
 import json
 import logging
 import os
 import queue
+import secrets
 import socket
 import subprocess
 import sys
@@ -74,7 +76,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse
 from fastapi.staticfiles import StaticFiles
@@ -1504,6 +1506,87 @@ async def _gossip_loop() -> None:
             logger.warning("ioc peer sync failed: %s", exc)
 
 
+_FEED_TICK_S = 300                              # EN: check feeds every 5 min / FR: vérif toutes les 5 min
+
+
+async def _feed_loop() -> None:
+    """EN: Scheduled threat-feed refresh — opt-in per feed. Setting
+        `ti_feeds` is a list of {url|path, kind: "ip"|"domain",
+        action: "block"|"sinkhole", hours: N}; each entry is fetched when
+        its own `hours` interval elapsed (`ti_feeds_state` persists last
+        fetch), parsed through the SAME importer as /firewall/blocklist
+        (dedupe + caps), and the firewall reloads hot — no restart.
+        Remote urls are the documented opt-in fetch path; `path:` feeds
+        stay fully offline. Bounded: ≤64 feeds.
+    FR: Rafraîchissement planifié des flux TI — opt-in par flux. Le
+        réglage `ti_feeds` = liste de {url|path, kind, action, hours} ;
+        chaque entrée est fetchée quand son intervalle a expiré
+        (`ti_feeds_state` persiste le dernier fetch), parsée par le MÊME
+        importeur que /firewall/blocklist, et le pare-feu recharge à
+        chaud. Les url distantes suivent le chemin opt-in documenté ;
+        `path:` reste hors-ligne. Borné à 64 flux."""
+    while not _shutdown:
+        await asyncio.sleep(_FEED_TICK_S)
+        if _shutdown:
+            break
+        try:
+            feeds = db.get_setting("ti_feeds", []) or []
+            if not isinstance(feeds, list) or not feeds:
+                continue
+            state: dict = db.get_setting("ti_feeds_state", {}) or {}
+            loop = asyncio.get_running_loop()
+            changed = False
+            now = time.time()
+            for feed in feeds[:64]:
+                if not isinstance(feed, dict):
+                    continue
+                url = str(feed.get("url") or "").strip()
+                path = str(feed.get("path") or "").strip()
+                kind = feed.get("kind") if feed.get("kind") in \
+                    ("ip", "domain") else "domain"
+                action = feed.get("action") if feed.get("action") in \
+                    ("block", "sinkhole") else "block"
+                try:
+                    hours = max(1, min(int(feed.get("hours", 24)), 24 * 30))
+                except (TypeError, ValueError):
+                    hours = 24
+                key = url or path
+                if not key:
+                    continue
+                if now - float(state.get(key, 0)) < hours * 3600:
+                    continue
+                try:
+                    if url:
+                        text = await loop.run_in_executor(
+                            None, blocklist.fetch_url, url)
+                    else:
+                        p = Path(path).expanduser()
+                        if not p.is_file() or \
+                                p.stat().st_size > 4 * 1024 * 1024:
+                            raise ValueError("feed file missing/too large")
+                        text = await loop.run_in_executor(
+                            None, p.read_text)
+                    added, skipped, parsed, truncated = \
+                        await loop.run_in_executor(
+                            None, _import_blocklist_text, text,
+                            kind, action, 5000)
+                    state[key] = now
+                    changed = True
+                    logger.info("ti feed %s: +%d rules (%d parsed%s)",
+                                key, added, parsed,
+                                ", truncated" if truncated else "")
+                except Exception as e:                   # noqa: BLE001
+                    logger.warning("ti feed %s failed: %s", key, e)
+            if changed:
+                rules, _lk = fw.serialized()
+                db.set_setting("firewall_rules", rules)
+                db.set_setting("ti_feeds_state", state)
+                await broadcast({"type": "firewall", "rules": rules,
+                                 "lockdown": _lk})
+        except Exception as exc:                         # noqa: BLE001
+            logger.warning("feed refresh failed: %s", exc)
+
+
 async def _miner_corroborate() -> None:
     """EN: Sample CPU for pool-port suspects off the event loop; each
     corroborated case becomes a MINING_SUSPECT alert.
@@ -1952,6 +2035,7 @@ async def _startup() -> None:
     _start_capture()
     asyncio.get_running_loop().create_task(_drain_loop())
     asyncio.get_running_loop().create_task(_gossip_loop())
+    asyncio.get_running_loop().create_task(_feed_loop())
     threading.Thread(target=_flush_loop, daemon=True).start()
     threading.Thread(target=_cleanup_loop, daemon=True).start()
 
@@ -2867,30 +2951,39 @@ async def firewall_blocklist(body: BlocklistBody) -> dict:
     #     IPs for feed-style lists (private/reserved never imported).
     # FR: `kind` choisit l'extracteur — domaines pour les listes façon
     #     hosts, IP pour les flux (privées/réservées jamais importées).
-    parse = blocklist.parse_ips if body.kind == "ip" \
-        else blocklist.parse_domains
-    entries = parse(text)
-    cap = blocklist.clamp_max(body.max_entries)
-    truncated = len(entries) > cap
-    entries = entries[:cap]
-
-    def _apply() -> tuple[int, int]:
-        added = skipped = 0
-        for d in entries:
-            if fw._find_rule(body.kind, d, body.action):
-                skipped += 1
-                continue
-            fw.add_rule(body.kind, d, body.action)
-            added += 1
-        return added, skipped
-
-    added, skipped = await loop.run_in_executor(None, _apply)
+    added, skipped, parsed, truncated = await loop.run_in_executor(
+        None, _import_blocklist_text, text, body.kind, body.action,
+        body.max_entries)
     rules, lockdown = fw.serialized()
     db.set_setting("firewall_rules", rules)
     await broadcast({"type": "firewall", "rules": rules, "lockdown": lockdown})
     return {"ok": True, "remote_fetch": remote, "kind": body.kind,
-            "parsed": len(entries),
+            "parsed": parsed,
             "added": added, "skipped": skipped, "truncated": truncated}
+
+
+def _import_blocklist_text(text: str, kind: str, action: str,
+                           max_entries: int) -> tuple[int, int, int, bool]:
+    """EN: Shared blocklist import — parse (kind), cap, dedupe against
+    existing rules, apply to the firewall orchestrator. Blocking helper:
+    callers run it in an executor. Returns (added, skipped, parsed,
+    truncated). / FR: Import blocklist partagé — parse (kind), borne,
+    déduplique contre les règles existantes, applique à l'orchestrateur.
+    Bloquant : à lancer en executor. Renvoie (added, skipped, parsed,
+    truncated)."""
+    parse = blocklist.parse_ips if kind == "ip" else blocklist.parse_domains
+    entries = parse(text)
+    cap = blocklist.clamp_max(max_entries)
+    truncated = len(entries) > cap
+    entries = entries[:cap]
+    added = skipped = 0
+    for d in entries:
+        if fw._find_rule(kind, d, action):
+            skipped += 1
+            continue
+        fw.add_rule(kind, d, action)
+        added += 1
+    return added, skipped, len(entries), truncated
 
 
 # ── Custom alert rules / Règles d'alerte utilisateur ─────────────────────────
@@ -3261,6 +3354,86 @@ _MAX_AGENT_EVENTS = 1000          # EN: per request / FR: par requête
 _MAX_AGENT_FIELD = 253            # EN: chars per string field / FR: caractères
 
 
+def _agent_store() -> dict:
+    """EN: token-sha256 → {"name": agent_id, "created": ts}. Only the
+    HASH is persisted — a leaked settings dump can't replay tokens.
+    FR: sha256(jeton) → {"name": agent_id, "created": ts}. Seul le HASH
+    est persisté — un dump de settings fuité ne peut pas rejouer les jetons."""
+    return db.get_setting("agent_tokens", {}) or {}
+
+
+def _agent_lookup(token: str) -> Optional[str]:
+    if not token:
+        return None
+    h = hashlib.sha256(token.encode()).hexdigest()
+    ent = _agent_store().get(h)
+    return ent.get("name") if ent else None
+
+
+async def agent_or_master(request: Request) -> str:
+    """EN: Ingest auth — the master token always works (single-box or
+    admin pushes); `X-Snitch-Agent: <enrolled-token>` resolves to the
+    enrolled agent's name, which is then authoritative for event tagging
+    (the body's `host` field stays a hint only). 401 otherwise.
+    FR: Auth ingest — le jeton maître marche toujours ; `X-Snitch-Agent`
+    résout le nom de l'agent enrôlé, qui fait foi pour le tagging
+    (le `host` du corps reste un indice). 401 sinon."""
+    from api.security import _extract_token, API_TOKEN
+    master = _extract_token(request)
+    if master and secrets.compare_digest(master, API_TOKEN):
+        return ""
+    agent_tok = request.headers.get("x-snitch-agent", "")
+    name = _agent_lookup(agent_tok)
+    if name:
+        return name
+    raise HTTPException(401, "enrolled agent token or master token required")
+
+
+@app.post("/ingest/enroll", dependencies=_AUTH)
+async def ingest_enroll(body: dict) -> dict:
+    """EN: Enroll a remote agent — mint a per-agent bearer token
+        (`sagt_…`, returned ONCE, stored hashed). The agent then sends it
+        as `X-Snitch-Agent` on /ingest/events; revocation = deleting the
+        hash. Enrolling requires the MASTER token.
+    FR: Enrôler un agent — mint un jeton bearer dédié (`sagt_…`, rendu
+        UNE fois, stocké hashé). L'agent l'envoie en `X-Snitch-Agent`
+        sur /ingest/events ; révocation = suppression du hash. L'enrôlement
+        exige le jeton MAÎTRE."""
+    name = str((body or {}).get("name", "")).strip()[:80]
+    if not name:
+        raise HTTPException(400, "agent name required")
+    store = _agent_store()
+    if any(e.get("name") == name for e in store.values()):
+        raise HTTPException(409, "agent name already enrolled")
+    if len(store) >= 4096:
+        raise HTTPException(400, "agent limit reached")
+    token = "sagt_" + secrets.token_hex(24)
+    store[hashlib.sha256(token.encode()).hexdigest()] = {
+        "name": name, "created": time.time()}
+    db.set_setting("agent_tokens", store)
+    return {"ok": True, "agent": name, "token": token}
+
+
+@app.get("/ingest/agents", dependencies=_AUTH)
+async def ingest_agents() -> dict:
+    """EN: Enrolled agent names (tokens never leave the store).
+    FR: Noms des agents enrôlés (les jetons ne quittent jamais le store)."""
+    return {"agents": sorted(e.get("name", "?")
+                             for e in _agent_store().values())}
+
+
+@app.post("/ingest/revoke", dependencies=_AUTH)
+async def ingest_revoke(body: dict) -> dict:
+    """EN: Revoke an enrolled agent by name — the token dies with its hash.
+    FR: Révoquer un agent par nom — le jeton meurt avec son hash."""
+    name = str((body or {}).get("name", "")).strip()
+    store = _agent_store()
+    store = {h: e for h, e in store.items() if e.get("name") != name}
+    db.set_setting("agent_tokens", store)
+    return {"ok": True, "agents": sorted(e.get("name", "?")
+                                         for e in store.values())}
+
+
 class AgentBatchBody(BaseModel):
     """EN: POST /ingest/events envelope — the documented contract a
         lightweight agent (Rust daemon, scripted /proc reader, forwarder)
@@ -3280,8 +3453,9 @@ class AgentBatchBody(BaseModel):
     events: list = []
 
 
-@app.post("/ingest/events", dependencies=_AUTH)
-async def ingest_events(body: AgentBatchBody) -> dict:
+@app.post("/ingest/events")
+async def ingest_events(body: AgentBatchBody,
+                        agent_name: str = Depends(agent_or_master)) -> dict:
     """EN: Ingest normalized flow events from remote agents.
 
         Contract `snitch-agent/1` — each event: {src_ip, dst_ip,
@@ -3293,14 +3467,18 @@ async def ingest_events(body: AgentBatchBody) -> dict:
         bytes accumulate into host/process history under
         `agent:<host>:<ip>`/`agent:<host>:<process>`. Unknown fields are
         ignored; nothing here trusts the agent beyond the bearer token.
+
+        Auth: master `X-Snitch-Token` (host name taken from the body) or
+        an enrolled `X-Snitch-Agent` token (enrolled name is
+        authoritative — a compromised agent can't spoof another).
     FR: Ingérer des événements de flux normalisés d'agents distants.
-        Contrat `snitch-agent/1`. Événements validés et bornés puis
-        injectés dans la MÊME machinerie de détection que les paquets
-        locaux : règles custom → CUSTOM_RULE (préfixé par l'hôte agent)
-        et historique sous `agent:<hôte>:…`. Champs inconnus ignorés.
+        Auth : `X-Snitch-Token` maître (nom du corps) ou `X-Snitch-Agent`
+        enrôlé (le nom enrôlé fait foi — un agent compromis ne peut pas
+        usurper un autre).
     """
     events = body.events[:_MAX_AGENT_EVENTS]
-    host = str(body.host or "agent")[:_MAX_AGENT_FIELD] or "agent"
+    host = (agent_name or
+            str(body.host or "agent")[:_MAX_AGENT_FIELD] or "agent")
     accepted = alerts = 0
     minute = db._utcnow_minute()
 
@@ -3358,6 +3536,7 @@ async def ingest_events(body: AgentBatchBody) -> dict:
             asyncio.get_running_loop().create_task(_notify(ad))
             alerts += 1
     return {"ok": True, "agent": body.agent or "unknown",
+            "host": host,
             "received": len(body.events), "accepted": accepted,
             "alerts": alerts,
             "truncated": len(body.events) > _MAX_AGENT_EVENTS}

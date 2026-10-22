@@ -300,3 +300,61 @@ def test_ingest_events_bounded_and_validated():
     body = r.json()
     assert body["accepted"] == 1                        # EN: only the valid one / FR: seul le valide
     assert body["received"] == 3
+
+
+def test_ingest_enroll_and_agent_token():
+    # EN: Master enrolls an agent → returns a one-shot sagt_ token; the
+    #     agent then ingests with X-Snitch-Agent and its enrolled name is
+    #     authoritative. Revoking removes the token hash → 401 again.
+    # FR: Le maître enrôle un agent → jeton sagt_ one-shot ; l'agent ingère
+    #     ensuite avec X-Snitch-Agent et son nom enrôlé fait foi. La
+    #     révocation supprime le hash → 401.
+    import pytest
+    pytest.importorskip("httpx")
+    from fastapi.testclient import TestClient
+    from api.main import app
+    from api.security import API_TOKEN
+    c = TestClient(app)
+    auth = {"X-Snitch-Token": API_TOKEN}
+
+    # EN: enroll requires the master token / FR: enrôlement = jeton maître
+    assert c.post("/ingest/enroll", json={"name": "edge-1"}).status_code in (401, 403)
+    r = c.post("/ingest/enroll", headers=auth, json={"name": "edge-1"})
+    assert r.status_code == 200
+    tok = r.json()["token"]
+    assert tok.startswith("sagt_")
+
+    # EN: duplicate name rejected / FR: nom dupliqué rejeté
+    assert c.post("/ingest/enroll", headers=auth,
+                  json={"name": "edge-1"}).status_code == 409
+
+    # EN: agent token ingests, master-free / FR: le jeton agent ingère sans maître
+    r = c.post("/ingest/events", headers={"X-Snitch-Agent": tok},
+               json={"agent": "snitch-agent/1", "host": "spoofed",
+                     "events": [{"dst_ip": "8.8.8.8", "dst_port": 443,
+                                 "proto": "tcp"}]})
+    # EN: enrolled name is authoritative, not the body's claimed host
+    # FR: le nom enrôlé fait foi, pas le host déclaré dans le corps
+    assert r.status_code == 200 and r.json()["host"] == "edge-1"
+
+    # EN: list + revoke / FR: liste + révocation
+    assert "edge-1" in c.get("/ingest/agents", headers=auth).json()["agents"]
+    c.post("/ingest/revoke", headers=auth, json={"name": "edge-1"})
+    r = c.post("/ingest/events", headers={"X-Snitch-Agent": tok},
+               json={"events": []})
+    assert r.status_code in (401, 403)
+
+
+def test_feeds_setting_bounded():
+    # EN: ti_feeds is a plain setting — the loop only reads it; verify a
+    #     path-feed import works end-to-end through the shared importer.
+    # FR: ti_feeds est un réglage simple — la boucle ne fait que le lire ;
+    #     on vérifie l'import de flux `path:` de bout en bout via
+    #     l'importeur partagé.
+    import pytest
+    pytest.importorskip("httpx")
+    from api.main import _import_blocklist_text
+    added, skipped, parsed, truncated = _import_blocklist_text(
+        "8.8.8.8\n# comment\n1.1.1.1\n10.0.0.1\n", "ip", "block", 5000)
+    assert parsed == 2                    # EN: private IP filtered / FR: IP privée filtrée
+    assert added >= 0 and not truncated

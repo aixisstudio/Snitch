@@ -23,3 +23,16 @@ upload_threshold_mb = 500
 
 # EN: Monitored ports (empty = all). / FR: Ports surveillés (vide = tous).
 # ports = [80, 443]
+
+# EN: Scheduled threat feeds — refreshed every `hours` per feed, hot-reloaded
+#     into the firewall. Remote urls are an explicit opt-in; path: feeds are
+#     fully offline. kind: "ip"|"domain", action: "block"|"sinkhole".
+# FR: Flux TI planifiés — rafraîchis toutes les `hours`, rechargés à chaud
+#     dans le pare-feu. Les url distantes = opt-in explicite ; `path:` reste
+#     hors-ligne. kind : « ip »|« domain », action : « block »|« sinkhole ».
+# ti_feeds = [
+#   { url = "https://lists.blocklist.de/lists/all.txt", kind = "ip",
+#     action = "block", hours = 24 },
+#   { path = "/etc/snitch/corp-domains.txt", kind = "domain",
+#     action = "sinkhole", hours = 6 },
+# ]

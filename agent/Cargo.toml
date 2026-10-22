@@ -5,7 +5,7 @@
 #     /proc en fs brut, le POST ingest en TcpStream manuel.
 [package]
 name = "snitch-agent"
-version = "1.6.1"
+version = "1.6.2"
 edition = "2021"
 license = "AGPL-3.0-only"
 description = "Lightweight socket-observation agent for the Snitch collector"

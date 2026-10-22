@@ -42,6 +42,7 @@ struct Sock {
     local: String,      // "ip:port"
     remote: String,     // "ip:port" — empty when LISTEN/unconnected
     state: u8,
+    inode: u64,         // EN: socket inode → pid attribution key / FR: inode → clé d'attribution
 }
 
 fn hex_ip(h: &str, v6: bool) -> String {
@@ -74,13 +75,14 @@ fn hex_ip(h: &str, v6: bool) -> String {
     a.to_string()
 }
 
-fn parse_table(path: &str, proto: &str, v6: bool, out: &mut HashSet<Sock>) {
-    // EN: One line: sl local rem st …  — rem "00000000:0000" = unconnected.
-    // FR: Une ligne : sl local rem st … — rem « 00000000:0000 » = non connecté.
-    let Ok(text) = fs::read_to_string(path) else { return };
+fn parse_lines(text: &str, proto: &str, v6: bool, out: &mut HashSet<Sock>) {
+    // EN: One line: sl local rem st tx rx tr when retrnsmt uid timeout inode
+    //     — rem "00000000:0000" = unconnected; f[9] = socket inode.
+    // FR: Une ligne : sl local rem st … — rem « 00000000:0000 » = non
+    //     connecté ; f[9] = inode du socket.
     for line in text.lines().skip(1) {
         let f: Vec<&str> = line.split_whitespace().collect();
-        if f.len() < 4 {
+        if f.len() < 10 {
             continue;
         }
         let (lip, lport) = f[1].split_once(':').unwrap_or(("", "0"));
@@ -93,7 +95,14 @@ fn parse_table(path: &str, proto: &str, v6: bool, out: &mut HashSet<Sock>) {
         let local = format!("{}:{}", hex_ip(lip, v6),
                             u16::from_str_radix(lport, 16).unwrap_or(0));
         let remote = format!("{}:{}", hex_ip(rip, v6), port);
-        out.insert(Sock { proto: proto.into(), local, remote, state });
+        out.insert(Sock { proto: proto.into(), local, remote, state,
+                          inode: f[9].parse().unwrap_or(0) });
+    }
+}
+
+fn parse_table(path: &str, proto: &str, v6: bool, out: &mut HashSet<Sock>) {
+    if let Ok(text) = fs::read_to_string(path) {
+        parse_lines(&text, proto, v6, out);
     }
 }
 
@@ -124,15 +133,23 @@ fn json_escape(s: &str) -> String {
 fn post_batch(server: &str, token: &str, host: &str,
               events: &[String]) -> Result<(), String> {
     // EN: Minimal HTTP/1.1 POST, no TLS stack — see module doc for the
-    //     trust-domain reasoning. Bearer auth on every request.
-    // FR: POST HTTP/1.1 minimal, pas de TLS — voir le doc module pour le
-    //     domaine de confiance. Bearer sur chaque requête.
+    //     trust-domain reasoning. `sagt_…` tokens are per-agent enrolled
+    //     credentials → `X-Snitch-Agent`; anything else is the master
+    //     API token → `X-Snitch-Token`.
+    // FR: POST HTTP/1.1 minimal, pas de TLS — voir le doc module. Les
+    //     jetons « sagt_… » sont des crédences d'agent enrôlé →
+    //     « X-Snitch-Agent » ; le reste = jeton maître → « X-Snitch-Token ».
+    let auth = if token.starts_with("sagt_") {
+        format!("X-Snitch-Agent: {token}")
+    } else {
+        format!("X-Snitch-Token: {token}")
+    };
     let body = format!(
         "{{\"agent\":\"{}\",\"host\":\"{}\",\"events\":[{}]}}",
         json_escape(AGENT_ID), json_escape(host), events.join(","));
     let req = format!(
         "POST /ingest/events HTTP/1.1\r\nHost: {server}\r\n\
-         Authorization: Bearer {token}\r\nContent-Type: application/json\r\n\
+         {auth}\r\nContent-Type: application/json\r\n\
          Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
         body.len());
     let mut stream = TcpStream::connect(server)
@@ -149,7 +166,41 @@ fn post_batch(server: &str, token: &str, host: &str,
     }
 }
 
-fn sock_to_event(s: &Sock) -> Option<String> {
+/// EN: socket inode → (pid, process name), built by walking
+///     /proc/<pid>/fd symlink targets "socket:[inode]" — the same
+///     technique netstat/ss use, pure std, Linux-only. Built lazily:
+///     only when a diff produced new sockets to attribute.
+/// FR: inode de socket → (pid, nom du processus), construit en lisant
+///     les liens /proc/<pid>/fd « socket:[inode] » — même technique que
+///     netstat/ss, std pur, Linux seulement. Construit à la demande.
+fn inode_pid_map() -> std::collections::HashMap<u64, (u32, String)> {
+    let mut m = std::collections::HashMap::new();
+    let Ok(procs) = fs::read_dir("/proc") else { return m };
+    for entry in procs.flatten() {
+        let name = entry.file_name();
+        let Ok(pid) = name.to_string_lossy().parse::<u32>() else { continue };
+        let Ok(fds) = fs::read_dir(entry.path().join("fd")) else { continue };
+        let comm = || -> String {
+            fs::read_to_string(format!("/proc/{pid}/comm"))
+                .unwrap_or_default().trim().to_string()
+        };
+        for fd in fds.flatten() {
+            let Ok(target) = fs::read_link(fd.path()) else { continue };
+            let t = target.to_string_lossy();
+            if let Some(inner) = t.strip_prefix("socket:[")
+                                   .and_then(|s| s.strip_suffix(']')) {
+                if let Ok(ino) = inner.parse::<u64>() {
+                    m.entry(ino).or_insert_with(|| (pid, comm()));
+                }
+            }
+        }
+    }
+    m
+}
+
+fn sock_to_event(s: &Sock,
+                 pids: &std::collections::HashMap<u64, (u32, String)>)
+                 -> Option<String> {
     // EN: only flow-like rows — a REMOTE endpoint with a real port.
     //     Direction is "out": the agent reports what the box reaches,
     //     which is the threat surface Snitch models.
@@ -161,13 +212,17 @@ fn sock_to_event(s: &Sock) -> Option<String> {
     if rip.is_empty() || rip == "0.0.0.0" || rip == "::" || rport == "0" {
         return None;
     }
+    let (pid, pname) = pids.get(&s.inode)
+        .map(|(p, n)| (*p, n.clone()))
+        .unwrap_or((0, String::new()));
     let ts = SystemTime::now().duration_since(UNIX_EPOCH).ok()?.as_secs();
     Some(format!(
         "{{\"ts\":{ts},\"src_ip\":\"{}\",\"dst_ip\":\"{}\",\
          \"src_port\":{},\"dst_port\":{},\"proto\":\"{}\",\
-         \"direction\":\"out\",\"bytes\":0}}",
+         \"direction\":\"out\",\"bytes\":0,\"process\":\"{}\",\"pid\":{}}}",
         json_escape(lip), json_escape(rip),
-        lport, rport, json_escape(&s.proto)))
+        lport, rport, json_escape(&s.proto),
+        json_escape(&pname), pid))
 }
 
 fn main() {
@@ -182,18 +237,23 @@ fn main() {
     let interval: u64 = env::var("SNITCH_INTERVAL_SECS")
         .ok().and_then(|v| v.parse().ok()).unwrap_or(5).max(1);
 
-    // TODO(pid-attr): walk /proc/<pid>/fd symlinks to map socket inodes
-    //   → process name/pid, then fill the `process`/`pid` event fields.
-    //   Kept out on purpose until it is exact, not approximate.
     let mut seen: HashSet<Sock> = HashSet::new();
     let mut pending: Vec<String> = Vec::new();
     eprintln!("snitch-agent {AGENT_ID} → {server} as '{host}' every {interval}s");
 
     loop {
         let now = socket_table();
-        for s in now.difference(&seen) {
-            if let Some(ev) = sock_to_event(s) {
-                pending.push(ev);
+        // EN: build the inode→pid map ONLY when the diff is non-empty —
+        //     the /proc fd walk is O(all fds) and pointless otherwise.
+        // FR: ne construire la map inode→pid QUE si le diff n'est pas
+        //     vide — le parcours /proc/fd coûte O(tous les fds).
+        let new: Vec<&Sock> = now.difference(&seen).collect();
+        if !new.is_empty() {
+            let pids = inode_pid_map();
+            for s in new {
+                if let Some(ev) = sock_to_event(s, &pids) {
+                    pending.push(ev);
+                }
             }
         }
         // EN: forget departed sockets so reconnecting flaps re-report —
@@ -216,5 +276,64 @@ fn main() {
             }
         }
         std::thread::sleep(Duration::from_secs(interval));
+    }
+}
+
+// ── unit tests / tests unitaires ────────────────────────────────────────────
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hex_ip_v4_is_little_endian() {
+        // EN: 0100007F stored LE → 127.0.0.1 / FR: LE → 127.0.0.1
+        assert_eq!(hex_ip("0100007F", false), "127.0.0.1");
+        assert_eq!(hex_ip("0A010203", false), "3.2.1.10");
+    }
+
+    #[test]
+    fn hex_ip_v6_groups_swapped() {
+        // EN: ::1 is "00000000000000000000000001000000" in /proc — the last
+        //     u32 group holds 1 in LE. / FR: ::1 vaut « …01000000 » en
+        //     /proc — le dernier groupe u32 porte 1 en LE.
+        assert_eq!(hex_ip("00000000000000000000000001000000", true), "::1");
+        assert_eq!(hex_ip("bad", true), "");
+    }
+
+    #[test]
+    fn parse_lines_extracts_flows_and_inodes() {
+        let table = "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n\
+                     0: 0100007F:C000 0A010203:01BB 01 00000000:00000000 00:00000000 00000000  1000        0 12345\n\
+                     1: 0100007F:0035 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 99999\n";
+        let mut s = HashSet::new();
+        parse_lines(table, "tcp", false, &mut s);
+        assert_eq!(s.len(), 1);                       // EN: LISTEN row dropped / FR: ligne LISTEN ignorée
+        let sock = s.iter().next().unwrap();
+        assert_eq!(sock.inode, 12345);
+        assert_eq!(sock.remote, "3.2.1.10:443");      // EN: LE decode / FR: décodage LE
+        assert_eq!(sock.local, "127.0.0.1:49152");
+    }
+
+    #[test]
+    fn event_includes_process_attribution() {
+        let mut pids = std::collections::HashMap::new();
+        pids.insert(42u64, (1337u32, "evil".to_string()));
+        let s = Sock { proto: "tcp".into(), local: "10.0.0.5:5".into(),
+                       remote: "8.8.8.8:53".into(), state: 1, inode: 42 };
+        let ev = sock_to_event(&s, &pids).unwrap();
+        assert!(ev.contains("\"process\":\"evil\"") && ev.contains("\"pid\":1337"));
+        assert!(ev.contains("\"dst_ip\":\"8.8.8.8\""));
+    }
+
+    #[test]
+    fn event_skips_unconnected() {
+        let s = Sock { proto: "udp".into(), local: "0.0.0.0:53".into(),
+                       remote: "0.0.0.0:0".into(), state: 7, inode: 1 };
+        assert!(sock_to_event(&s, &Default::default()).is_none());
+    }
+
+    #[test]
+    fn json_escapes_quotes_and_control() {
+        assert_eq!(json_escape("a\"b\\c\nd"), "a\\\"b\\\\c\\u000ad");
     }
 }

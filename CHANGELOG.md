@@ -6,6 +6,55 @@ All notable changes to Snitch. / Toutes les modifications notables de Snitch.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/) — EN/FR.
 
+## [1.6.2] — 2026-10-22 — fleet maturity / maturité de flotte
+
+### Added / Ajouté
+
+- EN: **Per-agent enrollment** — `POST /ingest/enroll` mints one-shot
+  `sagt_…` credentials (only the hash is stored), `GET /ingest/agents`
+  lists them, `POST /ingest/revoke` kills one by name. `/ingest/events`
+  accepts `X-Snitch-Agent: sagt_…` where the enrolled name is
+  authoritative (a stolen token can't spoof another agent) or the master
+  `X-Snitch-Token` for local deployments.
+  FR: **Enrôlement par agent** — `POST /ingest/enroll` mint des crédences
+  `sagt_…` one-shot (seul le hash est stocké), `GET /ingest/agents` les
+  liste, `POST /ingest/revoke` les révoque par nom. `/ingest/events`
+  accepte `X-Snitch-Agent: sagt_…` (le nom enrôlé fait foi — un jeton
+  volé ne peut pas usurper un autre agent) ou le jeton maître.
+- EN: **Agent process attribution (Linux)** — the Rust agent now maps
+  socket inodes to `pid`/`process` via a `/proc/*/fd` walk, lazily
+  (only when new sockets appear). Still zero-dependency; Windows/macOS
+  builds compile and report `pid: 0` until their OS paths land.
+  FR: **Attribution de processus (Linux)** — l'agent Rust mappe les
+  inodes de socket vers `pid`/`process` via `/proc/*/fd`, à la demande.
+  Toujours zéro-dépendance ; les builds Windows/macOS compilent et
+  reportent `pid: 0` tant que leurs chemins OS ne sont pas livrés.
+- EN: **Scheduled threat feeds** — the `ti_feeds` setting (declarative
+  via `snitch.toml` or `POST /settings`) refreshes each feed on its own
+  `hours` clock through a background asyncio worker; imports run
+  through the same dedupe/caps path as `/firewall/blocklist` and the
+  firewall reloads hot. `ti_feeds_state` persists last-fetch times.
+  FR: **Flux TI planifiés** — le réglage `ti_feeds` (déclaratif via
+  `snitch.toml` ou `POST /settings`) rafraîchit chaque flux selon son
+  horloge `hours` via un worker asyncio ; imports par le même chemin
+  dédupe/caps que `/firewall/blocklist`, pare-feu rechargé à chaud.
+- EN: **Agent CI** — `.github/workflows/ci-agent.yml` compiles and
+  unit-tests `snitch-agent` on Linux, macOS and Windows targets on every
+  `agent/**` push; 6 unit tests cover hex decoding, table parsing,
+  attribution and JSON escaping.
+  FR: **CI agent** — `.github/workflows/ci-agent.yml` compile et teste
+  `snitch-agent` sur cibles Linux/macOS/Windows à chaque push
+  `agent/**` ; 6 tests unitaires.
+
+### Fixed / Corrigé
+
+- EN: the agent previously sent `Authorization: Bearer`, which the
+  ingest endpoint never read — it now sends `X-Snitch-Agent` (enrolled
+  `sagt_…`) or `X-Snitch-Token` (master) matching the actual auth path.
+  FR: l'agent envoyait `Authorization: Bearer`, jamais lu par l'endpoint
+  — il envoie désormais `X-Snitch-Agent` (`sagt_…` enrôlé) ou
+  `X-Snitch-Token` (maître) selon le vrai chemin d'auth.
+
 ## [1.6.1] — 2026-10-22 — enterprise follow-through / suite entreprise
 
 ### Added / Ajouté

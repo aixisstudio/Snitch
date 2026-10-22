@@ -142,10 +142,34 @@ Sigma→YARA-L path is covered transitively.
 `agent/` ships a zero-dependency Rust daemon (~1 MB single binary) that
 watches the host socket table (`/proc/net/*`, Linux) and pushes newly
 observed outbound flows to `POST /ingest/events`. It observes sockets —
-no payloads/SNI (that's the local capture's job); process attribution is
-a marked TODO. Transport: HTTP + bearer token, same trust-domain model
-as `gossip_peers`. A `snitch-agent.service` unit lives in
-`deploy/systemd/`.
+no payloads/SNI (that's the local capture's job); `pid`/`process`
+attribution works on Linux via the `/proc/*/fd` inode walk and reports
+`0` elsewhere until the Windows/macOS backends land. Transport: HTTP,
+same trust-domain model as `gossip_peers`. A `snitch-agent.service`
+unit lives in `deploy/systemd/`; CI compiles and tests the binary on
+Linux, macOS and Windows on every `agent/**` push.
+
+### Per-agent enrollment
+
+Each deployed agent should carry its OWN credential — a stolen token
+can only impersonate that one agent, and revocation is per-name:
+
+```bash
+# EN: mint on the collector (master token), returned once
+curl -X POST http://collector:8000/ingest/enroll \
+  -H "X-Snitch-Token: <master>" -d '{"name": "edge-01"}'
+# → {"token": "sagt_…"} — put it in the agent's SNITCH_TOKEN
+
+curl -X POST http://collector:8000/ingest/revoke \
+  -H "X-Snitch-Token: <master>" -d '{"name": "edge-01"}'
+
+curl http://collector:8000/ingest/agents -H "X-Snitch-Token: <master>"
+```
+
+The ingest endpoint accepts `X-Snitch-Agent: sagt_…` (enrolled name is
+authoritative — the body's `host` field can't override it) or the
+master `X-Snitch-Token` for local/small deployments. Only token hashes
+are stored, so a leaked settings dump can't replay credentials.
 
 ## 10. Threat-intel feeds (free)
 
@@ -162,6 +186,26 @@ audited opt-in fetch (`remote_fetch: true` in the response). Cap at
 
 Opt-in API providers (AbuseIPDB / OTX / VirusTotal) stay available via
 `ti_provider` + `ti_api_key` — nothing calls out until you set a key.
+
+### Scheduled refresh (`ti_feeds`)
+
+A background worker re-imports feeds on their own clock — no restart,
+hot firewall reload. Configure it declaratively:
+
+```toml
+ti_feeds = [
+  { url  = "https://lists.blocklist.de/lists/all.txt",
+    kind = "ip", action = "block", hours = 24 },
+  { path = "/etc/snitch/corp-domains.txt",
+    kind = "domain", action = "sinkhole", hours = 6 },
+]
+```
+
+Each entry runs through the same importer as `POST
+/firewall/blocklist` — dedupe against existing rules, `path:` stays
+fully offline, `url:` is the same audited opt-in. Last-fetch state
+persists across restarts (`ti_feeds_state`); ≤64 feeds, ≤5000 rules
+per refresh — giant feeds belong in a resolver, not here.
 
 ## 11. Headless / daemon mode
 

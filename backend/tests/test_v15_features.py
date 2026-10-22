@@ -311,7 +311,13 @@ def test_flow_ml_inert_then_scores():
     sous le minimum d'entraînement, puis émet pour un flux extrême."""
     from detection.mlflow import FlowAnomaly, _TRAIN_MIN
     m = FlowAnomaly()
-    t = time.time()
+    # EN: 2024-01-01 12:00 UTC — the learned "hour" feature is 12/23 ≈ 0.52,
+    #     matching the hard-coded normal vector below. A live clock made the
+    #     test pass only when run near noon UTC — flaky-by-clock, fixed.
+    # FR: 01/01/2024 12:00 UTC — la feature « heure » apprise vaut 12/23
+    #     ≈ 0,52, comme le vecteur « normal » ci-dessous. L'horloge réelle
+    #     ne faisait passer le test que vers midi UTC — flaky, corrigé.
+    t = 1_704_110_400
     # EN: Learn a realistic baseline — a small stable set of destinations
     #     (intervals + fanout stay meaningful), boring web ports/sizes.
     # FR: Baseline réaliste — petit ensemble stable de destinations
