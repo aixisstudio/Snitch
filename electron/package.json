@@ -1,6 +1,6 @@
 {
   "name": "snitch",
-  "version": "1.0.8",
+  "version": "1.1.0",
   "description": "Snitch — real-time network traffic visualizer / visualiseur de trafic réseau en temps réel",
   "main": "main.js",
   "license": "AGPL-3.0-or-later",
@@ -80,7 +80,17 @@
     "snap": {
       "confinement": "strict",
       "grade": "stable",
-      "plugs": ["network", "network-bind", "network-observe", "desktop", "desktop-legacy", "x11", "wayland", "opengl", "removable-media"]
+      "plugs": [
+        "network",
+        "network-bind",
+        "network-observe",
+        "desktop",
+        "desktop-legacy",
+        "x11",
+        "wayland",
+        "opengl",
+        "removable-media"
+      ]
     },
     "publish": [
       {

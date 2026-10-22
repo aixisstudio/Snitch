@@ -4,7 +4,7 @@ All notable changes to Snitch. / Toutes les modifications notables de Snitch.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/) — EN/FR.
 
-## [Unreleased] / [Non publié]
+## [1.1.0] — 2026-10-22
 
 ### Added / Ajouté
 
