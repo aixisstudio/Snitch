@@ -23,8 +23,11 @@ warning once reputation builds.
 
 ### Setup (one-time, maintainer only)
 
-1. Apply at <https://signpath.org> → *Open Source* — describe the project
-   and link this repository. Approval is manual (days).
+1. Apply at <https://signpath.org/apply> — a HubSpot form asking for your
+   name, email, project name, repository URL and a description. Approval is
+   manual (days). Snitch meets every published condition: AGPL-3.0
+   (OSI-approved, no dual licensing), all-source public, actively
+   maintained, already released on GitHub Releases, documented.
 2. Create the SignPath organization, a **project** (slug, e.g. `Snitch`),
    link the *GitHub.com* trusted build system to it, and install the
    SignPath GitHub App on this repository (required for origin verification).
@@ -39,6 +42,30 @@ warning once reputation builds.
    `.github/workflows/ci.yml` activates automatically on the next tag: it
    uploads the unsigned installer, waits for the signed copy, and replaces
    the artifact before release upload. **Everything is inert until step 4.**
+
+### Ready-to-paste application text / Texte de candidature prêt à coller
+
+```
+Project name: Snitch
+Repository: https://github.com/aixisstudio/Snitch
+License: AGPL-3.0-or-later
+Website: https://aixisstudio.github.io/Snitch/
+
+Snitch is a local-first network traffic visualizer for Windows, macOS and
+Linux — a free, privacy-focused alternative to Little Snitch's monitoring
+side. It captures packets via libpcap/Npcap through a custom ctypes
+binding, attributes traffic to processes, geolocates IPs offline against
+local .mmdb databases, and detects anomalies (port scans, beaconing,
+exfiltration spikes). All analysis happens on-device: no telemetry, no
+analytics, no account.
+
+Release artifacts are built entirely by public GitHub Actions workflows
+(.github/workflows/ci.yml) from tagged commits. We want to sign the
+Windows NSIS installer (Snitch-Setup-windows.exe) so users stop seeing
+SmartScreen warnings on install. The signing request will be submitted
+from the tagged-release CI job via the signpath/github-action-submit-
+signing-request action, signing only artifacts built from this repository.
+```
 
 ## macOS — no free path exists
 
