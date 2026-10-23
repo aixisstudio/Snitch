@@ -140,7 +140,18 @@ jobs:
         #     changelog brut. Idempotent : saute si deja applique.
         run: |
           sed "s|@TAG@|${GITHUB_REF_NAME}|g" packaging/release-notes.md > /tmp/header.md
-          gh release view "${GITHUB_REF_NAME}" --json body -q .body > /tmp/old_body.md
+          # EN: The release object is created by ci.yml AFTER its multi-OS
+          #     Electron builds — poll until it exists instead of racing it.
+          # FR: La release est créée par ci.yml APRÈS les builds Electron
+          #     multi-OS — on attend qu'elle existe au lieu de la devancer.
+          ok=0
+          for i in $(seq 1 120); do
+            if gh release view "${GITHUB_REF_NAME}" --json body -q .body > /tmp/old_body.md 2>/dev/null; then
+              ok=1; break
+            fi
+            sleep 15
+          done
+          test "$ok" = 1 || { echo "::error::release ${GITHUB_REF_NAME} never appeared"; exit 1; }
           if grep -q "Download Snitch" /tmp/old_body.md; then
             echo "::notice::release notes already rewritten — skipping"
             exit 0
