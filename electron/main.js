@@ -716,6 +716,25 @@ function shutdownBackend() {
 
 // ── App lifecycle / Cycle de vie de l'application ────────────────────────────
 app.whenReady().then(async () => {
+  // EN: Guard: when a previous ELEVATED run left the data dir root-owned,
+  //     Chromium cannot write its caches and the app dies SILENTLY — no
+  //     window, no error. Detect it up front and tell the user how to fix.
+  // FR: Garde-fou : quand un lancement ÉLEVÉ précédent a laissé le dossier
+  //     de données possédé par root, Chromium ne peut plus écrire ses caches
+  //     et l'app meurt EN SILENCE — pas de fenêtre, pas d'erreur. Détecter
+  //     en amont et expliquer la réparation.
+  try {
+    fs.accessSync(app.getPath('userData'), fs.constants.W_OK)
+  } catch {
+    const dataPath = app.getPath('userData')
+    dialog.showErrorBox('Snitch',
+      `Cannot write to the data folder (leftover root-owned files from an earlier elevated run).\n` +
+      `Impossible d'écrire dans le dossier de données (fichiers restés propriété de root après un lancement élevé).\n\n` +
+      `Fix / Réparer :\n  sudo chown -R $USER "${dataPath}"\n  ${'or / ou'} : rm -rf "${dataPath}"`)
+    app.quit()
+    return
+  }
+
   // EN: On Windows, Npcap is a hard requirement — guide the user to npcap.com
   //     (it is deliberately NOT bundled; see licensing notes).
   // FR: Sous Windows, Npcap est obligatoire — guider l'utilisateur vers

@@ -5,7 +5,7 @@ Pick the file for your system, then follow the two-line install steps below.
 | Your system | Download | Install |
 |---|---|---|
 | **Windows 10/11** | `Snitch-Setup-windows.exe` | Double-click the installer. Windows SmartScreen may warn (the app is not code-signed yet): click **More info -> Run anyway**. |
-| **macOS (Apple Silicon)** | `Snitch-macos-arm64.dmg` | Open the `.dmg`, drag Snitch into Applications. On first launch, right-click the app -> **Open** -> **Open** (Gatekeeper warning, app not notarised yet). |
+| **macOS (Apple Silicon)** | `Snitch-macos-arm64.dmg` | Open the `.dmg`, drag Snitch into Applications. The app is not notarised yet, so macOS may say it is "damaged": run `xattr -dr com.apple.quarantine /Applications/Snitch.app` in Terminal, then launch normally. |
 | **Linux, easiest** | `Snitch-x86_64.AppImage` | `chmod +x Snitch-x86_64.AppImage` then double-click or run it. |
 | **Linux, Debian/Ubuntu** | `snitch-linux-amd64.deb` | `sudo apt install ./snitch-linux-amd64.deb` |
 | **Linux, Snap** | `snitch-linux-amd64.snap` | `sudo snap install --dangerous snitch-linux-amd64.snap` |
@@ -25,7 +25,7 @@ Choisissez le fichier correspondant a votre systeme, puis suivez les etapes d'in
 | Votre systeme | Fichier | Installation |
 |---|---|---|
 | **Windows 10/11** | `Snitch-Setup-windows.exe` | Double-cliquez sur l'installateur. SmartScreen peut afficher un avertissement (l'application n'est pas encore signee) : cliquez sur **Informations complementaires -> Executer quand meme**. |
-| **macOS (Apple Silicon)** | `Snitch-macos-arm64.dmg` | Ouvrez le `.dmg`, glissez Snitch dans Applications. Au premier lancement : clic droit sur l'app -> **Ouvrir** -> **Ouvrir**. |
+| **macOS (Apple Silicon)** | `Snitch-macos-arm64.dmg` | Ouvrez le `.dmg`, glissez Snitch dans Applications. L'app n'est pas encore notarisee, macOS peut la dire « endommagee » : lancez `xattr -dr com.apple.quarantine /Applications/Snitch.app` dans le Terminal, puis ouvrez normalement. |
 | **Linux, le plus simple** | `Snitch-x86_64.AppImage` | `chmod +x Snitch-x86_64.AppImage` puis double-cliquez ou lancez-le. |
 | **Linux, Debian/Ubuntu** | `snitch-linux-amd64.deb` | `sudo apt install ./snitch-linux-amd64.deb` |
 | **Linux, Snap** | `snitch-linux-amd64.snap` | `sudo snap install --dangerous snitch-linux-amd64.snap` |
