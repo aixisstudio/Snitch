@@ -530,3 +530,7 @@ monitoring and blocking in one.
 - [ ] 18h-21h : répondre à TOUS les commentaires (HN surtout)
 - [ ] Le lendemain : réponses Quora/Super User evergreen, remercier
       les partages, surveiller GitHub Trending
+- [ ] Mi-janvier 2027 : resoumettre à lissy93/awesome-privacy
+      (regle des 16 semaines depuis la premiere release stable, PR #858
+      fermee pour maturite insuffisante, la mainteneuse demande
+      explicitement d'attendre - ne PAS resoumettre avant)
