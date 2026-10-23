@@ -154,6 +154,8 @@ export default {
   capture_start: '開始',
   capture_stopping: '停止中…',
   capture_starting: '開始中…',
+  capture_error_title: 'キャプチャに失敗しました — トラフィックは表示されません',
+  capture_error_hint: 'キャプチャ権限で Snitch を再起動してください（Windows では管理者＋Npcap 必須、macOS/Linux では sudo）、または「開始」で再試行。',
 
   // ポートフィルター
   port_filter: 'ポート',

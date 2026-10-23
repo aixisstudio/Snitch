@@ -34,7 +34,7 @@ import { computePrivacyScore } from './scoring/privacy'
 import { useT, LANGS, LANG_NAMES } from './i18n'
 
 export default function App() {
-  const { nodes, edges, lanDevices, packets, alerts, unread, clearUnread, status, bandwidth, capturing, toggleCapture, portFilter, updatePortFilter, excludedProcesses, updateProcessFilter, whitelistedIps, updateIpWhitelist, media, ssid, iface, watchlist, updateWatchlist } = useWebSocket(null)  // EN: null → resolves the dynamic port/scheme via wsBase()
+  const { nodes, edges, lanDevices, packets, alerts, unread, clearUnread, status, bandwidth, capturing, captureError, toggleCapture, portFilter, updatePortFilter, excludedProcesses, updateProcessFilter, whitelistedIps, updateIpWhitelist, media, ssid, iface, watchlist, updateWatchlist } = useWebSocket(null)  // EN: null → resolves the dynamic port/scheme via wsBase()
                     // FR: null → résout port/schéma dynamiques via wsBase()
   const [selected, setSelected] = useState(null)
   const [view, setView] = useState('graph')
@@ -208,6 +208,13 @@ export default function App() {
             <SettingsButton onClick={() => setShowSettings(v => !v)} />
             <StatusBadge status={status} />
           </div>
+
+          {/* EN: Fatal capture failure banner — without it a dead pcap
+                  session showed "devices but no traffic" with no hint why.
+              FR: Bannière d'échec fatal de capture — sans elle une session
+                  pcap morte affichait « des appareils mais pas de trafic »
+                  sans aucune indication. */}
+          {captureError && <CaptureErrorBanner error={captureError} />}
 
           {showAlerts && (
             <AlertPanel alerts={alerts} onClose={() => setShowAlerts(false)} onIgnore={handleIgnoreAlert} />
@@ -832,6 +839,34 @@ function NetworkBadge({ ssid, iface }) {
         fontSize: 10, color: 'var(--text-muted)', fontWeight: 600,
         whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden',
       }}>{label}</span>
+    </div>
+  )
+}
+
+/** EN: Fatal capture failure banner — pcap died (no privileges, missing
+ *      Npcap, unplugged interface) while the UI kept saying "capturing".
+ *      Shows the raw libpcap message plus the fix hint.
+ *  FR: Bannière d'échec fatal de capture — pcap est mort (droits manquants,
+ *      Npcap absent, interface débranchée) alors que l'UI continuait
+ *      d'afficher « capture en cours ». Affiche le message libpcap brut plus
+ *      l'indice de résolution. */
+function CaptureErrorBanner({ error }) {
+  const { t } = useT()
+  return (
+    <div role="alert" style={{
+      position: 'absolute', top: 16, left: '50%', transform: 'translateX(-50%)',
+      zIndex: 60, maxWidth: 620,
+      background: 'var(--surface)', border: '1px solid #ef4444',
+      borderRadius: 10, padding: '10px 16px',
+      display: 'flex', alignItems: 'flex-start', gap: 10,
+      boxShadow: '0 4px 24px rgba(0,0,0,0.35)',
+    }}>
+      <AlertTriangle size={16} color="#ef4444" style={{ flexShrink: 0, marginTop: 2 }} />
+      <div>
+        <div style={{ fontSize: 12, fontWeight: 600, color: '#ef4444' }}>{t('capture_error_title')}</div>
+        <div style={{ fontSize: 11, color: 'var(--text)', marginTop: 2, wordBreak: 'break-word' }}>{error}</div>
+        <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 4 }}>{t('capture_error_hint')}</div>
+      </div>
     </div>
   )
 }

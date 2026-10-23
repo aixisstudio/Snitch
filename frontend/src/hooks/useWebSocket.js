@@ -54,6 +54,7 @@ export function useWebSocket(url) {
   const [status, setStatus] = useState('connecting')
   const [bandwidth, setBandwidth] = useState([])
   const [capturing, setCapturing] = useState(true)
+  const [captureError, setCaptureError] = useState(null)
   const [portFilter, setPortFilter] = useState([])
   const [excludedProcesses, setExcludedProcesses] = useState([])
   const [whitelistedIps, setWhitelistedIps] = useState([])
@@ -148,6 +149,7 @@ export function useWebSocket(url) {
         if (msg.type === 'init') {
           if (msg.media) setMedia(msg.media)
           if (msg.capturing !== undefined) setCapturing(msg.capturing)
+          if ('capture_error' in msg) setCaptureError(msg.capture_error)
           if (msg.ports !== undefined) setPortFilter(msg.ports)
           if (msg.excluded_processes !== undefined) setExcludedProcesses(msg.excluded_processes)
           if (msg.whitelisted_ips !== undefined) setWhitelistedIps(msg.whitelisted_ips)
@@ -247,6 +249,7 @@ export function useWebSocket(url) {
         // FR: Le statut capture/filtres a changé (action locale ou distante).
         if (msg.type === 'capture_status') {
           setCapturing(msg.capturing)
+          if ('capture_error' in msg) setCaptureError(msg.capture_error)
           if (msg.ports !== undefined) setPortFilter(msg.ports)
           if (msg.excluded_processes !== undefined) setExcludedProcesses(msg.excluded_processes)
           if (msg.whitelisted_ips !== undefined) setWhitelistedIps(msg.whitelisted_ips)
@@ -367,5 +370,5 @@ export function useWebSocket(url) {
     setWatchlist(data.items)
   }
 
-  return { nodes, edges, lanDevices, packets, alerts, unread, clearUnread, status, bandwidth, capturing, toggleCapture, portFilter, updatePortFilter, excludedProcesses, updateProcessFilter, whitelistedIps, updateIpWhitelist, media, ssid, iface, watchlist, updateWatchlist }
+  return { nodes, edges, lanDevices, packets, alerts, unread, clearUnread, status, bandwidth, capturing, captureError, toggleCapture, portFilter, updatePortFilter, excludedProcesses, updateProcessFilter, whitelistedIps, updateIpWhitelist, media, ssid, iface, watchlist, updateWatchlist }
 }

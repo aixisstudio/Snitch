@@ -1865,6 +1865,43 @@ def _cleanup_loop() -> None:
 
 # ── Capture lifecycle / Cycle de vie de la capture ───────────────────────────
 
+def _capture_error() -> str | None:
+    """EN: Last fatal capture error reported by the sniffer (None = healthy
+        or demo mode, which has no error path).
+    FR: Dernière erreur fatale de capture remontée par le sniffer (None =
+        sain, ou mode démo qui n'a pas de chemin d'erreur)."""
+    return getattr(_sniffer, "last_error", None) if _sniffer else None
+
+
+def _sniffer_failed(msg: str) -> None:
+    """EN: Called from the capture thread when pcap dies (no privileges,
+        missing Npcap, unplugged interface…). Without this the UI showed
+        "capturing" forever while the sniffer thread was dead — the ARP scan
+        kept feeding the device list and users saw "devices but no traffic"
+        with no explanation. Flag the real state via capture_status.
+    FR: Appelé depuis le thread de capture quand pcap meurt (droits
+        manquants, Npcap absent, interface débranchée…). Sans ça l'UI
+        affichait « capture en cours » indéfiniment alors que le thread était
+        mort — le scan ARP continuait de remplir la liste d'appareils et
+        l'utilisateur voyait « des appareils mais pas de trafic » sans
+        explication. On signale l'état réel via capture_status."""
+    global _capturing
+    _capturing = False
+    if _loop is None:
+        return
+    try:
+        asyncio.run_coroutine_threadsafe(broadcast({
+            "type": "capture_status",
+            "capturing": False,
+            "capture_error": msg,
+            "ports": _port_filter,
+            "excluded_processes": sorted(_excluded_processes),
+            "whitelisted_ips": sorted(_whitelisted_ips),
+        }), _loop)
+    except Exception:                                # noqa: BLE001
+        pass
+
+
 def _start_capture() -> None:
     """EN: (Re)start sniffer + ARP-table scanner in daemon threads.
         With SNITCH_DEMO=1 the sniffer is replaced by the synthetic demo
@@ -1879,6 +1916,7 @@ def _start_capture() -> None:
     else:
         _sniffer = PacketSniffer(callback=on_packet, ports=_port_filter,
                                  iface=db.get_setting("interface"))
+        _sniffer.on_error = _sniffer_failed
         # EN: eBPF attribution probe — kernel sees every connect() even
         #     from processes that die before the next socket-table refresh.
         #     Opt-in-able via settings, silently no-ops without bcc/root.
@@ -2366,6 +2404,7 @@ async def get_capture_status() -> dict:
     """EN: Capture state + all active filters. / FR: État de capture + filtres actifs."""
     return {
         "capturing": _capturing,
+        "capture_error": _capture_error(),
         "ports": _port_filter,
         "excluded_processes": sorted(_excluded_processes),
         "whitelisted_ips": sorted(_whitelisted_ips),
@@ -2382,6 +2421,7 @@ async def stop_capture() -> dict:
     await broadcast({
         "type": "capture_status",
         "capturing": False,
+        "capture_error": _capture_error(),
         "ports": _port_filter,
         "excluded_processes": sorted(_excluded_processes),
         "whitelisted_ips": sorted(_whitelisted_ips),
@@ -2436,6 +2476,7 @@ async def start_capture() -> dict:
         await broadcast({
             "type": "capture_status",
             "capturing": True,
+            "capture_error": None,
             "ports": _port_filter,
             "excluded_processes": sorted(_excluded_processes),
             "whitelisted_ips": sorted(_whitelisted_ips),
@@ -2453,6 +2494,7 @@ async def set_process_filter(body: ProcessFilterBody) -> dict:
     await broadcast({
         "type": "capture_status",
         "capturing": _capturing,
+        "capture_error": _capture_error(),
         "ports": _port_filter,
         "excluded_processes": sorted(_excluded_processes),
         "whitelisted_ips": sorted(_whitelisted_ips),
@@ -2499,6 +2541,7 @@ async def set_ip_whitelist(body: WhitelistBody) -> dict:
     await broadcast({
         "type": "capture_status",
         "capturing": _capturing,
+        "capture_error": _capture_error(),
         "ports": _port_filter,
         "excluded_processes": sorted(_excluded_processes),
         "whitelisted_ips": sorted(_whitelisted_ips),
@@ -2741,6 +2784,7 @@ async def get_diagnostics() -> dict:
         "platform": platform.platform(),
         "capture": {
             "capturing": _capturing,
+            "capture_error": _capture_error(),
             "interface": db.get_setting("interface"),
             "ports": _port_filter,
         },
@@ -4250,6 +4294,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         "alerts": detector.history[-50:],
         "media": _media_state,
         "capturing": _capturing,
+        "capture_error": _capture_error(),
         "ports": _port_filter,
         "excluded_processes": sorted(_excluded_processes),
         "whitelisted_ips": sorted(_whitelisted_ips),

@@ -243,6 +243,40 @@ class PacketSniffer:
         #     qui comptait.
         self.stats = {"frames": 0, "delivered": 0, "parse_failed": 0,
                       "not_for_us": 0}
+        # EN: Fatal capture failure surfaced to the API/UI — pcap_open_live
+        #     dying (no privileges, missing Npcap) used to fail silently in
+        #     this thread while the ARP scan kept feeding the device list:
+        #     "devices but no traffic" with zero explanation. `on_error` is
+        #     called from the capture thread, like `callback`.
+        # FR: Échec fatal de capture remonté à l'API/UI — un pcap_open_live
+        #     mourant (droits manquants, Npcap absent) échouait silencieusement
+        #     dans ce thread pendant que le scan ARP remplissait la liste
+        #     d'appareils : « appareils mais pas de trafic » sans explication.
+        #     `on_error` est appelé depuis le thread de capture, comme
+        #     `callback`.
+        self.last_error: Optional[str] = None
+        self.on_error: Optional[Callable[[str], None]] = None
+
+    def _fail(self, msg: str) -> None:
+        """EN: Record a fatal capture failure and notify the API layer.
+        FR: Enregistrer un échec fatal de capture et notifier la couche API."""
+        self.last_error = msg
+        logger.error("capture failed: %s", msg)
+        if self.on_error:
+            try:
+                self.on_error(msg)
+            except Exception:                      # noqa: BLE001
+                logger.debug("capture error callback failed", exc_info=True)
+
+    @property
+    def running(self) -> bool:
+        """EN: True while the capture thread is actually alive — the honest
+            answer to "are we capturing", unlike the intent flag.
+        FR: Vrai tant que le thread de capture est réellement vivant — la
+            réponse honnête à « est-ce qu'on capture », contrairement au
+            drapeau d'intention."""
+        return (self._running and self._thread is not None
+                and self._thread.is_alive())
 
     def set_attribution_probe(self, probe) -> None:
         """EN: Register an object exposing lookup(ip, port) → (pid, name)
@@ -438,11 +472,13 @@ class PacketSniffer:
     def start(self) -> None:
         """EN: Launch the capture thread. / FR: Lancer le thread de capture."""
         if not PCAP_AVAILABLE:
-            logger.warning("libpcap unavailable — packet capture disabled")
+            self._fail("libpcap unavailable — install Npcap (Windows) or "
+                       "libpcap (Linux); on macOS it is built in")
             return
         if not self.iface:
-            logger.warning("no capture interface found — packet capture disabled")
+            self._fail("no capture interface found — packet capture disabled")
             return
+        self.last_error = None
         self._running = True
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
@@ -469,7 +505,13 @@ class PacketSniffer:
                 try:
                     pkt = self._session.next_packet()
                 except PcapError as exc:
-                    logger.error("capture error: %s", exc)
+                    # EN: A pcap error racing a user stop() is benign — only
+                    #     report failures while capture is meant to run.
+                    # FR: Une erreur pcap concurrente d'un stop() utilisateur
+                    #     est bénigne — ne remonter que les échecs survenant
+                    #     pendant que la capture doit tourner.
+                    if self._running:
+                        self._fail(f"capture error: {exc}")
                     break
                 if time.monotonic() - last_ip_refresh > 30:
                     self.local_ips = get_local_ips()
@@ -477,7 +519,9 @@ class PacketSniffer:
                 if pkt is not None:
                     self._handle_frame(*pkt)
         except PcapError as exc:
-            logger.error("sniffer failed to start: %s", exc)
+            self._fail(f"sniffer failed to start: {exc}")
+        except Exception as exc:                    # noqa: BLE001
+            self._fail(f"sniffer crashed: {exc}")
         finally:
             if self._session:
                 self._session.close()

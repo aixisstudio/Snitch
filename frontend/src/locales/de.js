@@ -154,6 +154,8 @@ export default {
   capture_start: 'Start',
   capture_stopping: 'Stoppe…',
   capture_starting: 'Starte…',
+  capture_error_title: 'Aufzeichnung fehlgeschlagen — es wird kein Traffic angezeigt',
+  capture_error_hint: 'Snitch mit Aufzeichnungsrechten neu starten (Admin unter Windows — Npcap erforderlich, sudo unter macOS/Linux) oder zum Wiederholen Start drücken.',
 
   // Port filter / Port-Filter
   port_filter: 'Ports',

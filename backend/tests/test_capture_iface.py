@@ -75,3 +75,39 @@ def test_default_iface_falls_back_without_route(monkeypatch):
     monkeypatch.setattr(sniffer, "_default_route_ip", lambda: None)
     monkeypatch.setattr(sniffer.psutil, "net_if_addrs", lambda: {})
     assert sniffer.PacketSniffer._default_iface() == "en0"
+
+
+def test_pcap_open_failure_is_reported(monkeypatch):
+    """EN: pcap_open_live failing (no privileges / missing Npcap) must set
+        last_error and fire on_error — the old code logged and died silently,
+        which is how users got "devices but no traffic" with no explanation.
+    FR: Un échec de pcap_open_live (droits manquants / Npcap absent) doit
+        remplir last_error et déclencher on_error — l'ancien code logguait
+        puis mourrait silencieusement, d'où le « appareils mais pas de
+        trafic » sans explication vu par les utilisateurs."""
+    monkeypatch.setattr(sniffer, "PCAP_AVAILABLE", True)
+
+    def boom(*_a, **_k):
+        raise sniffer.PcapError("you don't have permission to capture")
+    monkeypatch.setattr(sniffer, "PcapSession", boom)
+
+    s = sniffer.PacketSniffer(callback=lambda p: None, iface="en0")
+    errors = []
+    s.on_error = errors.append
+    s._running = True
+    s._run()
+    assert s.last_error and "permission" in s.last_error
+    assert errors == [s.last_error]
+
+
+def test_missing_libpcap_is_reported(monkeypatch):
+    """EN: No libpcap at all must also surface via last_error + on_error.
+    FR: L'absence totale de libpcap doit aussi remonter via last_error +
+        on_error."""
+    monkeypatch.setattr(sniffer, "PCAP_AVAILABLE", False)
+    s = sniffer.PacketSniffer(callback=lambda p: None, iface="en0")
+    errors = []
+    s.on_error = errors.append
+    s.start()
+    assert s.last_error
+    assert errors == [s.last_error]

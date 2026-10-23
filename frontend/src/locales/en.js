@@ -158,6 +158,8 @@ export default {  // Navigation
   capture_start: 'Start',
   capture_stopping: 'Stopping…',
   capture_starting: 'Starting…',
+  capture_error_title: 'Capture failed — no traffic will show',
+  capture_error_hint: 'Restart Snitch with capture privileges (admin on Windows — Npcap required, sudo on macOS/Linux) or press Start to retry.',
 
   // Port filter / Filtre de ports
   port_filter: 'Ports',

@@ -154,6 +154,8 @@ export default {
   capture_start: 'Iniciar',
   capture_stopping: 'Parando…',
   capture_starting: 'Iniciando…',
+  capture_error_title: 'Falha na captura — nenhum tráfego será exibido',
+  capture_error_hint: 'Reinicie o Snitch com privilégios de captura (admin no Windows — Npcap obrigatório, sudo no macOS/Linux) ou pressione Iniciar para tentar de novo.',
 
   // Filtro de portas
   port_filter: 'Portas',

@@ -154,6 +154,8 @@ export default {
   capture_start: 'Старт',
   capture_stopping: 'Остановка…',
   capture_starting: 'Запуск…',
+  capture_error_title: 'Ошибка захвата — трафик не будет отображаться',
+  capture_error_hint: 'Перезапустите Snitch с правами захвата (администратор в Windows — требуется Npcap, sudo в macOS/Linux) или нажмите «Старт» для повтора.',
 
   // Фильтр портов
   port_filter: 'Порты',

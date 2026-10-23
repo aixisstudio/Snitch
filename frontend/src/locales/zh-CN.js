@@ -154,6 +154,8 @@ export default {
   capture_start: '开始',
   capture_stopping: '停止中…',
   capture_starting: '启动中…',
+  capture_error_title: '抓包失败 — 将不会显示任何流量',
+  capture_error_hint: '请以抓包权限重启 Snitch（Windows 需管理员权限并安装 Npcap，macOS/Linux 需 sudo），或点击“开始”重试。',
 
   // 端口过滤
   port_filter: '端口',
