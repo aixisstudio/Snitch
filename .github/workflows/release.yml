@@ -124,3 +124,30 @@ jobs:
         run: |
           choco pack packaging/choco/snitch.nuspec --version ${env:GITHUB_REF_NAME.TrimStart('v')}
           choco push snitch.*.nupkg --source https://push.chocolatey.org/ --api-key $env:CHOCO_API_KEY
+
+  release-notes:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Friendly release notes / Notes de release grand public
+        # EN: GitHub's auto-generated notes only list merged PRs — prepend
+        #     the bilingual download table and fold the raw changelog into
+        #     a collapsible block. Idempotent: skip when already applied.
+        # FR: les notes auto-generees ne listent que les PRs — on prefixe
+        #     le tableau de telechargement bilingue et on replie le
+        #     changelog brut. Idempotent : saute si deja applique.
+        run: |
+          sed "s|@TAG@|${GITHUB_REF_NAME}|g" packaging/release-notes.md > /tmp/header.md
+          gh release view "${GITHUB_REF_NAME}" --json body -q .body > /tmp/old_body.md
+          if grep -q "Download Snitch" /tmp/old_body.md; then
+            echo "::notice::release notes already rewritten — skipping"
+            exit 0
+          fi
+          { cat /tmp/header.md
+            printf '\n<details>\n<summary>Full changelog (technical)</summary>\n\n'
+            cat /tmp/old_body.md
+            printf '\n\n</details>\n'
+          } > /tmp/new_body.md
+          gh release edit "${GITHUB_REF_NAME}" --notes-file /tmp/new_body.md
