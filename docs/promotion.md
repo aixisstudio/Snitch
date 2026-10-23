@@ -15,7 +15,7 @@ les listes evergreen).
 
 **Title:**
 ```
-Show HN: Snitch – see every connection your computer makes, 100% local
+Show HN: Snitch – open-source app firewall, Sigma rules and one-click blocking
 ```
 
 **Text (first comment):**
@@ -56,27 +56,30 @@ Repo: https://github.com/aixisstudio/Snitch
 ```
 Snitch — open-source, local-first application firewall & network monitor (AGPL)
 
-I made this: a privacy-first tool that shows every connection your
-computer makes — live node graph + world map, all analysis on-device.
+I made this: a privacy-first firewall that shows every outbound
+connection per process — and blocks it in one click via eBPF,
+NFQUEUE, nftables or Windows WFP. All analysis on-device.
 No account, no cloud, no telemetry: the API only listens on 127.0.0.1
 behind a token, and even geolocation is offline (bundled DB-IP Lite).
 
-It flags port scans, beaconing and possible exfiltration, shows which
-process generates which traffic, and rates your exposure with a live
-privacy score. Bilingual EN/FR. SNITCH_DEMO=1 runs a synthetic-traffic
-preview without root.
+It ships Sigma-compatible detection rules, offline threat intel,
+DGA/ICMP-tunnel/beaconing detection, and rates your exposure with a
+live privacy score. UI in 8 languages. SNITCH_DEMO=1 runs a
+synthetic-traffic preview without root.
 
 https://github.com/aixisstudio/Snitch
 ```
 
 ### r/netsec — shorter, technical
 ```
-Snitch — local-first application firewall & network monitor (ctypes→libpcap, own parser, AGPL)
+Snitch — local-first application firewall (ctypes→libpcap, own parser, Sigma rules, AGPL)
 
-Passive pcap → FastAPI/WebSockets → D3.js force graph. Anomaly heuristics
-(port scan, beaconing, exfil), per-process attribution, passive LAN
-discovery via ARP table (no active scans). Offline GeoIP only.
-macOS/Windows/Linux. Demo mode (SNITCH_DEMO=1) needs no root.
+Passive pcap → per-process attribution → one-click blocking via
+eBPF / NFQUEUE / nftables / WFP. Sigma-compatible rules, offline
+threat intel, DGA domain + ICMP-tunnel + beaconing detection.
+Offline GeoIP only, loopback API + token. Rust fleet agent,
+ECS/CEF/JSON/Syslog export. macOS/Windows/Linux.
+Demo mode (SNITCH_DEMO=1) needs no root.
 
 https://github.com/aixisstudio/Snitch
 ```
