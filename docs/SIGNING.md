@@ -21,6 +21,19 @@ qualifying open-source projects. Approved projects get a `release-signing`
 policy that produces publicly trusted signatures — SmartScreen stops
 warning once reputation builds.
 
+**Status (Oct 2026) / État (oct. 2026) :** the `Snitch [OSS]` organization is
+approved and fully wired — CI user confirmed, `*.exe`-in-ZIP artifact
+configuration, GitHub trusted build system + GitHub App, secrets and
+variables set. A real signing request already completed end-to-end under
+`test-signing`. The `release-signing` certificate is still being issued
+(CSR pending); `SIGNPATH_POLICY_SLUG` will switch from `test-signing` to
+`release-signing` once it lands.
+
+L'organisation `Snitch [OSS]` est approuvée et entièrement câblée — le
+pipeline a déjà produit un installeur signé de bout en bout en
+`test-signing`. Le certificat `release-signing` est en cours d'émission ;
+on basculera la variable de politique dès qu'il arrive.
+
 ### Setup (one-time, maintainer only)
 
 1. Apply at <https://signpath.org/apply> — a HubSpot form asking for your

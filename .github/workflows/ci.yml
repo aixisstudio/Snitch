@@ -230,6 +230,37 @@ jobs:
         if: ${{ matrix.os == 'windows-latest' && vars.SIGNPATH_ORGANIZATION_ID != '' }}
         shell: pwsh
         run: Copy-Item -Force "dist/installer/signed/*" "dist/installer/"
+      # EN: Signing changes the EXE bytes, so electron-builder's latest.yml
+      #     (auto-update manifest: sha512 + size of the installer) is stale.
+      #     Regenerate it against the signed file or electron-updater will
+      #     refuse the update with a hash mismatch.
+      # FR: La signature modifie l'EXE, donc le latest.yml d'electron-builder
+      #     (manifeste d'auto-update : sha512 + taille de l'installeur) est
+      #     périmé. On le régénère sur le fichier signé sinon electron-updater
+      #     refuse la mise à jour (hash incorrect).
+      - name: Regenerate latest.yml for signed installer
+        if: ${{ matrix.os == 'windows-latest' && vars.SIGNPATH_ORGANIZATION_ID != '' }}
+        shell: pwsh
+        run: |
+          $exe = Get-Item "dist/installer/Snitch Setup *.exe" | Select-Object -First 1
+          $sha = [System.Security.Cryptography.SHA512]::Create()
+          $fs = [System.IO.File]::OpenRead($exe.FullName)
+          try { $b64 = [Convert]::ToBase64String($sha.ComputeHash($fs)) } finally { $fs.Close() }
+          $name = $exe.Name
+          $size = $exe.Length
+          $ver = "${{ github.ref_name }}" -replace '^v',''
+          $date = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ss.fffZ')
+          @"
+          version: $ver
+          files:
+            - url: $name
+              sha512: $b64
+              size: $size
+          path: $name
+          sha512: $b64
+          releaseDate: '$date'
+          "@ | Out-File -Encoding utf8 "dist/installer/latest.yml"
+          Get-Content "dist/installer/latest.yml"
 
       # EN: Upload only the final installable files — unpacked dirs and
       #     blockmaps bloat artifacts to ~900 MB and break the release
@@ -344,6 +375,13 @@ jobs:
               *amd64.deb)         mv "$f" "$(dirname "$f")/snitch-linux-amd64.deb" ;;
               *amd64.snap)        mv "$f" "$(dirname "$f")/snitch-linux-amd64.snap" ;;
             esac
+          done
+          # EN: latest.yml must point at the renamed stable asset name,
+          #     otherwise electron-updater downloads a URL that 404s.
+          # FR: latest.yml doit pointer vers le nom d'asset renommé, sinon
+          #     electron-updater télécharge une URL en 404.
+          for y in artifacts/**/latest.yml; do
+            sed -i.bak -E 's/(url|path): Snitch Setup [^ ]+\.exe/\1: Snitch-Setup-windows.exe/' "$y" && rm -f "$y.bak"
           done
           find artifacts -type f -name "*" | sort
       - name: Publish GitHub release with all assets
