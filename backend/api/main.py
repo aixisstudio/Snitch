@@ -2165,6 +2165,9 @@ async def _shutdown_all() -> None:
         chown_tree(data_dir())
     except Exception:
         pass
+
+
+@asynccontextmanager
 async def lifespan(app: FastAPI):
     """EN: FastAPI lifespan — startup, yield, then clean shutdown.
     FR: Lifespan FastAPI — démarrage, yield, puis arrêt propre."""
