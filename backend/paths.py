@@ -35,6 +35,69 @@ import sys
 from pathlib import Path
 
 
+def _real_owner() -> tuple[int, int] | None:
+    """
+    EN: (uid, gid) of the desktop user who launched the app — passed via
+        SNITCH_OWNER_UID/SNITCH_OWNER_GID by the Electron launcher when it
+        elevates the backend (osascript/pkexec). None when not elevated or
+        not told — chown is then skipped.
+    FR: (uid, gid) de l'utilisateur qui a lancé l'app — transmis via
+        SNITCH_OWNER_UID/SNITCH_OWNER_GID par le lanceur Electron quand il
+        élève le backend (osascript/pkexec). None si non élevé ou non
+        renseigné — le chown est alors sauté.
+    """
+    if not hasattr(os, "geteuid") or os.geteuid() != 0:
+        return None
+    try:
+        return int(os.environ["SNITCH_OWNER_UID"]), int(os.environ["SNITCH_OWNER_GID"])
+    except (KeyError, ValueError):
+        return None
+
+
+def chown_to_user(path: Path) -> None:
+    """
+    EN: Hand a file/dir we just created back to the real desktop user.
+        Without this, an ELEVATED backend leaves root-owned files inside
+        ~/Library/Application Support/Snitch (or ~/.local/share/snitch) —
+        the next unprivileged launch then dies with EACCES because
+        Chromium/the launcher can no longer write there.
+    FR: Rendre un fichier/dossier qu'on vient de créer au vrai utilisateur.
+        Sans ça, un backend ÉLEVÉ laisse des fichiers possédés par root dans
+        ~/Library/Application Support/Snitch (ou ~/.local/share/snitch) —
+        le lancement non privilégié suivant meurt en EACCES car
+        Chromium/le lanceur ne peut plus y écrire.
+    """
+    owner = _real_owner()
+    if owner is not None:
+        try:
+            os.chown(path, *owner)
+        except OSError:
+            pass
+
+
+def chown_tree(root: Path) -> None:
+    """
+    EN: Recursively chown the whole data dir back to the desktop user —
+        called on shutdown so files created DURING this elevated run
+        (logs, db, token) don't brick the next launch.
+    FR: chown récursif de tout le dossier de données vers l'utilisateur —
+        appelé à l'arrêt pour que les fichiers créés PENDANT ce run élevé
+        (logs, db, jeton) ne briquent pas le lancement suivant.
+    """
+    owner = _real_owner()
+    if owner is None:
+        return
+    try:
+        os.chown(root, *owner)
+        for p in root.rglob("*"):
+            try:
+                os.chown(p, *owner)
+            except OSError:
+                pass
+    except OSError:
+        pass
+
+
 def data_dir() -> Path:
     """
     EN: Resolve (and create) the writable data directory.
@@ -53,4 +116,5 @@ def data_dir() -> Path:
     else:
         d = Path(__file__).parent.parent / "data"
     d.mkdir(parents=True, exist_ok=True)
+    chown_to_user(d)
     return d

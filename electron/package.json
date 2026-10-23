@@ -6,11 +6,10 @@
   "license": "AGPL-3.0-or-later",
   "scripts": {
     "start": "electron .",
-    "icon": "node generate-icon.js",
-    "build": "npm run icon && electron-builder --win --x64 --publish never",
+    "build": "electron-builder --win --x64 --publish never",
     "build:dir": "electron-builder --win --x64 --dir",
-    "build:mac": "npm run icon && electron-builder --mac --arm64 --publish never",
-    "build:linux": "npm run icon && electron-builder --linux --x64 --publish never"
+    "build:mac": "electron-builder --mac --arm64 --publish never",
+    "build:linux": "electron-builder --linux --x64 --publish never"
   },
   "devDependencies": {
     "electron": "^44.9.0",

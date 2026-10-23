@@ -6,7 +6,9 @@ All notable changes to Snitch. / Toutes les modifications notables de Snitch.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/) — EN/FR.
 
-## [Unreleased] — security & efficiency hardening / durcissement sécurité & efficacité
+## [Unreleased]
+
+## [1.6.4] — 2026-10-23 — security & efficiency hardening / durcissement sécurité & efficacité
 
 ### Security / Sécurité
 
@@ -140,6 +142,29 @@ The format follows [Keep a Changelog](https://keepachangelog.com/) — EN/FR.
   non-zero (`if` instead of `&&`, bash forced on Windows runner).
   FR: workflow release — `workflow_dispatch` pour republication
   manuelle ; le garde winget n'échoue plus quand le compte est non nul.
+
+- EN: **Packaged app icon restored** — `generate-icon.js` used to
+  redraw the deprecated wireframe "radar eye" and overwrite `icon.png`
+  on every build; the committed monogram is now the single icon source
+  for Windows/macOS/Linux artifacts.
+  FR: **Icône de l'app packagée restaurée** — `generate-icon.js`
+  redessinait l'ancien « œil radar » et écrasait `icon.png` à chaque
+  build ; le monogramme commité est désormais la source unique.
+- EN: **Elevated backend no longer bricks the data dir** — files it
+  creates (logs, `snitch.db`, `api_token.txt`) are chowned back to the
+  real user via `SNITCH_OWNER_UID/GID` (on every write and again
+  recursively at shutdown), instead of leaving root-owned files that
+  killed the next unprivileged launch with EACCES.
+  FR: **Le backend élevé ne brique plus le dossier de données** — les
+  fichiers qu'il crée sont rendus à l'utilisateur réel via
+  `SNITCH_OWNER_UID/GID` (à chaque écriture et récursivement à l'arrêt),
+  au lieu de laisser des fichiers root qui tuaient le lancement suivant.
+- EN: Electron now shows a bilingual error with the repair command when
+  `userData` is unwritable (e.g. root-owned leftovers) instead of dying
+  silently.
+  FR: Electron affiche désormais une erreur bilingue avec la commande de
+  réparation quand `userData` est inscriptible, au lieu de mourir en
+  silence.
 
 ## [1.6.3] — 2026-10-22 — hygiene & hardening / hygiène & durcissement
 

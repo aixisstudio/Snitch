@@ -36,7 +36,7 @@ import time
 
 from fastapi import HTTPException, Request, WebSocket, status
 
-from paths import data_dir
+from paths import data_dir, chown_to_user
 
 logger = logging.getLogger("snitch.api.security")
 
@@ -134,6 +134,9 @@ def _load_or_create_token() -> str:
         except OSError:
             pass                          # EN: Windows has no chmod semantics
                                           # FR: Windows n'a pas de sémantique chmod
+        # EN: Elevated run → file is root-owned; give it back to the user.
+        # FR: Run élevé → fichier possédé par root ; le rendre à l'utilisateur.
+        chown_to_user(token_file)
     except OSError as exc:
         logger.warning("Could not persist API token to %s: %s", token_file, exc)
 

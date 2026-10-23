@@ -114,7 +114,7 @@ from detection import protomatch
 from detection.sinkresponder import SinkholeResponder
 from detection.threatintel import ThreatIntel
 from api.notify import notifier
-from paths import data_dir
+from paths import data_dir, chown_tree
 import storage.db as db
 from version import __version__
 
@@ -2154,9 +2154,17 @@ async def _shutdown_all() -> None:
         db.flush()
     except Exception as exc:
         logger.error("final db flush failed: %s", exc)
-
-
-@asynccontextmanager
+    # EN: Elevated run → logs/db/token were created as root inside the USER's
+    #     data dir. Hand the tree back so the next unprivileged launch can
+    #     write it (otherwise the UI dies with EACCES — see Electron guard).
+    # FR: Run élevé → logs/db/jeton créés en root dans le dossier de données
+    #     de L'UTILISATEUR. Rendre l'arbre pour que le lancement non
+    #     privilégié suivant puisse y écrire (sinon l'UI meurt en EACCES —
+    #     voir le garde-fou Electron).
+    try:
+        chown_tree(data_dir())
+    except Exception:
+        pass
 async def lifespan(app: FastAPI):
     """EN: FastAPI lifespan — startup, yield, then clean shutdown.
     FR: Lifespan FastAPI — démarrage, yield, puis arrêt propre."""

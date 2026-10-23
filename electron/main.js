@@ -593,7 +593,14 @@ function launchBackendElevated() {
     //     (' → '\''), incassables pour sh.
     const shq = s => `'${String(s).replace(/'/g, `'\\''`)}'`
     const tokenPrefix = tokenFileWritten ? '' : `SNITCH_TOKEN=${shq(API_TOKEN)} `
-    const shellCmd = `SNITCH_DATA_DIR=${shq(dataDir)} ${tokenPrefix}${shq(backendExe)} --port ${backendPort}`
+    // EN: SNITCH_OWNER_* tells the ELEVATED backend which real uid/gid to
+    //     chown its files back to — otherwise logs/db/token stay root-owned
+    //     inside the user's data dir and the next launch dies with EACCES.
+    // FR: SNITCH_OWNER_* indique au backend ÉLEVÉ vers quel uid/gid réel
+    //     chown ses fichiers — sinon logs/db/jeton restent en root dans le
+    //     dossier utilisateur et le lancement suivant meurt en EACCES.
+    const ownerPrefix = `SNITCH_OWNER_UID=${process.getuid()} SNITCH_OWNER_GID=${process.getgid()} `
+    const shellCmd = `SNITCH_DATA_DIR=${shq(dataDir)} ${ownerPrefix}${tokenPrefix}${shq(backendExe)} --port ${backendPort}`
     backendProc = spawn('osascript', [
       '-e', `do shell script "${esc(shellCmd)}" with administrator privileges`,
     ], { stdio: 'ignore' })
@@ -612,7 +619,13 @@ function launchBackendElevated() {
     // FR: Même règle que macOS — préférer le fichier de jeton à une
     //     affectation d'env visible dans /proc/<pid>/cmdline ; l'env sert
     //     seulement si l'écriture a échoué.
-    const envArgs = [`SNITCH_DATA_DIR=${dataDir}`]
+    const envArgs = [
+      `SNITCH_DATA_DIR=${dataDir}`,
+      // EN: same ownership hand-back as macOS (see above)
+      // FR: même rétrocession de propriété que macOS (voir ci-dessus)
+      `SNITCH_OWNER_UID=${process.getuid()}`,
+      `SNITCH_OWNER_GID=${process.getgid()}`,
+    ]
     if (!tokenFileWritten) envArgs.push(`SNITCH_TOKEN=${API_TOKEN}`)
     backendProc = spawn(pkexecBin, [
       'env', ...envArgs,

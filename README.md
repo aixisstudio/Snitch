@@ -219,7 +219,7 @@ cd ../frontend
 npm ci
 npm run build
 
-# 3 — Build Electron installer (the icon is generated automatically)
+# 3 — Build Electron installer
 cd ../electron
 npm ci
 npm run build       # NSIS installer -> dist/installer/Snitch Setup <version>.exe

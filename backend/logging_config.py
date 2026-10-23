@@ -18,7 +18,7 @@ import logging
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
-from paths import data_dir
+from paths import data_dir, chown_to_user
 
 
 def setup_logging(level: int = logging.INFO) -> Path:
@@ -30,6 +30,11 @@ def setup_logging(level: int = logging.INFO) -> Path:
     """
     log_dir = data_dir() / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
+    # EN: Elevated run → dir/file land root-owned; hand them back so the
+    #     next unprivileged launch can still write the data dir.
+    # FR: Run élevé → dossier/fichier en root ; les rendre à l'utilisateur
+    #     pour que le lancement non privilégié suivant puisse encore écrire.
+    chown_to_user(log_dir)
     log_file = log_dir / "snitch.log"
 
     root = logging.getLogger("snitch")

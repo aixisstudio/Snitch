@@ -6,7 +6,7 @@ description: |
   (/remote/fleet over gossip_peers) or a per-node agent.
 type: application
 version: 0.1.0
-appVersion: "1.6.3"
+appVersion: "1.6.4"
 home: https://github.com/aixisstudio/Snitch
 keywords:
   - security
