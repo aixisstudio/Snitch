@@ -47,8 +47,8 @@ def main() -> int:
     FR: Entrée CLI — parser les args, démarrer uvicorn, ouvrir le navigateur."""
     ap = argparse.ArgumentParser(
         prog="snitch",
-        description="Snitch — real-time network traffic visualizer / "
-                    "visualiseur de trafic réseau en temps réel")
+        description="Snitch — application firewall and network monitor / "
+                    "pare-feu applicatif et moniteur réseau")
     ap.add_argument("--port", type=int, default=0,
                     help="port to bind (0 = pick a free one) / "
                          "port d'écoute (0 = choisir un port libre)")

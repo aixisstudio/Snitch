@@ -5,7 +5,7 @@
 # FR: Servir localement : `pip install mkdocs-material && mkdocs serve`.
 #     Nav anglaise — chaque doc a 6 traductions à côté.
 site_name: Snitch
-site_description: Local-first network observability & outbound firewall
+site_description: Local-first application firewall & network monitor
 repo_url: https://github.com/aixisstudio/Snitch
 docs_dir: docs
 theme:

@@ -1,6 +1,6 @@
 {
   "title": "Snitch",
-  "description": "Real-time network traffic visualizer — privacy-first, all data stays local. / Visualiseur de trafic réseau en temps réel — vie privée d'abord, toutes les données restent locales.",
+  "description": "Application firewall and network monitor — privacy-first, all data stays local. / Pare-feu applicatif et moniteur réseau — vie privée d'abord, toutes les données restent locales.",
   "icon": "icon.png",
   "links": [{
     "title": "GitHub",

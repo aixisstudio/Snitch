@@ -1,13 +1,13 @@
 # Snitch
 
-> Snitch is a free, open-source (AGPL-3.0), privacy-first real-time network
-> traffic visualizer for macOS, Windows and Linux. It shows every connection
-> your computer makes — which remote hosts, where they are located, and which
-> local process is responsible — as a living node graph and world map.
+> Snitch is a free, open-source (AGPL-3.0), privacy-first application
+> firewall and network monitor for macOS, Windows and Linux. It shows every
+> connection your computer makes — which remote hosts, where they are
+> located, and which local process is responsible — and can block them.
 > All analysis is 100% local: no telemetry, no cloud calls, offline GeoIP.
-> Snitch est un visualiseur de trafic réseau en temps réel, gratuit,
-> open-source et respectueux de la vie privée — interface entièrement
-> bilingue anglais/français.
+> Snitch est un pare-feu applicatif et moniteur réseau, gratuit,
+> open-source et respectueux de la vie privée — interface disponible
+> en 8 langues dont anglais et français.
 
 Snitch passively captures packets on the local machine (libpcap/Npcap),
 enriches them locally (DNS answers, TLS SNI, reverse DNS, offline

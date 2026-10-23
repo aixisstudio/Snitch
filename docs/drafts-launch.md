@@ -83,7 +83,7 @@ GitHub if useful → github.com/aixisstudio/Snitch
 
 ## Reddit r/selfhosted (VENDREDI — règle « New Project Friday »)
 
-**Titre :** `Snitch — self-hosted network traffic visualizer: see every connection your machine makes (Docker, AGPL)`
+**Titre :** `Snitch — self-hosted application firewall & network monitor: see every connection your machine makes (Docker, AGPL)`
 
 ```
 I built Snitch because I wanted Little Snitch's visibility

@@ -9,7 +9,7 @@
 module.exports = {
   version: "7.0",
   title: "Snitch",
-  description: "Real-time network traffic visualizer — see who your computer talks to. / Visualiseur de trafic réseau en temps réel — voyez à qui parle votre ordinateur.",
+  description: "Application firewall and network monitor — see who your computer talks to. / Pare-feu applicatif et moniteur réseau — voyez à qui parle votre ordinateur.",
   icon: "icon.png",
   menu: async (kernel, info) => {
     let installed = info.exists("backend/env")

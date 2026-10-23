@@ -29,7 +29,7 @@
 
 ## English
 
-**Snitch** is a real-time network traffic visualizer.
+**Snitch** is an open-source application firewall and real-time network monitor.
 See every connection your computer makes — who it talks to, where they are, and which app is responsible.
 
 The entire interface is available in **English, Français, Español, Deutsch, Русский, 日本語, Português (BR) and 简体中文**: use the language picker in the top-right toolbar.

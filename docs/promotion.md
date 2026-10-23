@@ -54,7 +54,7 @@ Repo: https://github.com/aixisstudio/Snitch
 
 ### r/opensource — title + body
 ```
-Snitch — open-source, local-first network traffic visualizer (AGPL)
+Snitch — open-source, local-first application firewall & network monitor (AGPL)
 
 I made this: a privacy-first tool that shows every connection your
 computer makes — live node graph + world map, all analysis on-device.
@@ -71,7 +71,7 @@ https://github.com/aixisstudio/Snitch
 
 ### r/netsec — shorter, technical
 ```
-Snitch — real-time traffic visualizer (ctypes→libpcap, own parser, AGPL)
+Snitch — local-first application firewall & network monitor (ctypes→libpcap, own parser, AGPL)
 
 Passive pcap → FastAPI/WebSockets → D3.js force graph. Anomaly heuristics
 (port scan, beaconing, exfil), per-process attribution, passive LAN
@@ -107,8 +107,8 @@ Tags: `opensource`, `privacy`, `networking`, `python`, `showdev`
 ## 4. AlternativeTo.net — listing draft
 
 - **Name:** Snitch
-- **Tagline:** Real-time network traffic visualizer — see every connection
-  your computer makes. 100% local, no account, no telemetry.
+- **Tagline:** Open-source application firewall — see every connection
+  your computer makes and block it. 100% local, no account, no telemetry.
 - **Platforms:** Mac, Windows, Linux (Docker), self-hosted
 - **Alternatives to list under:** Little Snitch, GlassWire, LuLu,
   Wireshark (adjacent)

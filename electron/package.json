@@ -1,7 +1,7 @@
 {
   "name": "snitch",
   "version": "1.6.4",
-  "description": "Snitch \u2014 real-time network traffic visualizer / visualiseur de trafic r\u00e9seau en temps r\u00e9el",
+  "description": "Snitch \u2014 application firewall and real-time network monitor / pare-feu applicatif et moniteur r\u00e9seau en temps r\u00e9el",
   "main": "main.js",
   "license": "AGPL-3.0-or-later",
   "scripts": {
@@ -72,7 +72,7 @@
       "category": "Utility",
       "icon": "icon.png",
       "synopsis": "See every connection your computer makes - 100% local",
-      "description": "Snitch is a local-first network traffic visualizer: live map of outbound connections, per-process attribution, offline GeoIP. No account, no telemetry.",
+      "description": "Snitch is a local-first application firewall and network observer: live map of outbound connections, per-process attribution, Sigma rules, offline GeoIP, one-click blocking. No account, no telemetry.",
       "maintainer": "aiXis Studio",
       "syncDesktopName": true,
       "artifactName": "${productName}-${arch}.${ext}"
