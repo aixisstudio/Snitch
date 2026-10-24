@@ -44,6 +44,8 @@ export default {
   section_lan: n => `局域网设备 (${n})`,
   section_ext: (n, total) => total ? `外部主机 (${n}/${total})` : `外部主机 (${n})`,
   section_packets: '最近流量',
+  packets_filter: '按应用、主机、协议筛选…',
+  packets_none: '实时流量中没有匹配项',
 
   // 节点详情字段
   field_ip: 'IP',

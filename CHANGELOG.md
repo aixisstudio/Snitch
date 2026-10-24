@@ -8,6 +8,27 @@ The format follows [Keep a Changelog](https://keepachangelog.com/) — EN/FR.
 
 ## [Unreleased]
 
+### Added / Ajouté
+
+- EN: **Recent-traffic search** — the live packet feed gains a query
+  field that narrows rows by process name, remote host or protocol,
+  answering the most requested triage shortcut. Localized in all 8 UI
+  languages.
+  FR: **Recherche dans le trafic récent** — le flux de paquets gagne un
+  champ de requête qui réduit les lignes par nom de processus, hôte
+  distant ou protocole. Localisé dans les 8 langues de l'UI.
+
+### Fixed / Corrigé
+
+- EN: **Dark-mode legibility** — `--text-muted`/`--text-faint` (and the
+  light-theme equivalents) were ~2.5–4:1 contrast at the 9–10px sizes
+  used in lists; bumped to ≈4.5–5.5:1, and the packet feed microtext
+  goes from 9px to 10px. Reported by a user on TabNews.
+  FR: **Lisibilité du thème sombre** — `--text-muted`/`--text-faint`
+  (et les équivalents clairs) tombaient à ~2,5–4:1 aux tailles 9–10px
+  des listes ; remontés à ≈4,5–5,5:1, et le microtexte du flux de
+  paquets passe de 9px à 10px. Signalé par un utilisateur TabNews.
+
 ## [1.6.4] — 2026-10-23 — security & efficiency hardening / durcissement sécurité & efficacité
 
 ### Security / Sécurité

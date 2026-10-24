@@ -9,7 +9,8 @@
  *     listes déroulantes appareils LAN + hôtes externes, et le flux de
  *     paquets récents.
  */
-import { Wifi, Smartphone, Monitor, Tv, Cpu, HelpCircle, ShieldOff, Shield, Skull, PauseCircle, Microscope } from 'lucide-react'
+import { useState } from 'react'
+import { Wifi, Smartphone, Monitor, Tv, Cpu, HelpCircle, ShieldOff, Shield, Skull, PauseCircle, Microscope, Search } from 'lucide-react'
 import PrivacyScore from './PrivacyScore'
 import BandwidthChart from './BandwidthChart'
 import { useT } from '../i18n'
@@ -86,6 +87,11 @@ export function matchesFilter(node, filter, alertedIds) {
 
 export default function Sidebar({ nodes, lanDevices, packets, selected, onClose, privacyScore, bandwidth, filter, onFilterChange, onWhitelist, alertedNodes }) {
   const { t } = useT()
+  // EN: Local query narrowing the recent-traffic feed by app name,
+  //     host or protocol — independent from the graph search filter.
+  // FR: Requête locale qui réduit le flux de trafic récent par nom
+  //     d'app, hôte ou protocole — indépendante du filtre du graphe.
+  const [pktQuery, setPktQuery] = useState('')
   const extNodes = Object.values(nodes).filter(n => n.id !== 'local')
   // EN: the "Alerts" chip narrows the LAN list to flagged devices too —
   //     other categories keep the full device list (they're local, not hosts).
@@ -98,6 +104,12 @@ export default function Sidebar({ nodes, lanDevices, packets, selected, onClose,
 
   const filteredNodes = extNodes.filter(n => matchesFilter(n, filter, alertedNodes))
   const hiddenCount = filteredNodes.length < extNodes.length ? extNodes.length : null
+
+  const pq = pktQuery.trim().toLowerCase()
+  const visiblePackets = !pq ? packets : packets.filter(p =>
+      (p.process  || '').toLowerCase().includes(pq)
+      || (p.dst   || '').toLowerCase().includes(pq)
+      || (p.protocol || '').toLowerCase().includes(pq))
 
   return (
     /* EN: Bento layout — each section is a rounded card floating on the
@@ -179,9 +191,35 @@ export default function Sidebar({ nodes, lanDevices, packets, selected, onClose,
       </div>
 
       {/* EN: Recent packet feed / FR: Flux de paquets récents */}
-      <div style={{ ...CARD, maxHeight: 160, overflowY: 'auto', flexShrink: 0 }}>
+      <div style={{ ...CARD, maxHeight: 190, overflowY: 'auto', flexShrink: 0 }}>
         <SectionTitle label={t('section_packets')} />
-        {packets.slice(0, 25).map((p, i) => <PacketRow key={i} packet={p} />)}
+        {/* EN: Narrow the feed to one app/host/protocol — the most
+                requested triage shortcut on the live feed.
+            FR: Réduire le flux à une app/un hôte/un protocole — le
+                raccourci de triage le plus demandé sur le flux live. */}
+        <div style={{ position: 'relative', padding: '0 16px 4px' }}>
+          <Search size={10} style={{
+            position: 'absolute', left: 22, top: '50%',
+            transform: 'translateY(-60%)', color: 'var(--text-muted)', pointerEvents: 'none',
+          }} />
+          <input
+            value={pktQuery}
+            onChange={e => setPktQuery(e.target.value)}
+            placeholder={t('packets_filter')}
+            style={{
+              width: '100%', boxSizing: 'border-box',
+              background: 'var(--bg)', border: '1px solid var(--border)',
+              borderRadius: 6, padding: '3px 8px 3px 22px',
+              fontSize: 10, color: 'var(--text)', outline: 'none',
+            }}
+          />
+        </div>
+        {visiblePackets.slice(0, 25).map((p, i) => <PacketRow key={i} packet={p} />)}
+        {pq && visiblePackets.length === 0 && (
+          <div style={{ padding: '6px 16px 10px', fontSize: 10, color: 'var(--text-faint)', fontStyle: 'italic' }}>
+            {t('packets_none')}
+          </div>
+        )}
       </div>
 
       {/* EN: Tiny credit footer floating on the rail — same free-floating
@@ -486,14 +524,14 @@ function PacketRow({ packet }) {
     <div style={{ padding: '3px 16px', display: 'flex', alignItems: 'center', gap: 6 }}>
       <span style={{ color, fontSize: 10, flexShrink: 0 }}>{out ? '>' : '<'}</span>
       {packet.process && (
-        <span style={{ fontSize: 9, color: '#f59e0b', flexShrink: 0, maxWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <span style={{ fontSize: 10, color: '#f59e0b', flexShrink: 0, maxWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {packet.process}
         </span>
       )}
-      <span style={{ fontSize: 9, color: 'var(--text-dim)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+      <span style={{ fontSize: 10, color: 'var(--text-dim)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
         {packet.dst} · {packet.protocol}
       </span>
-      <span style={{ fontSize: 9, color: 'var(--text-faint)', flexShrink: 0 }}>{packet.size}B</span>
+      <span style={{ fontSize: 10, color: 'var(--text-faint)', flexShrink: 0 }}>{packet.size}B</span>
     </div>
   )
 }

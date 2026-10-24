@@ -44,6 +44,8 @@ export default {
   section_lan: n => `LANデバイス (${n})`,
   section_ext: (n, total) => total ? `外部ホスト (${n}/${total})` : `外部ホスト (${n})`,
   section_packets: '最近のトラフィック',
+  packets_filter: 'アプリ・ホスト・プロトコルで絞り込み…',
+  packets_none: '一致するトラフィックはありません',
 
   // ノード詳細フィールド
   field_ip: 'IP',

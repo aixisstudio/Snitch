@@ -44,6 +44,8 @@ export default {
   section_lan: n => `LAN-устройства (${n})`,
   section_ext: (n, total) => total ? `Внешние хосты (${n}/${total})` : `Внешние хосты (${n})`,
   section_packets: 'Недавний трафик',
+  packets_filter: 'Фильтр по приложению, хосту, протоколу…',
+  packets_none: 'Нет подходящего трафика в ленте',
 
   // Поля карточки узла
   field_ip: 'IP',

@@ -43,6 +43,8 @@ export default {  // Navigation
   section_lan: n => `Appareils LAN (${n})`,
   section_ext: (n, total) => total ? `Hôtes externes (${n}/${total})` : `Hôtes externes (${n})`,
   section_packets: 'Flux récents',
+  packets_filter: 'Filtrer par app, hôte, protocole…',
+  packets_none: 'Aucun trafic correspondant dans le flux',
 
   // Étiquettes des champs de détail de nœud / Node detail field labels
   field_ip: 'IP',

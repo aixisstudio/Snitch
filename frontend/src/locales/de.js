@@ -44,6 +44,8 @@ export default {
   section_lan: n => `LAN-Geräte (${n})`,
   section_ext: (n, total) => total ? `Externe Hosts (${n}/${total})` : `Externe Hosts (${n})`,
   section_packets: 'Aktueller Verkehr',
+  packets_filter: 'Nach App, Host, Protokoll filtern…',
+  packets_none: 'Kein passender Verkehr im Live-Feed',
 
   // Node detail field labels
   field_ip: 'IP',

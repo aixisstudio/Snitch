@@ -44,6 +44,8 @@ export default {
   section_lan: n => `Dispositivos LAN (${n})`,
   section_ext: (n, total) => total ? `Hosts externos (${n}/${total})` : `Hosts externos (${n})`,
   section_packets: 'Tráfego recente',
+  packets_filter: 'Filtrar por app, host, protocolo…',
+  packets_none: 'Nenhum tráfego correspondente no feed',
 
   // Campos do detalhe do nó
   field_ip: 'IP',
