@@ -51,6 +51,7 @@ import platform
 import threading
 import time
 from typing import Callable, Optional
+from procutils import spawn_kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -210,7 +211,7 @@ class AskMode:
         for c in cmds:
             try:
                 subprocess.run(c, timeout=10, check=False,
-                               capture_output=True)
+                               capture_output=True, **spawn_kwargs())
                 inserted.append(c)
             except OSError as e:
                 self._rollback_rules(inserted)
@@ -262,7 +263,7 @@ class AskMode:
             rm = ["-D" if a == "-I" else a for a in c]
             try:
                 subprocess.run(rm, timeout=10, check=False,
-                               capture_output=True)
+                               capture_output=True, **spawn_kwargs())
             except OSError:
                 pass
 

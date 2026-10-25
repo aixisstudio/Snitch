@@ -60,6 +60,7 @@ import time
 import uuid
 from pathlib import Path
 from typing import Optional
+from procutils import spawn_kwargs
 
 # EN: RFC-1034/1123 hostname — labels of ≤63 alnum/dash chars joined by
 #     dots, total ≤253. Anchored so no whitespace/newline can slip through.
@@ -428,7 +429,7 @@ class FirewallManager:
         """EN: Run one firewall command, never through a shell. Returns
         (success, stderr). / FR: Exécute une commande pare-feu sans shell."""
         try:
-            p = subprocess.run(args, capture_output=True, text=True, timeout=15)
+            p = subprocess.run(args, capture_output=True, text=True, timeout=15, **spawn_kwargs())
             err = (p.stderr or p.stdout or "").strip()
             return p.returncode == 0, err[:300]
         except Exception as e:                       # noqa: BLE001 — report, don't crash

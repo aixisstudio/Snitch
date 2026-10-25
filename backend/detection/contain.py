@@ -38,6 +38,7 @@ import platform
 import shutil
 import subprocess
 import time
+from procutils import spawn_kwargs
 
 _SYSTEM = platform.system().lower()
 _MAX_SECONDS = 30
@@ -118,6 +119,7 @@ def run_sandboxed(path: str, args: list[str],
     try:
         t0 = time.monotonic()
         proc = subprocess.run(cmd, timeout=seconds, capture_output=True,
+                             **spawn_kwargs(),
                               text=False, cwd="/", check=False)
         dur = round(time.monotonic() - t0, 2)
         return {"ok": True, "command": cmd, "seconds": dur,

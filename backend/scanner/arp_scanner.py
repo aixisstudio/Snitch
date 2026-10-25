@@ -43,6 +43,7 @@ from typing import Callable, Optional
 import psutil
 
 from scanner.oui import lookup, is_local_mac, DEVICE_TYPE_COLORS
+from procutils import spawn_kwargs
 
 logger = logging.getLogger("snitch.scanner")
 
@@ -184,6 +185,7 @@ def _read_arp_cmd() -> list[tuple[str, str]]:
     « - ») et macOS (IP entre parenthèses)."""
     try:
         proc = subprocess.run(["arp", "-a"], capture_output=True, text=True,
+                          **spawn_kwargs(),
                               timeout=10)
         out_text = proc.stdout
     except (OSError, subprocess.TimeoutExpired) as exc:
@@ -248,12 +250,14 @@ def default_gateway() -> Optional[str]:
                     return socket.inet_ntoa(bytes.fromhex(raw)[::-1])
         elif sys.platform == "darwin":
             proc = subprocess.run(["route", "-n", "get", "default"],
+                          **spawn_kwargs(),
                                   capture_output=True, text=True, timeout=5)
             m = re.search(r"gateway:\s*(\S+)", proc.stdout)
             if m:
                 return m.group(1)
         elif sys.platform.startswith("win"):
             proc = subprocess.run(["route", "print", "-4", "0.0.0.0"],
+                          **spawn_kwargs(),
                                   capture_output=True, text=True, timeout=10)
             for line in proc.stdout.splitlines():
                 cols = line.split()

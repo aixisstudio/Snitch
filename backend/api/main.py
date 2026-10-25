@@ -117,6 +117,7 @@ from api.notify import notifier
 from paths import data_dir, chown_tree
 import storage.db as db
 from version import __version__
+from procutils import spawn_kwargs
 
 logger = logging.getLogger("snitch.api")
 
@@ -623,7 +624,7 @@ def _local_hostname() -> str:
         if sys.platform == "darwin":
             out = subprocess.run(["scutil", "--get", "ComputerName"],
                                  capture_output=True, text=True,
-                                 timeout=3).stdout.strip()
+                                 timeout=3, **spawn_kwargs()).stdout.strip()
             if out:
                 return out
         elif sys.platform.startswith("win"):
@@ -634,7 +635,7 @@ def _local_hostname() -> str:
             try:
                 out = subprocess.run(["hostnamectl", "--pretty"],
                                      capture_output=True, text=True,
-                                     timeout=3).stdout.strip()
+                                     timeout=3, **spawn_kwargs()).stdout.strip()
                 if out:
                     return out
             except (OSError, subprocess.TimeoutExpired):
@@ -1967,21 +1968,22 @@ def _current_ssid() -> str:
             iface = (_sniffer.iface if _sniffer else None) or "en0"
             out = subprocess.run(
                 ["ipconfig", "getsummary", iface],
-                capture_output=True, text=True, timeout=3).stdout
+                capture_output=True, text=True, timeout=3, **spawn_kwargs()).stdout
             for line in out.splitlines():
                 if "SSID :" in line:
                     ssid = line.split("SSID :", 1)[1].strip()
                     break
         elif sys.platform.startswith("linux"):
             out = subprocess.run(
-                ["iwgetid", "-r"], capture_output=True, text=True, timeout=3
+                ["iwgetid", "-r"], capture_output=True, text=True, timeout=3,
+                **spawn_kwargs()
             ).stdout.strip()
             if out:
                 ssid = out
         elif sys.platform == "win32":
             out = subprocess.run(
                 ["netsh", "wlan", "show", "interfaces"],
-                capture_output=True, text=True, timeout=3).stdout
+                capture_output=True, text=True, timeout=3, **spawn_kwargs()).stdout
             for line in out.splitlines():
                 if line.strip().startswith("SSID"):
                     ssid = line.split(":", 1)[1].strip()

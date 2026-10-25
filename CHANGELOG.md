@@ -20,6 +20,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/) — EN/FR.
 
 ### Fixed / Corrigé
 
+- EN: **Windows console-window flash fixed** — backend console tools
+  (`netsh` SSID poll every 60 s, firewall rules, `route`/`arp` lookups)
+  now spawn with `CREATE_NO_WINDOW`/`SW_HIDE`; no more transient popup
+  storm on Windows (issue #62, reported by @minghao999, confirmed by
+  @iactor).
+  FR: **Clignotement de console Windows corrigé** — les outils console
+  du backend (`netsh` pour le SSID toutes les 60 s, règles pare-feu,
+  `route`/`arp`) se lancent désormais avec `CREATE_NO_WINDOW`/`SW_HIDE` ;
+  plus de rafale de popups sous Windows (issue #62, signalée par
+  @minghao999, confirmée par @iactor).
+
 - EN: **Dark-mode legibility** — `--text-muted`/`--text-faint` (and the
   light-theme equivalents) were ~2.5–4:1 contrast at the 9–10px sizes
   used in lists; bumped to ≈4.5–5.5:1, and the packet feed microtext
