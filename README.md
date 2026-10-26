@@ -507,6 +507,9 @@ AGPL v3 — see / voir [LICENSE](LICENSE).
 EN: Free to use, study, and modify. Derivative works must remain open source under AGPL v3.
 FR: Libre d'utilisation, d'étude et de modification. Les œuvres dérivées doivent rester open source sous AGPL v3.
 
+EN: Snitch is derived from [PCYBOX Orbis](https://github.com/Mister-iks/pcybox-orbis) by Ibrahima Khalilou Lahi Samb (AGPL-3.0). Modifications © 2026 Snitch contributors.
+FR: Snitch est dérivé de [PCYBOX Orbis](https://github.com/Mister-iks/pcybox-orbis) par Ibrahima Khalilou Lahi Samb (AGPL-3.0). Modifications © 2026 Snitch contributors.
+
 ## Star History / Historique des étoiles
 
 [![Star History Chart](https://api.star-history.com/svg?repos=aixisstudio/Snitch&type=Date)](https://star-history.com/#aixisstudio/Snitch&Date)
