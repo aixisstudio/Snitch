@@ -11,8 +11,9 @@ EN: User-defined alert rules — a deliberately SMALL matcher, not a
     firewall rule on the matched remote host (deduped per rule+target).
 
     Supported fields  : remote_ip, host (SNI or DNS answer name),
-                        process_name, remote_port, protocol, direction,
-                        size, asn, country (from the local geo DB).
+                        process_name, cmdline (full command line),
+                        parent_name (launcher process name), remote_port,
+                        protocol, direction, size, asn, country.
     Supported ops     : eq, ne, contains, regex, gt, lt, cidr.
     Actions           : alert (default) | block (firewall rule on the
                         matched remote_ip — the per-flow kill-switch).
@@ -43,8 +44,8 @@ import time
 import uuid
 from typing import Optional
 
-_FIELDS = ("remote_ip", "host", "process_name", "remote_port",
-           "protocol", "direction", "size", "asn", "country")
+_FIELDS = ("remote_ip", "host", "process_name", "cmdline", "parent_name",
+           "remote_port", "protocol", "direction", "size", "asn", "country")
 _OPS = ("eq", "ne", "contains", "regex", "gt", "lt", "cidr")
 _SEVERITIES = ("info", "warning", "critical")
 # EN: "alert" (default) emits CUSTOM_RULE only; "block" additionally
@@ -271,7 +272,7 @@ class CustomRules:
                 first_field not in ("remote_ip", "host",
                                     "process_name", "asn", "country"):
             raise ValueError("block action needs a blockable field "
-                             "(remote_ip/host/process_name/asn/country)")
+                             "(remote_ip/host/process_name/cmdline/parent_name/asn/country)")
 
     def add(self, name: str, field: str, op: str, value: str,
             severity: str = "warning", action: str = "alert",
@@ -330,6 +331,10 @@ class CustomRules:
             return names
         if field == "process_name":
             return pkt.process_name or ""
+        if field == "cmdline":
+            return getattr(pkt, "cmdline", None) or ""
+        if field == "parent_name":
+            return getattr(pkt, "parent_name", None) or ""
         if field == "remote_port":
             return pkt.remote_port
         if field == "protocol":

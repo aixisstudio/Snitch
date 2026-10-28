@@ -37,6 +37,7 @@ from datetime import datetime, timezone
 from typing import Callable, Optional
 
 import psutil
+from .procinfo import ProcEnricher
 
 from capture.pcap import PcapError, PcapSession, is_available, list_devices
 from capture.parser import parse_frame
@@ -93,6 +94,13 @@ class Packet:
     direction: str                       # "out" | "in"
     pid: Optional[int] = None
     process_name: Optional[str] = None
+    # EN: Enriched attribution — full cmdline + parent identity, so rules
+    #     can distinguish "node mcp-server" from bare "node".
+    # FR: Attribution enrichie — cmdline complet + identité parente, pour
+    #     distinguer « node mcp-server » de « node » nu dans les règles.
+    cmdline: Optional[str] = None
+    ppid: Optional[int] = None
+    parent_name: Optional[str] = None
     tcp_flags: int = 0
     sni: Optional[str] = None
     dns: list = field(default_factory=list)
@@ -217,6 +225,7 @@ class PacketSniffer:
         self.local_ips = get_local_ips()
         self._session: Optional[PcapSession] = None
         self._conn_table = ConnectionTable()
+        self._procinfo = ProcEnricher()
         # EN: Optional kernel-level attribution probe (eBPF) — consulted when
         #     the socket table misses. Set via set_attribution_probe().
         # FR: Sonde d'attribution noyau optionnelle (eBPF) — consultée quand
@@ -408,6 +417,10 @@ class PacketSniffer:
             pid, process_name = self._attribution_probe.lookup(
                 dst, parsed.dst_port)
 
+        cmdline = ppid = parent_name = None
+        if pid:
+            cmdline, ppid, parent_name = self._procinfo.enrich(pid)
+
         self.callback(Packet(
             src_ip=src,
             dst_ip=dst,
@@ -420,6 +433,9 @@ class PacketSniffer:
             direction=direction,
             pid=pid,
             process_name=process_name,
+            cmdline=cmdline,
+            ppid=ppid,
+            parent_name=parent_name,
             tcp_flags=parsed.tcp_flags,
             sni=parsed.sni,
             dns=parsed.dns,

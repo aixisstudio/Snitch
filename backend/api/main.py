@@ -1023,6 +1023,7 @@ def _process_batch(packets: list[Packet]) -> None:
                     node_id=remote_ip,
                     details={"name": pkt.sni, "ip": remote_ip,
                              "process": pkt.process_name, "pid": pkt.pid,
+                             "cmdline": pkt.cmdline, "parent": pkt.parent_name,
                              **hit}), notify=True)
 
         # ── LAN accounting / Comptabilisation LAN ───────────────────────────
@@ -1285,7 +1286,8 @@ def _process_batch(packets: list[Packet]) -> None:
                         node_id=remote_ip,
                         details={"ip": remote_ip, "port": pkt.remote_port,
                                  "entropy": round(ent, 2),
-                                 "process": pkt.process_name, "pid": pkt.pid},
+                                 "process": pkt.process_name, "pid": pkt.pid,
+                             "cmdline": pkt.cmdline, "parent": pkt.parent_name},
                     )
                     _flag_alert(a, nodes)
                     ad = a.to_dict()
@@ -1315,7 +1317,8 @@ def _process_batch(packets: list[Packet]) -> None:
                     node_id=remote_ip,
                     details={"ip": remote_ip, "port": pkt.remote_port,
                              "reason": reason,
-                             "process": pkt.process_name, "pid": pkt.pid}),
+                             "process": pkt.process_name, "pid": pkt.pid,
+                             "cmdline": pkt.cmdline, "parent": pkt.parent_name}),
                     notify=True)
 
         # EN: ICMP tunnel heuristic — echo requests/replies SHOULD carry ~0
