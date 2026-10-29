@@ -103,6 +103,6 @@
   "desktopName": "Snitch",
   "author": "aiXis Studio",
   "dependencies": {
-    "electron-updater": "^6.8.9"
+    "electron-updater": "^6.8.11"
   }
 }
