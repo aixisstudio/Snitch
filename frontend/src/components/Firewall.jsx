@@ -474,7 +474,7 @@ export function FirewallPanel({ onClose, onLockdownChange }) {
               placeholder={t('ar_name_ph')} aria-label={t('ar_name_ph')}
               style={{ ...input, flex: '1 1 100%' }} />
             <select value={arField} onChange={e => setArField(e.target.value)} aria-label={t('ar_field')} style={{ ...input }}>
-              {['remote_ip', 'host', 'process_name', 'remote_port', 'protocol', 'direction', 'size', 'asn', 'country'].map(f =>
+              {['remote_ip', 'host', 'process_name', 'cmdline', 'parent_name', 'remote_port', 'protocol', 'direction', 'size', 'asn', 'country'].map(f =>
                 <option key={f} value={f}>{f}</option>)}
             </select>
             <select value={arOp} onChange={e => setArOp(e.target.value)} aria-label={t('ar_op')} style={{ ...input }}>
