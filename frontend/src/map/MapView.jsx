@@ -11,7 +11,7 @@
  *     so stroke widths and fonts stay constant on screen.
  *
  * FR: Carte natural-earth D3 + TopoJSON. La position de l'utilisateur
- *     (géolocalisation navigateur, repli sur Paris) est l'origine ; les hôtes
+ *     (géolocalisation navigateur, repli par fuseau horaire) est l'origine ; les hôtes
  *     distants géolocalisés sont des points pulsants avec des arcs animés en
  *     pointillés partant de l'utilisateur. Les coordonnées reçoivent un
  *     jitter déterministe pour que les hôtes d'un même datacenter ne se
@@ -114,6 +114,35 @@ function applyLabelCollision(g, k) {
   }
 }
 
+// EN: Coarse self-location fallback anchors keyed by IANA timezone — honest
+//     approximation (region anchor city) when no geolocation is available.
+//     Much better than silently pinning every user to Paris.
+// FR: Points de repli grossiers par fuseau horaire IANA — approximation
+//     honnête quand aucune géolocalisation n'est disponible. Mieux que de
+//     clouer tout le monde sur Paris en silence.
+const TZ_ANCHORS = {
+  'America/New_York':[-74,40.7],'America/Chicago':[-87.6,41.9],'America/Denver':[-105,39.7],
+  'America/Los_Angeles':[-118.2,34],'America/Toronto':[-79.4,43.7],'America/Vancouver':[-123.1,49.3],
+  'America/Mexico_City':[-99.1,19.4],'America/Sao_Paulo':[-46.6,-23.5],'America/Buenos_Aires':[-58.4,-34.6],
+  'Europe/London':[-0.1,51.5],'Europe/Paris':[2.35,48.85],'Europe/Berlin':[13.4,52.5],
+  'Europe/Madrid':[-3.7,40.4],'Europe/Moscow':[37.6,55.8],'Europe/Kyiv':[30.5,50.4],
+  'Africa/Casablanca':[-7.6,33.6],'Africa/Cairo':[31.2,30],'Asia/Dubai':[55.3,25.2],
+  'Asia/Kolkata':[77.2,28.6],'Asia/Shanghai':[121.5,31.2],'Asia/Tokyo':[139.7,35.7],
+  'Asia/Singapore':[103.8,1.35],'Asia/Seoul':[127,37.6],
+  'Australia/Sydney':[151.2,-33.9],'Pacific/Auckland':[174.8,-36.8]
+}
+const TZ_REGION = [['America/',[-95,40]],['Europe/',[10,50]],['Asia/',[100,35]],
+  ['Australia/',[134,-25]],['Africa/',[20,10]],['Pacific/',[-160,0]]]
+function tzGuess() {
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ''
+    if (TZ_ANCHORS[tz]) return TZ_ANCHORS[tz]
+    for (const [pfx, ll] of TZ_REGION) if (tz.startsWith(pfx)) return ll
+  } catch { /* no Intl */ }
+  return [10, 35] // EN: mid-Atlantic-ish neutral point / FR: point neutre
+}
+const LS_KEY = 'snitch_map_you'
+
 export default function MapView({ nodes, onNodeClick }) {
   const { t, lang } = useT()
   const svgRef    = useRef(null)
@@ -123,7 +152,21 @@ export default function MapView({ nodes, onNodeClick }) {
   const userPosRef = useRef(null)
 
   const [worldTopo, setWorldTopo] = useState(null)
-  const [userPos,   setUserPos]   = useState(null)
+  const [userPos,   setUserPos]   = useState(() => {
+    try { const v = JSON.parse(localStorage.getItem(LS_KEY))
+      return Array.isArray(v) && v.length === 2 ? v : null } catch { return null }
+  })
+  // EN: true when the position is a timezone-based guess rather than a real
+  //     fix — the label then reads "You (approx.)".
+  // FR: vrai quand la position est une estimation de fuseau horaire — le
+  //     label affiche alors « Vous (approx.) ».
+  const [posApprox, setPosApprox] = useState(false)
+  // EN: User-confirmed positions persist so the map remembers you.
+  // FR: Les positions confirmées persistent pour que la carte s'en souvienne.
+  const setPos = (ll, approx = false) => {
+    setUserPos(ll); setPosApprox(approx)
+    if (!approx) { try { localStorage.setItem(LS_KEY, JSON.stringify(ll)) } catch {} }
+  }
   const [tooltip,   setTooltip]   = useState(null)
 
   // EN: Load the world TopoJSON + resolve the user's position once.
@@ -135,8 +178,8 @@ export default function MapView({ nodes, onNodeClick }) {
     //     (Electron) et http(s) (navigateur/Docker).
     setWorldTopo(worldTopoJson)
     navigator.geolocation?.getCurrentPosition(
-      p => setUserPos([p.coords.longitude, p.coords.latitude]),
-      () => setUserPos([2.35, 48.85]),  // EN: Paris fallback / FR: repli sur Paris
+      p => setPos([p.coords.longitude, p.coords.latitude]),
+      () => setPos(tzGuess(), true),  // EN: timezone guess / FR: estimation par fuseau
       { timeout: 4000, maximumAge: 3600000 }
     )
     // EN: Electron has no location provider — getCurrentPosition can hang
@@ -145,14 +188,14 @@ export default function MapView({ nodes, onNodeClick }) {
     // FR: Electron n'a pas de fournisseur de localisation — getCurrentPosition
     //     peut rester muet indéfiniment sans jamais rappeler, laissant userPos
     //     null et la carte vide. Double sécurité : forcer le repli après 5 s.
-    setTimeout(() => setUserPos(pos => pos ?? [2.35, 48.85]), 5000)
+    setTimeout(() => setUserPos(pos => { if (pos == null) { setPos(tzGuess(), true) } return pos ?? tzGuess() }), 5000)
   }, [])
 
   useEffect(() => {
     if (!worldTopo || !userPos || !svgRef.current) return
     userPosRef.current = userPos
-    drawBase(worldTopo, userPos, t('map_you'))
-  }, [worldTopo, userPos, lang])
+    drawBase(worldTopo, userPos, posApprox ? t('map_you_approx') : t('map_you'))
+  }, [worldTopo, userPos, posApprox, lang])
 
   useEffect(() => {
     if (!gRef.current || !projRef.current) return
@@ -228,6 +271,20 @@ export default function MapView({ nodes, onNodeClick }) {
         rescaleAll(e.transform.k)
       })
     svg.call(zoom)
+
+    // EN: Click anywhere on the map to set your own location — the honest
+    //     fallback when no geolocation provider exists (Electron). Stored in
+    //     localStorage, never sent anywhere.
+    // FR: Un clic sur la carte définit votre position — le repli honnête
+    //     quand aucun fournisseur de géolocalisation n'existe (Electron).
+    //     Stockée en localStorage, jamais envoyée nulle part.
+    svg.on('click.maploc', e => {
+      if (e.target.closest('.dots')) return
+      const t2 = d3.zoomTransform(el)
+      const [x, y] = t2.invert(d3.pointer(e))
+      const ll = projection.invert([x, y])
+      if (ll) setPos(ll)
+    })
 
     const g = svg.append('g')
     gRef.current = g
@@ -320,7 +377,7 @@ export default function MapView({ nodes, onNodeClick }) {
     const g = gRef.current
     if (!g) return
     const geoPath = d3.geoPath().projection(projection)
-    const pos     = userPosRef.current || [2.35, 48.85]
+    const pos     = userPosRef.current || tzGuess()
     const k       = kRef.current
 
     const geoNodes = Object.values(nodes)

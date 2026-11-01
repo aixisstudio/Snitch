@@ -187,6 +187,7 @@ export default {
   whitelist_action: 'Marcar como confiável',
 
   // Mapa
+  map_you_approx: 'Você (aprox.)',
   map_you: 'Você',
   map_located: n => `${n} host${n !== 1 ? 's' : ''} localizado${n !== 1 ? 's' : ''}`,
   map_no_geo: 'sem geo',

@@ -191,6 +191,7 @@ export default {  // Navigation
   whitelist_action: 'Mark as trusted',
 
   // Map / Carte
+  map_you_approx: 'You (approx.)',
   map_you: 'You',
   map_located: n => `${n} located host${n !== 1 ? 's' : ''}`,
   map_no_geo: 'no geo',

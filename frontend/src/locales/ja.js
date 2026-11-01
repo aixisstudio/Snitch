@@ -187,6 +187,7 @@ export default {
   whitelist_action: '信頼済みにする',
 
   // マップ
+  map_you_approx: 'あなた (概算)',
   map_you: 'あなた',
   map_located: n => `${n} ホストを位置特定`,
   map_no_geo: '位置情報なし',

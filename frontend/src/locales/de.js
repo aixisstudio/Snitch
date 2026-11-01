@@ -187,6 +187,7 @@ export default {
   whitelist_action: 'Als vertrauenswürdig markieren',
 
   // Map / Karte
+  map_you_approx: 'Sie (ca.)',
   map_you: 'Sie',
   map_located: n => `${n} geolokalisierte${n !== 1 ? 'r' : ''} Host${n !== 1 ? 's' : ''}`,
   map_no_geo: 'keine Geo',

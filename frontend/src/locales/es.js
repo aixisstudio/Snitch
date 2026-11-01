@@ -185,6 +185,7 @@ export default {  // Navegación
   whitelist_action: 'Marcar como de confianza',
 
   // Mapa
+  map_you_approx: 'Tú (aprox.)',
   map_you: 'Tú',
   map_located: n => `${n} host${n !== 1 ? 's' : ''} localizado${n !== 1 ? 's' : ''}`,
   map_no_geo: 'sin geo',

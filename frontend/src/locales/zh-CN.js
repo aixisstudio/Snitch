@@ -187,6 +187,7 @@ export default {
   whitelist_action: '标记为受信任',
 
   // 地图
+  map_you_approx: '您 (约)',
   map_you: '您',
   map_located: n => `已定位 ${n} 个主机`,
   map_no_geo: '无地理信息',

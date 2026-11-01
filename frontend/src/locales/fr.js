@@ -187,6 +187,7 @@ export default {  // Navigation
   whitelist_action: 'Marquer comme fiable',
 
   // Carte / Map
+  map_you_approx: 'Vous (approx.)',
   map_you: 'Vous',
   map_located: n => `${n} hôte${n !== 1 ? 's' : ''} localisé${n !== 1 ? 's' : ''}`,
   map_no_geo: 'sans géo',

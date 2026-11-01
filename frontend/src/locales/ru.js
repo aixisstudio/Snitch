@@ -187,6 +187,7 @@ export default {
   whitelist_action: 'Пометить как доверенный',
 
   // Карта
+  map_you_approx: 'Вы (прибл.)',
   map_you: 'Вы',
   map_located: n => `Геолокализовано хостов: ${n}`,
   map_no_geo: 'нет гео',
