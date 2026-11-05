@@ -185,9 +185,9 @@ def _read_arp_cmd() -> list[tuple[str, str]]:
     « - ») et macOS (IP entre parenthèses)."""
     try:
         proc = subprocess.run(["arp", "-a"], capture_output=True, text=True,
-                          **spawn_kwargs(),
+                          errors="replace", **spawn_kwargs(),
                               timeout=10)
-        out_text = proc.stdout
+        out_text = proc.stdout or ""
     except (OSError, subprocess.TimeoutExpired) as exc:
         logger.debug("arp -a failed: %s", exc)
         return []
@@ -251,15 +251,15 @@ def default_gateway() -> Optional[str]:
         elif sys.platform == "darwin":
             proc = subprocess.run(["route", "-n", "get", "default"],
                           **spawn_kwargs(),
-                                  capture_output=True, text=True, timeout=5)
-            m = re.search(r"gateway:\s*(\S+)", proc.stdout)
+                                  capture_output=True, text=True, errors="replace", timeout=5)
+            m = re.search(r"gateway:\s*(\S+)", proc.stdout or "")
             if m:
                 return m.group(1)
         elif sys.platform.startswith("win"):
             proc = subprocess.run(["route", "print", "-4", "0.0.0.0"],
                           **spawn_kwargs(),
-                                  capture_output=True, text=True, timeout=10)
-            for line in proc.stdout.splitlines():
+                                  capture_output=True, text=True, errors="replace", timeout=10)
+            for line in (proc.stdout or "").splitlines():
                 cols = line.split()
                 if len(cols) >= 3 and cols[0] == "0.0.0.0" and IPV4_RE.fullmatch(cols[2]):
                     return cols[2]

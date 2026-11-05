@@ -429,7 +429,8 @@ class FirewallManager:
         """EN: Run one firewall command, never through a shell. Returns
         (success, stderr). / FR: Exécute une commande pare-feu sans shell."""
         try:
-            p = subprocess.run(args, capture_output=True, text=True, timeout=15, **spawn_kwargs())
+            p = subprocess.run(args, capture_output=True, text=True, errors="replace",
+                           timeout=15, **spawn_kwargs())
             err = (p.stderr or p.stdout or "").strip()
             return p.returncode == 0, err[:300]
         except Exception as e:                       # noqa: BLE001 — report, don't crash

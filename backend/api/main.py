@@ -622,9 +622,10 @@ def _local_hostname() -> str:
     """
     try:
         if sys.platform == "darwin":
-            out = subprocess.run(["scutil", "--get", "ComputerName"],
+            out = (subprocess.run(["scutil", "--get", "ComputerName"],
                                  capture_output=True, text=True,
-                                 timeout=3, **spawn_kwargs()).stdout.strip()
+                                 errors="replace", timeout=3,
+                                 **spawn_kwargs()).stdout or "").strip()
             if out:
                 return out
         elif sys.platform.startswith("win"):
@@ -633,9 +634,10 @@ def _local_hostname() -> str:
                 return name
         elif sys.platform.startswith("linux"):
             try:
-                out = subprocess.run(["hostnamectl", "--pretty"],
+                out = (subprocess.run(["hostnamectl", "--pretty"],
                                      capture_output=True, text=True,
-                                     timeout=3, **spawn_kwargs()).stdout.strip()
+                                     errors="replace", timeout=3,
+                                     **spawn_kwargs()).stdout or "").strip()
                 if out:
                     return out
             except (OSError, subprocess.TimeoutExpired):
@@ -1971,27 +1973,29 @@ def _current_ssid() -> str:
             iface = (_sniffer.iface if _sniffer else None) or "en0"
             out = subprocess.run(
                 ["ipconfig", "getsummary", iface],
-                capture_output=True, text=True, timeout=3, **spawn_kwargs()).stdout
+                capture_output=True, text=True, timeout=3, errors="replace",
+                **spawn_kwargs()).stdout or ""
             for line in out.splitlines():
                 if "SSID :" in line:
                     ssid = line.split("SSID :", 1)[1].strip()
                     break
         elif sys.platform.startswith("linux"):
-            out = subprocess.run(
+            out = (subprocess.run(
                 ["iwgetid", "-r"], capture_output=True, text=True, timeout=3,
-                **spawn_kwargs()
-            ).stdout.strip()
+                errors="replace", **spawn_kwargs()
+            ).stdout or "").strip()
             if out:
                 ssid = out
         elif sys.platform == "win32":
             out = subprocess.run(
                 ["netsh", "wlan", "show", "interfaces"],
-                capture_output=True, text=True, timeout=3, **spawn_kwargs()).stdout
+                capture_output=True, text=True, timeout=3, errors="replace",
+                **spawn_kwargs()).stdout or ""
             for line in out.splitlines():
                 if line.strip().startswith("SSID"):
                     ssid = line.split(":", 1)[1].strip()
                     break
-    except (OSError, subprocess.TimeoutExpired):
+    except (OSError, subprocess.TimeoutExpired, AttributeError):
         pass
     _ssid_cache["ssid"] = ssid
     _ssid_cache["ts"] = now
