@@ -141,7 +141,6 @@ function tzGuess() {
   } catch { /* no Intl */ }
   return [10, 35] // EN: mid-Atlantic-ish neutral point / FR: point neutre
 }
-const LS_KEY = 'snitch_map_you'
 
 export default function MapView({ nodes, onNodeClick }) {
   const { t, lang } = useT()
@@ -152,21 +151,17 @@ export default function MapView({ nodes, onNodeClick }) {
   const userPosRef = useRef(null)
 
   const [worldTopo, setWorldTopo] = useState(null)
-  const [userPos,   setUserPos]   = useState(() => {
-    try { const v = JSON.parse(localStorage.getItem(LS_KEY))
-      return Array.isArray(v) && v.length === 2 ? v : null } catch { return null }
-  })
+  const [userPos,   setUserPos]   = useState(null)
   // EN: true when the position is a timezone-based guess rather than a real
   //     fix — the label then reads "You (approx.)".
   // FR: vrai quand la position est une estimation de fuseau horaire — le
   //     label affiche alors « Vous (approx.) ».
   const [posApprox, setPosApprox] = useState(false)
-  // EN: User-confirmed positions persist so the map remembers you.
-  // FR: Les positions confirmées persistent pour que la carte s'en souvienne.
-  const setPos = (ll, approx = false) => {
-    setUserPos(ll); setPosApprox(approx)
-    if (!approx) { try { localStorage.setItem(LS_KEY, JSON.stringify(ll)) } catch {} }
-  }
+  // EN: Position is session-only on purpose — a privacy tool must not
+  //     keep the user's location on disk, even in localStorage.
+  // FR: Position volontairement limitée à la session — un outil de
+  //     confidentialité ne garde pas la localisation sur disque.
+  const setPos = (ll, approx = false) => { setUserPos(ll); setPosApprox(approx) }
   const [tooltip,   setTooltip]   = useState(null)
 
   // EN: Load the world TopoJSON + resolve the user's position once.
@@ -273,11 +268,11 @@ export default function MapView({ nodes, onNodeClick }) {
     svg.call(zoom)
 
     // EN: Click anywhere on the map to set your own location — the honest
-    //     fallback when no geolocation provider exists (Electron). Stored in
-    //     localStorage, never sent anywhere.
+    //     fallback when no geolocation provider exists (Electron). Kept in
+    //     memory for this session only — nothing is stored or sent.
     // FR: Un clic sur la carte définit votre position — le repli honnête
     //     quand aucun fournisseur de géolocalisation n'existe (Electron).
-    //     Stockée en localStorage, jamais envoyée nulle part.
+    //     Conservée en mémoire pour la session — rien de stocké ni envoyé.
     svg.on('click.maploc', e => {
       if (e.target.closest('.dots')) return
       const t2 = d3.zoomTransform(el)
