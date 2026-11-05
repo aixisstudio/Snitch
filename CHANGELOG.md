@@ -20,6 +20,22 @@ The format follows [Keep a Changelog](https://keepachangelog.com/) — EN/FR.
 
 ### Fixed / Corrigé
 
+- EN: **Realtime feed dead on CJK Windows locales** — `netsh`/`route`/`arp`
+  output can contain bytes the ANSI codepage (cp936/GBK) cannot decode,
+  which killed the reader thread, left `stdout` as `None` and crashed
+  `_current_ssid()` during the WebSocket init snapshot: the UI stayed
+  stuck on "Disconnected" while capture and history kept working
+  (issue #76 — root-cause analysis and suggested patch by @xiaochen506).
+  All `text=True` subprocess calls now decode with `errors="replace"`
+  and read `stdout or ""`.
+  FR: **Flux temps réel mort sous les locales CJK de Windows** — la
+  sortie de `netsh`/`route`/`arp` peut contenir des octets indécodables
+  par la page de codes ANSI (cp936/GBK), tuant le thread de lecture,
+  laissant `stdout` à `None` et faisant planter `_current_ssid()` pendant
+  l'instantané d'init du WebSocket : l'UI restait sur « Disconnected »
+  alors que capture et historique fonctionnaient (issue #76 — analyse
+  et patch suggéré par @xiaochen506). Tous les appels `text=True`
+  décodent désormais avec `errors="replace"` et lisent `stdout or ""`.
 - EN: **Windows console-window flash fixed** — backend console tools
   (`netsh` SSID poll every 60 s, firewall rules, `route`/`arp` lookups)
   now spawn with `CREATE_NO_WINDOW`/`SW_HIDE`; no more transient popup
