@@ -104,5 +104,8 @@
   "author": "aiXis Studio",
   "dependencies": {
     "electron-updater": "^6.8.11"
+  },
+  "overrides": {
+    "minimatch": "11.0.5"
   }
 }
