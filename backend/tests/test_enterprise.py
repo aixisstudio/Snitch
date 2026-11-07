@@ -434,3 +434,45 @@ def test_feeds_setting_bounded():
         "8.8.8.8\n# comment\n1.1.1.1\n10.0.0.1\n", "ip", "block", 5000)
     assert parsed == 2                    # EN: private IP filtered / FR: IP privée filtrée
     assert added >= 0 and not truncated
+
+
+def test_ingest_events_cmdline_enrichment_and_remote_port():
+    import pytest
+    pytest.importorskip("httpx")
+    from fastapi.testclient import TestClient
+    from api.main import app, custom_rules
+    from api.security import API_TOKEN
+    import storage.db as db
+
+    custom_rules.add("catch mcp", "cmdline", "contains", "mcp-agent")
+    c = TestClient(app)
+    auth = {"X-Snitch-Token": API_TOKEN}
+
+    # Outbound event with cmdline and parent_name
+    r = c.post("/ingest/events", headers=auth, json={
+        "agent": "snitch-agent/1", "host": "test-host",
+        "events": [{
+            "src_ip": "10.0.0.5", "dst_ip": "93.184.216.34",
+            "src_port": 52000, "dst_port": 443, "proto": "tcp",
+            "direction": "out", "cmdline": "node mcp-agent.js",
+            "parent_name": "systemd", "ppid": 1
+        }, {
+            # Inbound event to check remote_port mapping (src_port)
+            "src_ip": "1.2.3.4", "dst_ip": "10.0.0.5",
+            "src_port": 54321, "dst_port": 8000, "proto": "tcp",
+            "direction": "in"
+        }]
+    })
+    assert r.status_code == 200
+    data = r.json()
+    assert data["accepted"] == 2
+    assert data["alerts"] == 1
+
+    # Check alert details logged in db
+    db.flush()
+    alerts = db.get_alerts(limit=5)
+    matched = next((a for a in alerts if a.get("details", {}).get("rule", {}).get("name") == "catch mcp"), None)
+    assert matched is not None
+    assert matched["details"]["cmdline"] == "node mcp-agent.js"
+    assert matched["details"]["parent_name"] == "systemd"
+    assert matched["details"]["ppid"] == 1

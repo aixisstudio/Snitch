@@ -1196,15 +1196,22 @@ def _process_batch(packets: list[Packet]) -> None:
             cond = (f"{r['field']} {r['op']} {r['value']}"
                     if r.get("field")
                     else f"{len(r.get('conds', []))} clauses")
+            details = {"rule": r, "process": pkt.process_name,
+                       "direction": pkt.direction, "pid": pkt.pid,
+                       "ip": remote_ip}
+            if getattr(pkt, "cmdline", None):
+                details["cmdline"] = pkt.cmdline
+            if getattr(pkt, "parent_name", None):
+                details["parent_name"] = pkt.parent_name
+            if getattr(pkt, "ppid", None):
+                details["ppid"] = pkt.ppid
             a = Alert(
                 type="CUSTOM_RULE", severity=r["severity"],
                 message=f"Custom rule matched: {r['name']} "
                         f"({cond}) — hit #{m['count']}"
                         + (" by " + pkt.process_name if pkt.process_name else ""),
                 node_id=remote_ip,
-                details={"rule": r, "process": pkt.process_name,
-                         "direction": pkt.direction, "pid": pkt.pid,
-                         "ip": remote_ip},
+                details=details,
             )
             _flag_alert(a, nodes)
             ad = a.to_dict()
@@ -3627,9 +3634,14 @@ async def ingest_events(body: AgentBatchBody,
             self.src_ip = str(e.get("src_ip") or "")[:64]
             self.dst_ip = str(e.get("dst_ip") or "")[:64]
             try:
-                self.remote_port = int(e.get("dst_port") or 0)
+                self.src_port = int(e.get("src_port") or 0)
             except (TypeError, ValueError):
-                self.remote_port = 0
+                self.src_port = 0
+            try:
+                self.dst_port = int(e.get("dst_port") or 0)
+            except (TypeError, ValueError):
+                self.dst_port = 0
+            self.remote_port = self.dst_port if self.direction == "out" else self.src_port
             self.protocol = str(e.get("proto") or "tcp")[:8].lower()
             try:
                 self.size = max(0, int(e.get("bytes") or 0))
@@ -3640,6 +3652,12 @@ async def ingest_events(body: AgentBatchBody,
                 self.pid = int(e.get("pid") or 0)
             except (TypeError, ValueError):
                 self.pid = 0
+            self.cmdline = str(e.get("cmdline") or "")[:512] if e.get("cmdline") else None
+            try:
+                self.ppid = int(e.get("ppid") or 0) if e.get("ppid") else None
+            except (TypeError, ValueError):
+                self.ppid = None
+            self.parent_name = str(e.get("parent_name") or "")[:_MAX_AGENT_FIELD] if e.get("parent_name") else None
             self.sni = str(e.get("sni") or "")[:_MAX_AGENT_FIELD]
             self.dns = []
 
@@ -3661,14 +3679,21 @@ async def ingest_events(body: AgentBatchBody,
         #     la même surface de détection qu'un paquet local.
         for m in custom_rules.check(ev, None)[:1]:
             r = m["rule"]
+            agent_details = {"rule": r, "process": ev.process_name,
+                             "agent": host, "direction": ev.direction,
+                             "ip": ev.dst_ip}
+            if getattr(ev, "cmdline", None):
+                agent_details["cmdline"] = ev.cmdline
+            if getattr(ev, "parent_name", None):
+                agent_details["parent_name"] = ev.parent_name
+            if getattr(ev, "ppid", None):
+                agent_details["ppid"] = ev.ppid
             a = Alert(
                 type="CUSTOM_RULE", severity=r["severity"],
                 message=f"[{host}] Custom rule matched: {r['name']} "
                         f"— hit #{m['count']}",
                 node_id=ev.dst_ip,
-                details={"rule": r, "process": ev.process_name,
-                         "agent": host, "direction": ev.direction,
-                         "ip": ev.dst_ip},
+                details=agent_details,
             )
             ad = a.to_dict()
             db.log_alert(ad)

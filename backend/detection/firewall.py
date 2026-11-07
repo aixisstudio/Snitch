@@ -475,7 +475,7 @@ class FirewallManager:
                                   f"program={target}", "enable=yes"])
             key = "remoteip" if kind in ("ip", "cidr", "domain") else "remoteport"
             return self._run(["netsh", "advfirewall", "firewall", "add", "rule",
-                              f"name={name}-{abs(hash(target)) % 10**6}",
+                              f"name={name}",
                               "dir=out", "action=block", f"{key}={target}", "enable=yes"])
         if self._platform == "linux":
             if kind == "process":

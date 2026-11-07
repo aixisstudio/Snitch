@@ -1186,3 +1186,58 @@ def test_pcapwriter_roundtrip():
         assert sec == int(ts) and incl == len(payload) and orig == wire
         off += 16 + incl
     assert off == len(data)
+
+
+# ── Interpreter-aware rules & Windows netsh lifecycle ────────────────────────
+
+def test_custom_rules_cmdline_and_parent_block_action():
+    """EN: Custom rules with cmdline/parent_name support action="block".
+    FR: Les règles custom sur cmdline/parent_name supportent action="block"."""
+    from detection.customrules import CustomRules
+    cr = CustomRules()
+    r1 = cr.add("block mcp", "cmdline", "contains", "mcp-server", action="block")
+    r2 = cr.add("block launcher", "parent_name", "eq", "suspicious_sh", action="block")
+    assert r1["action"] == "block"
+    assert r2["action"] == "block"
+
+    p = pkt()
+    p.cmdline = "node /opt/mcp-server/index.js --port 8080"
+    p.parent_name = "suspicious_sh"
+    p.ppid = 9999
+
+    hits = cr.check(p)
+    assert len(hits) == 2
+    matched_names = {h["rule"]["name"] for h in hits}
+    assert "block mcp" in matched_names
+    assert "block launcher" in matched_names
+
+
+def test_windows_netsh_firewall_rule_lifecycle(tmp_path, monkeypatch):
+    """EN: Windows netsh fallback generates consistent rule names on add and delete.
+    FR: Le repli netsh sous Windows génère des noms de règle cohérents à l'ajout et suppression."""
+    fw = FirewallManager(str(tmp_path))
+    fw._platform = "windows"
+    monkeypatch.setattr(fw, "_wfp_apply", lambda kind, target, rid: (None, "wfp unavailable"))
+    monkeypatch.setattr(fw, "_wfp_delete", lambda rule: None)
+
+    runs = []
+
+    def _fake_run(args):
+        runs.append(list(args))
+        return True, ""
+
+    monkeypatch.setattr(fw, "_run", _fake_run)
+
+    # 1. Test add rule (IP)
+    ok, _ = fw._apply_one("ip", "203.0.113.5", "rule123")
+    assert ok is True
+    assert len(runs) == 1
+    assert runs[0] == ["netsh", "advfirewall", "firewall", "add", "rule",
+                       "name=SnitchRule-rule123", "dir=out", "action=block",
+                       "remoteip=203.0.113.5", "enable=yes"]
+
+    # 2. Test remove rule
+    runs.clear()
+    fw._remove({"id": "rule123", "kind": "ip", "value": "203.0.113.5"})
+    assert any(cmd == ["netsh", "advfirewall", "firewall", "delete", "rule",
+                       "name=SnitchRule-rule123"] for cmd in runs)
