@@ -99,6 +99,7 @@ from detection.deepinspect import DeepInspector, suspicious_module_paths
 from detection.firewall import FirewallManager
 from detection.integrity import IntegrityWatcher
 from detection import blocklist
+from detection import c2_fingerprints
 from detection import explain as alert_explain
 from detection import iocshare
 from detection.llm_local import LocalSlm
@@ -200,6 +201,7 @@ _entropy_cooldown: dict[str, float] = {}
 _icmp_window: dict[str, list] = {}
 _dga_seen: dict[str, float] = {}            # EN: name → last alert ts
 _proto_cooldown: dict[tuple, float] = {}    # EN: (ip, port) → last ts
+_c2_cooldown: dict[tuple, float] = {}       # EN: (ip, c2_name) → last ts
 # EN: Opt-in volume kill-switch — UPLOAD_SPIKE installs a real firewall
 #     block on the remote IP instead of only alerting. Off by default.
 # FR: Kill-switch de volume opt-in — UPLOAD_SPIKE installe un vrai blocage
@@ -1023,6 +1025,35 @@ def _process_batch(packets: list[Packet]) -> None:
                              "process": pkt.process_name, "pid": pkt.pid,
                              "cmdline": pkt.cmdline, "parent": pkt.parent_name,
                              **hit}), notify=True)
+
+        if pkt.ja3 or pkt.ja4:
+            c2_hit = c2_fingerprints.lookup_c2(pkt.ja3, pkt.ja4)
+            if c2_hit:
+                now_s = time.monotonic()
+                ck = (remote_ip, c2_hit.get("name", "c2"))
+                if now_s - _c2_cooldown.get(ck, 0) >= 300:
+                    _c2_cooldown[ck] = now_s
+                    if len(_c2_cooldown) >= 4096:
+                        _c2_cooldown.pop(next(iter(_c2_cooldown)))
+                    _emit(Alert(
+                        type="C2_SUSPECT", severity=c2_hit.get("severity", "critical"),
+                        message=f"C2 TLS fingerprint match: {c2_hit['name']} "
+                                f"({c2_hit.get('framework', 'C2')}) — "
+                                f"{pkt.process_name or '?'} → {remote_ip}",
+                        node_id=remote_ip,
+                        details={"c2": c2_hit["name"],
+                                 "framework": c2_hit.get("framework"),
+                                 "confidence": c2_hit.get("confidence", 90),
+                                 "ja3": pkt.ja3,
+                                 "ja4": pkt.ja4,
+                                 "ip": remote_ip,
+                                 "port": pkt.remote_port,
+                                 "host": pkt.sni,
+                                 "process": pkt.process_name,
+                                 "pid": pkt.pid,
+                                 "cmdline": pkt.cmdline,
+                                 "parent": pkt.parent_name,
+                                 "description": c2_hit.get("description", "")}), notify=True)
 
         # ── LAN accounting / Comptabilisation LAN ───────────────────────────
         if is_private(remote_ip):
@@ -3199,7 +3230,7 @@ async def alert_rules() -> dict:
     FR: Toutes les règles utilisateur + le vocabulaire du moteur."""
     return {"rules": custom_rules.serialized(),
             "fields": ["remote_ip", "host", "process_name", "remote_port",
-                       "protocol", "direction", "size"],
+                       "protocol", "direction", "size", "ja3", "ja4"],
             "ops": ["eq", "ne", "contains", "regex", "gt", "lt", "cidr"]}
 
 
@@ -3350,6 +3381,26 @@ async def suspend_process(body: PidBody) -> dict:
         logger.warning("suspend pid %s failed: %s", body.pid, exc)
         raise HTTPException(400, "suspend failed") from exc
     return {"ok": True, "pid": body.pid, **res}
+
+
+# ── C2 TLS Fingerprints / Empreintes TLS C2 ──────────────────────────────────
+
+@app.get("/c2/fingerprints", dependencies=_AUTH)
+@app.get("/security/c2/fingerprints", dependencies=_AUTH)
+async def c2_fingerprints_list() -> dict:
+    """EN: List known C2 TLS fingerprints (JA3/JA4) loaded into the passive detector.
+    FR: Liste des empreintes TLS C2 connues (JA3/JA4) chargées dans le détecteur passif."""
+    fps = c2_fingerprints.list_fingerprints()
+    return {"ok": True, "count": len(fps), "fingerprints": fps}
+
+
+@app.post("/c2/fingerprints/reload", dependencies=_AUTH)
+@app.post("/security/c2/fingerprints/reload", dependencies=_AUTH)
+async def c2_fingerprints_reload() -> dict:
+    """EN: Reload C2 TLS fingerprint database from disk.
+    FR: Recharger la base d'empreintes TLS C2 depuis le disque."""
+    loaded = c2_fingerprints.reload_fingerprints()
+    return {"ok": True, "count": loaded}
 
 
 @app.get("/security/ti", dependencies=_AUTH)

@@ -25,6 +25,8 @@ FR: Décode les trames de couche liaison brutes en `ParsedPacket` normalisé.
                            SNI du ClientHello TLS (cas d'un seul segment).
 """
 
+import hashlib
+import ipaddress
 import socket
 import struct
 from dataclasses import dataclass, field
@@ -101,6 +103,10 @@ class ParsedPacket:
     #     ICMP portent leur tête de payload dans app_head et type/code
     #     dans flags (type << 8 | code).
     tls_cert: Optional[dict] = None
+    # EN: TLS ClientHello fingerprints (JA3 MD5 & JA4 hashes) when seen.
+    # FR: Empreintes ClientHello TLS (hachages JA3 MD5 et JA4) quand observées.
+    ja3: Optional[str] = None
+    ja4: Optional[str] = None
 
 
 def parse_frame(linktype: int, buf: bytes) -> Optional[ParsedPacket]:
@@ -273,10 +279,12 @@ def _parse_transport(payload: bytes, proto: int, src: str, dst: str,
         # FR: Filtre rapide : un enregistrement TLS commence par 0x16 0x03 xx
         #     sur le port 443 (ou SNI sur tout port — rester souple).
         sni = None
+        ja3 = None
+        ja4 = None
         app_head = b""
         tls_cert = None
         if tcp_payload[:2] == b"\x16\x03":
-            sni = parse_tls_sni(tcp_payload)
+            sni, ja3, ja4 = parse_tls_client_hello(tcp_payload)
         if tcp_payload:
             # EN: Cleartext protocol fingerprinting needs only the head —
             #     stratum/HTTP/IRC banners all declare themselves early.
@@ -303,7 +311,7 @@ def _parse_transport(payload: bytes, proto: int, src: str, dst: str,
             dns = parse_dns(tcp_payload[2:]) if len(tcp_payload) > 2 else []
 
         return ParsedPacket(src, dst, "TCP", wire_len, sport, dport, flags,
-                            dns, sni, None, app_head, tls_cert)
+                            dns, sni, None, app_head, tls_cert, ja3, ja4)
 
     if proto == IPPROTO_UDP:
         if len(payload) < 8:
@@ -622,63 +630,187 @@ def parse_dhcp(payload: bytes) -> Optional[tuple]:
         return None
 
 
-# ── TLS SNI / SNI TLS ────────────────────────────────────────────────────────
+# ── TLS ClientHello & Fingerprinting (SNI, JA3, JA4) ─────────────────────────
+
+def _is_grease(val: int) -> bool:
+    """EN: RFC 8701 GREASE value check (0x?a?a pattern).
+    FR: Vérification de valeur GREASE RFC 8701 (motif 0x?a?a)."""
+    return (val & 0x0F0F) == 0x0A0A and ((val >> 8) & 0xFF) == (val & 0xFF)
+
+
+def _looks_like_ip(s: str) -> bool:
+    try:
+        ipaddress.ip_address(s.strip().strip("[]"))
+        return True
+    except (ValueError, TypeError, AttributeError):
+        return False
+
+
+def parse_tls_client_hello(payload: bytes) -> tuple[Optional[str], Optional[str], Optional[str]]:
+    """
+    EN: Unpack a TLS ClientHello record and extract:
+          1. SNI hostname (server_name)
+          2. JA3 fingerprint hash (MD5 hex)
+          3. JA4 fingerprint hash (JA4_a_b_c format)
+        Strictly passive, zero-copy where possible, bounded execution.
+        Returns (sni, ja3_hash, ja4_hash).
+    FR: Dépaqueter un enregistrement ClientHello TLS et extraire :
+          1. Nom d'hôte SNI (server_name)
+          2. Empreinte JA3 (hachage MD5 hex)
+          3. Empreinte JA4 (format JA4_a_b_c)
+        Strictement passif, zéro copie quand possible, exécution bornée.
+        Renvoie (sni, ja3_hash, ja4_hash).
+    """
+    try:
+        if len(payload) < 9 or payload[0] != 0x16 or payload[1] != 0x03:
+            return None, None, None
+        hs = 5
+        if payload[hs] != 0x01:              # EN: ClientHello / FR: ClientHello
+            return None, None, None
+        hs_len = struct.unpack("!I", b"\x00" + payload[hs + 1:hs + 4])[0]
+        body = payload[hs + 4:hs + 4 + hs_len]
+        if len(body) < 34:
+            return None, None, None
+
+        client_version = struct.unpack("!H", body[:2])[0]
+        off = 2 + 32                         # EN: version + random / FR: version + aléa
+        sid_len = body[off]
+        off += 1 + sid_len
+        if off + 2 > len(body):
+            return None, None, None
+
+        cs_len = struct.unpack("!H", body[off:off + 2])[0]
+        off += 2
+        cs_end = min(off + cs_len, len(body))
+        ciphers: list[int] = []
+        for i in range(off, cs_end - 1, 2):
+            cval = struct.unpack("!H", body[i:i + 2])[0]
+            if not _is_grease(cval):
+                ciphers.append(cval)
+        off = cs_end
+
+        if off >= len(body):
+            return None, None, None
+        cm_len = body[off]
+        off += 1
+        cm_end = min(off + cm_len, len(body))
+        compressions = [b for b in body[off:cm_end]]
+        off = cm_end
+
+        extensions: list[int] = []
+        curves: list[int] = []
+        point_formats: list[int] = []
+        sig_algs: list[int] = []
+        supported_versions: list[int] = []
+        alpn_str = "00"
+        sni: Optional[str] = None
+
+        if off + 2 <= len(body):
+            ext_total = struct.unpack("!H", body[off:off + 2])[0]
+            off += 2
+            ext_end = min(off + ext_total, len(body))
+
+            while off + 4 <= ext_end:
+                etype, elen = struct.unpack("!HH", body[off:off + 4])
+                edata = body[off + 4:off + 4 + elen]
+                if not _is_grease(etype):
+                    extensions.append(etype)
+
+                if etype == 0 and len(edata) >= 5:   # server_name (SNI)
+                    if edata[2] == 0:
+                        nlen = struct.unpack("!H", edata[3:5])[0]
+                        raw = edata[5:5 + nlen].decode("ascii", errors="replace")
+                        try:
+                            sni = raw.encode("ascii").decode("idna")
+                        except UnicodeError:
+                            sni = raw
+                elif etype == 10 and len(edata) >= 2:  # supported_groups (curves)
+                    curves_len = struct.unpack("!H", edata[:2])[0]
+                    for i in range(2, min(2 + curves_len, len(edata)) - 1, 2):
+                        cval = struct.unpack("!H", edata[i:i + 2])[0]
+                        if not _is_grease(cval):
+                            curves.append(cval)
+                elif etype == 11 and len(edata) >= 1:  # ec_point_formats
+                    pf_len = edata[0]
+                    for i in range(1, min(1 + pf_len, len(edata))):
+                        point_formats.append(edata[i])
+                elif etype == 16 and len(edata) >= 3:  # ALPN
+                    slen = edata[2]
+                    if len(edata) >= 3 + slen and slen > 0:
+                        proto = edata[3:3 + slen].decode("ascii", errors="replace")
+                        if len(proto) == 1:
+                            alpn_str = proto[0] + "0"
+                        elif len(proto) >= 2:
+                            alpn_str = proto[0] + proto[-1]
+                elif etype == 13 and len(edata) >= 2:  # signature_algorithms
+                    sig_len = struct.unpack("!H", edata[:2])[0]
+                    for i in range(2, min(2 + sig_len, len(edata)) - 1, 2):
+                        sval = struct.unpack("!H", edata[i:i + 2])[0]
+                        if not _is_grease(sval):
+                            sig_algs.append(sval)
+                elif etype == 43 and len(edata) >= 1:  # supported_versions
+                    vlen = edata[0]
+                    for i in range(1, min(1 + vlen, len(edata)) - 1, 2):
+                        vval = struct.unpack("!H", edata[i:i + 2])[0]
+                        if not _is_grease(vval):
+                            supported_versions.append(vval)
+
+                off += 4 + elen
+
+        # ── 1. JA3 (MD5 hex) ────────────────────────────────────────────────
+        ciphers_s = "-".join(str(c) for c in ciphers)
+        exts_s = "-".join(str(e) for e in extensions)
+        curves_s = "-".join(str(c) for c in curves)
+        pf_s = "-".join(str(p) for p in point_formats)
+        ja3_raw = f"{client_version},{ciphers_s},{exts_s},{curves_s},{pf_s}"
+        ja3_hash = hashlib.md5(ja3_raw.encode("ascii")).hexdigest()
+
+        # ── 2. JA4 (JA4_a_b_c) ──────────────────────────────────────────────
+        v_eff = max(supported_versions) if supported_versions else client_version
+        if v_eff == 0x0304:
+            v_str = "13"
+        elif v_eff == 0x0303:
+            v_str = "12"
+        elif v_eff == 0x0302:
+            v_str = "11"
+        elif v_eff == 0x0301:
+            v_str = "10"
+        elif v_eff == 0x0300:
+            v_str = "s3"
+        else:
+            v_str = "00"
+
+        sni_flag = "d" if (sni and not _looks_like_ip(sni)) else "i"
+        c_count = f"{min(len(ciphers), 99):02d}"
+        e_count = f"{min(len(extensions), 99):02d}"
+        ja4_a = f"t{v_str}{sni_flag}{c_count}{e_count}{alpn_str}"
+
+        ciphers_hex = [f"{c:04x}" for c in sorted(ciphers)]
+        ja4_b = hashlib.sha256(",".join(ciphers_hex).encode("ascii")).hexdigest()[:12]
+
+        exts_c = [e for e in extensions if e not in (0, 16)]
+        exts_hex = [f"{e:04x}" for e in sorted(exts_c)]
+        if sig_algs:
+            sigs_hex = [f"{s:04x}" for s in sorted(sig_algs)]
+            c_raw = ",".join(exts_hex) + "_" + ",".join(sigs_hex)
+        else:
+            c_raw = ",".join(exts_hex)
+        ja4_c = hashlib.sha256(c_raw.encode("ascii")).hexdigest()[:12]
+
+        ja4_hash = f"{ja4_a}_{ja4_b}_{ja4_c}"
+
+        return sni, ja3_hash, ja4_hash
+    except (IndexError, struct.error, ValueError, Exception):
+        return None, None, None
+
 
 def parse_tls_sni(payload: bytes) -> Optional[str]:
     """
     EN: Extract the SNI hostname from a TLS ClientHello when the whole
         handshake fits in one segment — the overwhelmingly common case.
-        Layout: record header (5) | handshake type+len (4) | version (2) |
-        random (32) | session_id (1+n) | ciphers (2+n) | compression (1+n) |
-        extensions len (2) | extensions… — we look for ext type 0.
+        Backward-compatible wrapper delegating to parse_tls_client_hello.
     FR: Extraire le nom d'hôte SNI d'un ClientHello TLS quand tout le
-        handshake tient dans un seul segment — le cas très majoritaire.
-        Structure : en-tête d'enregistrement (5) | type+longueur handshake (4) |
-        version (2) | aléa (32) | session_id (1+n) | chiffrements (2+n) |
-        compression (1+n) | longueur extensions (2) | extensions… — on cherche
-        l'extension type 0.
+        handshake tient dans un seul segment. Wrapper rétrocompatible.
     """
-    try:
-        if len(payload) < 9 or payload[0] != 0x16 or payload[1] != 0x03:
-            return None
-        hs = 5
-        if payload[hs] != 0x01:              # EN: ClientHello / FR: ClientHello
-            return None
-        hs_len = struct.unpack("!I", b"\x00" + payload[hs + 1:hs + 4])[0]
-        body = payload[hs + 4:hs + 4 + hs_len]
-        if len(body) < 34:
-            return None
-        off = 2 + 32                         # EN: version + random / FR: version + aléa
-        sid_len = body[off]
-        off += 1 + sid_len
-        cs_len = struct.unpack("!H", body[off:off + 2])[0]
-        off += 2 + cs_len
-        cm_len = body[off]
-        off += 1 + cm_len
-        if off + 2 > len(body):
-            return None
-        ext_total = struct.unpack("!H", body[off:off + 2])[0]
-        off += 2
-        ext_end = min(off + ext_total, len(body))
-
-        while off + 4 <= ext_end:
-            etype, elen = struct.unpack("!HH", body[off:off + 4])
-            edata = body[off + 4:off + 4 + elen]
-            if etype == 0 and len(edata) >= 5:   # EN: server_name ext / FR: ext server_name
-                # EN: list_len(2) | type(1) | name_len(2) | name
-                # FR: longueur liste (2) | type (1) | longueur nom (2) | nom
-                if edata[2] == 0:
-                    nlen = struct.unpack("!H", edata[3:5])[0]
-                    raw = edata[5:5 + nlen].decode("ascii", errors="strict")
-                    # EN: IDNA → unicode when possible; the "idna" codec does
-                    #     not accept an errors= argument.
-                    # FR: IDNA → unicode quand possible ; le codec « idna »
-                    #     n'accepte pas d'argument errors=.
-                    try:
-                        return raw.encode("ascii").decode("idna")
-                    except UnicodeError:
-                        return raw
-            off += 4 + elen
-        return None
-    except (IndexError, struct.error, ValueError):
-        return None
+    sni, _ja3, _ja4 = parse_tls_client_hello(payload)
+    return sni

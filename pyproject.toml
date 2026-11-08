@@ -54,3 +54,6 @@ py-modules = ["cli", "paths", "logging_config", "run_backend", "version"]
 # EN: Full IEEE OUI registry (gzipped) — offline MAC→vendor lookup.
 # FR: Registre IEEE OUI complet (gzippé) — lookup MAC→fabricant hors ligne.
 "scanner" = ["oui_table.txt.gz"]
+# EN: C2 TLS fingerprints database (JA3/JA4) for passive detection.
+# FR: Base d'empreintes TLS C2 (JA3/JA4) pour la détection passive.
+"detection" = ["*.json"]
