@@ -269,8 +269,8 @@ class CustomRules:
         if rule.get("action", "alert") not in _ACTIONS:
             raise ValueError(f"unknown action: {rule.get('action')}")
         if rule.get("action") == "block" and \
-                first_field not in ("remote_ip", "host",
-                                    "process_name", "asn", "country"):
+                first_field not in ("remote_ip", "host", "process_name", "cmdline", "parent_name",
+                                    "asn", "country"):
             raise ValueError("block action needs a blockable field "
                              "(remote_ip/host/process_name/cmdline/parent_name/asn/country)")
 
