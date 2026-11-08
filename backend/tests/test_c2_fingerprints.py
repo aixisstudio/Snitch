@@ -6,14 +6,13 @@ FR: Tests unitaires pour l'empreinte TLS ClientHello passive (JA3 / JA4) et la d
 from __future__ import annotations
 
 import struct
-from unittest.mock import MagicMock
 
 from fastapi.testclient import TestClient
 import pytest
 
-from api.main import app, _c2_cooldown
+from api.main import app
 from api.security import API_TOKEN
-from capture.parser import parse_tls_client_hello, parse_tls_sni, ParsedPacket
+from capture.parser import parse_tls_client_hello, parse_tls_sni
 from capture.sniffer import Packet
 from detection import c2_fingerprints
 from detection.customrules import CustomRules
@@ -192,6 +191,8 @@ class TestC2FingerprintsDatabase:
             assert "framework" in fp
             assert fp.get("severity") in ("critical", "warning", "info")
             assert fp.get("confidence", 0) >= 50
+            assert "source" in fp and fp["source"]
+            assert "provenance" in fp and fp["provenance"]
             assert "ja3" in fp or "ja4" in fp
 
     def test_lookup_c2_by_known_ja3(self) -> None:
@@ -200,12 +201,30 @@ class TestC2FingerprintsDatabase:
         assert match is not None
         assert match["framework"] == "Cobalt Strike"
         assert match["severity"] == "critical"
+        assert "source" in match
+        assert "provenance" in match
 
-    def test_lookup_c2_by_known_ja4(self) -> None:
-        # Cobalt Strike JA4
-        match = c2_fingerprints.lookup_c2(ja4="t12d190800_210d3224b898_a4b9c1d2e3f4")
+    def test_lookup_c2_by_known_ja4(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Verify JA4 lookup logic against an auditable profile
+        test_profile = {
+            "name": "Test-C2-JA4",
+            "framework": "Cobalt Strike",
+            "threat_type": "botnet_cc",
+            "ja3": None,
+            "ja4": "t13d1516h2_8daaf6152771_b09938846cad",
+            "confidence": 95,
+            "severity": "critical",
+            "source": "Verified Test Profile",
+            "provenance": "Synthetic test fixture",
+        }
+        monkeypatch.setattr(c2_fingerprints, "_JA4_MAP", {"t13d1516h2_8daaf6152771_b09938846cad": test_profile})
+        match = c2_fingerprints.lookup_c2(ja4="t13d1516h2_8daaf6152771_b09938846cad")
         assert match is not None
         assert match["framework"] == "Cobalt Strike"
+        assert match["name"] == "Test-C2-JA4"
+        # Test case insensitivity on JA4
+        upper_match = c2_fingerprints.lookup_c2(ja4="T13D1516H2_8DAAF6152771_B09938846CAD")
+        assert upper_match == match
 
     def test_lookup_case_insensitivity(self) -> None:
         match = c2_fingerprints.lookup_c2(ja3="A0E9F5D64349FB13191BC781F81F42E1")

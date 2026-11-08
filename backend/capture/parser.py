@@ -693,9 +693,7 @@ def parse_tls_client_hello(payload: bytes) -> tuple[Optional[str], Optional[str]
             return None, None, None
         cm_len = body[off]
         off += 1
-        cm_end = min(off + cm_len, len(body))
-        compressions = [b for b in body[off:cm_end]]
-        off = cm_end
+        off = min(off + cm_len, len(body))
 
         extensions: list[int] = []
         curves: list[int] = []

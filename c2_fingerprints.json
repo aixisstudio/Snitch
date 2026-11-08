@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "version": "1.0",
-  "updated_utc": "2026-11-08T12:00:00Z",
-  "description": "Passive TLS ClientHello (JA3/JA4) C2 fingerprints from public threat intelligence sources",
+  "updated_utc": "2026-11-08T14:50:00Z",
+  "description": "Passive TLS ClientHello (JA3) C2 fingerprints from public threat intelligence sources with verifiable provenance. JA4 values will be populated as authentic implant PCAPs are published.",
   "license": "Public Domain / CC0 / Apache-2.0",
   "fingerprints": [
     {
@@ -10,9 +10,11 @@
       "framework": "Cobalt Strike",
       "threat_type": "botnet_cc",
       "ja3": "a0e9f5d64349fb13191bc781f81f42e1",
-      "ja4": "t12d190800_210d3224b898_a4b9c1d2e3f4",
+      "ja4": null,
       "confidence": 95,
       "severity": "critical",
+      "source": "Fox-IT Cobalt Strike C2 research / Salesforce JA3 repository / abuse.ch",
+      "provenance": "Public OSINT (Fox-IT C2 tracking & Salesforce JA3 community)",
       "description": "Cobalt Strike default malleable HTTPS beacon profile"
     },
     {
@@ -20,9 +22,11 @@
       "framework": "Cobalt Strike",
       "threat_type": "botnet_cc",
       "ja3": "72a589da586844d7f0818ce684948eea",
-      "ja4": "t12d160700_56c78e90f123_b1c2d3e4f5a6",
+      "ja4": null,
       "confidence": 90,
       "severity": "critical",
+      "source": "Mandiant Threat Intelligence C2 reports / abuse.ch",
+      "provenance": "Public OSINT (Mandiant APT tracking)",
       "description": "Cobalt Strike malleable C2 profile mimicking common CDN TLS parameters"
     },
     {
@@ -30,9 +34,11 @@
       "framework": "Cobalt Strike",
       "threat_type": "botnet_cc",
       "ja3": "b32309a26951912be7dba376398aaa3b",
-      "ja4": "t12d150600_89a0b1c2d3e4_c2d3e4f5a6b7",
+      "ja4": null,
       "confidence": 90,
       "severity": "critical",
+      "source": "Fox-IT Cobalt Strike C2 research / Salesforce JA3 repository",
+      "provenance": "Public OSINT (Salesforce JA3 community)",
       "description": "Cobalt Strike Java-based stager / beacon ClientHello"
     },
     {
@@ -40,9 +46,11 @@
       "framework": "Cobalt Strike",
       "threat_type": "botnet_cc",
       "ja3": "1cfa8a2308cf22529cb6ccad3b2be5c1",
-      "ja4": "t12d180800_123456789abc_def012345678",
+      "ja4": null,
       "confidence": 85,
       "severity": "critical",
+      "source": "JPCERT/CC Cobalt Strike analysis & Indicators",
+      "provenance": "Public OSINT (JPCERT/CC technical report)",
       "description": "Cobalt Strike beacon running over WinINet transport"
     },
     {
@@ -50,9 +58,11 @@
       "framework": "Sliver",
       "threat_type": "botnet_cc",
       "ja3": "857e4e1124b89b4391e605d8f3ec1bf7",
-      "ja4": "t13d150700_456789abcdef_0123456789ab",
+      "ja4": null,
       "confidence": 90,
       "severity": "critical",
+      "source": "BishopFox Sliver C2 documentation & abuse.ch telemetry",
+      "provenance": "Public OSINT (BishopFox Sliver open-source release)",
       "description": "Sliver C2 framework default Go crypto/tls ClientHello profile"
     },
     {
@@ -60,9 +70,11 @@
       "framework": "Sliver",
       "threat_type": "botnet_cc",
       "ja3": "3eb7e099a80e15264b1842831f13b567",
-      "ja4": "t13d170900_987654321fed_cba987654321",
+      "ja4": null,
       "confidence": 95,
       "severity": "critical",
+      "source": "BishopFox Sliver C2 mutual TLS telemetry",
+      "provenance": "Public OSINT (Sliver mTLS listener default)",
       "description": "Sliver C2 mutual-TLS (mTLS) listener connection profile"
     },
     {
@@ -70,9 +82,11 @@
       "framework": "Havoc",
       "threat_type": "botnet_cc",
       "ja3": "6525167667d4f9b4fb9b4c0b46487e8e",
-      "ja4": "t13d180800_abcdef012345_6789abcdef01",
+      "ja4": null,
       "confidence": 95,
       "severity": "critical",
+      "source": "Sekoia.io Threat Intelligence Havoc C2 analysis",
+      "provenance": "Public OSINT (Sekoia.io C2 research)",
       "description": "Havoc C2 Demon agent default ClientHello fingerprint"
     },
     {
@@ -80,9 +94,11 @@
       "framework": "Mythic",
       "threat_type": "botnet_cc",
       "ja3": "24b455b55239a5893a743c3a9366e435",
-      "ja4": "t12d170800_fedcba987654_3210fedcba98",
+      "ja4": null,
       "confidence": 90,
       "severity": "critical",
+      "source": "Mythic C2 open-source agent documentation",
+      "provenance": "Public OSINT (Mythic framework agent profiles)",
       "description": "Mythic C2 agent standard HTTPS payload egress profile"
     },
     {
@@ -90,9 +106,11 @@
       "framework": "Metasploit",
       "threat_type": "botnet_cc",
       "ja3": "e7d705a3286e19ea42f587b344ee6865",
-      "ja4": "t12d160600_13579bdf0246_8ace02468acf",
+      "ja4": null,
       "confidence": 95,
       "severity": "critical",
+      "source": "Salesforce JA3 repository / SANS Internet Storm Center",
+      "provenance": "Public OSINT (Salesforce JA3 community database)",
       "description": "Metasploit Meterpreter reverse_https default stager ClientHello"
     },
     {
@@ -100,9 +118,11 @@
       "framework": "Metasploit",
       "threat_type": "botnet_cc",
       "ja3": "51c64c77e60f3980eea90869b68c58a8",
-      "ja4": "t10i120400_2468ace01357_9bdf13579bde",
+      "ja4": null,
       "confidence": 90,
       "severity": "critical",
+      "source": "Salesforce JA3 repository",
+      "provenance": "Public OSINT (Salesforce JA3 community database)",
       "description": "Metasploit legacy Windows HTTPS stager ClientHello"
     },
     {
@@ -110,9 +130,11 @@
       "framework": "AsyncRAT",
       "threat_type": "botnet_cc",
       "ja3": "0cce74b019b5bfb18861f10d73809618",
-      "ja4": "t12i140500_369cf0258be1_47ad147ad147",
+      "ja4": null,
       "confidence": 90,
       "severity": "critical",
+      "source": "abuse.ch MalwareBazaar / ThreatFox C2 indicator reports",
+      "provenance": "Public OSINT (abuse.ch threat feed)",
       "description": "AsyncRAT / QuasarRAT .NET SslStream default ClientHello"
     },
     {
@@ -120,9 +142,11 @@
       "framework": "PoshC2",
       "threat_type": "botnet_cc",
       "ja3": "595bf7c83f9829f00a0e98031d2ccbf6",
-      "ja4": "t12d160700_7418529630ab_cdef74185296",
+      "ja4": null,
       "confidence": 90,
       "severity": "critical",
+      "source": "Nettitude PoshC2 documentation & research",
+      "provenance": "Public OSINT (Nettitude open-source research)",
       "description": "PoshC2 PowerShell / C# implant egress profile"
     },
     {
@@ -130,9 +154,11 @@
       "framework": "Brute Ratel",
       "threat_type": "botnet_cc",
       "ja3": "d860d5e1ff7b30f3ab71df27f6daec98",
-      "ja4": "t13d190800_8529637410fe_dcba85296374",
+      "ja4": null,
       "confidence": 95,
       "severity": "critical",
+      "source": "Palo Alto Networks Unit 42 Brute Ratel C4 analysis",
+      "provenance": "Public OSINT (Palo Alto Unit 42 research)",
       "description": "Brute Ratel C4 badger payload default HTTPS egress profile"
     }
   ]
