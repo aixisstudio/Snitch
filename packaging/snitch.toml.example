@@ -26,11 +26,17 @@ upload_threshold_mb = 500
 
 # EN: Scheduled threat feeds — refreshed every `hours` per feed, hot-reloaded
 #     into the firewall. Remote urls are an explicit opt-in; path: feeds are
-#     fully offline. kind: "ip"|"domain", action: "block"|"sinkhole".
+#     fully offline. Built-in presets: "threatfox", "threatfox_ip", "threatfox_domain".
+#     kind: "ip"|"domain"|"threatfox"|"threatfox_ip"|"threatfox_domain",
+#     action: "block"|"sinkhole". Optional filters: malware = "cobalt_strike", min_confidence = 75.
 # FR: Flux TI planifiés — rafraîchis toutes les `hours`, rechargés à chaud
 #     dans le pare-feu. Les url distantes = opt-in explicite ; `path:` reste
-#     hors-ligne. kind : « ip »|« domain », action : « block »|« sinkhole ».
+#     hors-ligne. Préréglages intégrés : « threatfox », « threatfox_ip », « threatfox_domain ».
+#     kind : « ip »|« domain »|« threatfox »|« threatfox_ip »|« threatfox_domain »,
+#     action : « block »|« sinkhole ». Filtres optionnels : malware = « cobalt_strike », min_confidence = 75.
 # ti_feeds = [
+#   # Preset for ThreatFox C2 export (abuse.ch, CC0 / Public Domain)
+#   { preset = "threatfox", action = "block", hours = 12, min_confidence = 75 },
 #   { url = "https://lists.blocklist.de/lists/all.txt", kind = "ip",
 #     action = "block", hours = 24 },
 #   { path = "/etc/snitch/corp-domains.txt", kind = "domain",

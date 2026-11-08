@@ -374,25 +374,21 @@ class FirewallToggleBody(BaseModel):
 
 
 class BlocklistBody(BaseModel):
-    """EN: /firewall/blocklist payload — exactly ONE source: `path`
-    (local hosts/domain file) or `url` (OPT-IN outbound fetch — one of
-    the few places Snitch can emit network traffic). `action` is the
-    firewall action applied to every imported domain.
-    FR: Charge utile /firewall/blocklist — exactement UNE source : `path`
-    (fichier local) ou `url` (fetch sortant OPT-IN — un des rares
-    endroits où Snitch peut émettre du trafic). `action` = l'action
-    pare-feu appliquée à chaque domaine importé."""
+    """EN: /firewall/blocklist payload — source from `path` (local file),
+    `url` (opt-in fetch), or `preset` (curated feed, e.g. "threatfox").
+    FR: Charge utile /firewall/blocklist — source via `path` (fichier local),
+    `url` (fetch opt-in) ou `preset` (flux sélectionné, ex. « threatfox »)."""
     path: str = ""
     url: str = ""
+    preset: str = ""
     action: str = "block"
     max_entries: int = 500
-    # EN: "domain" (hosts/domain lists — StevenBlack…) or "ip"
-    #     (IP feeds — Blocklist.de, URLhaus/Feodo exports). Default
-    #     keeps the historic domain behaviour.
-    # FR: « domain » (listes hosts/domaines — StevenBlack…) ou « ip »
-    #     (flux IP — Blocklist.de, exports URLhaus/Feodo). Le défaut
-    #     conserve le comportement historique.
+    # EN: "domain", "ip", "threatfox", "threatfox_ip", "threatfox_domain".
+    # FR: « domain », « ip », « threatfox », « threatfox_ip », « threatfox_domain ».
     kind: str = "domain"
+    malware: Optional[str] = None
+    min_confidence: int = 0
+    threat_type: Optional[str] = None
 
 
 class CustomRuleBody(BaseModel):
@@ -1571,17 +1567,24 @@ async def _feed_loop() -> None:
             for feed in feeds[:64]:
                 if not isinstance(feed, dict):
                     continue
-                url = str(feed.get("url") or "").strip()
+                preset_key = str(feed.get("preset") or "").strip().lower()
+                preset_cfg = blocklist.PRESETS.get(preset_key, {})
+                url = str(feed.get("url") or preset_cfg.get("url") or "").strip()
                 path = str(feed.get("path") or "").strip()
-                kind = feed.get("kind") if feed.get("kind") in \
-                    ("ip", "domain") else "domain"
-                action = feed.get("action") if feed.get("action") in \
-                    ("block", "sinkhole") else "block"
+                raw_kind = feed.get("kind") or preset_cfg.get("kind") or "domain"
+                valid_kinds = ("ip", "domain", "threatfox", "threatfox_ip", "threatfox_domain")
+                kind = raw_kind if raw_kind in valid_kinds else "domain"
+                raw_action = feed.get("action") or preset_cfg.get("action") or "block"
+                action = raw_action if raw_action in ("block", "sinkhole") else "block"
+                default_hours = preset_cfg.get("hours", 24)
                 try:
-                    hours = max(1, min(int(feed.get("hours", 24)), 24 * 30))
+                    hours = max(1, min(int(feed.get("hours", default_hours)), 24 * 30))
                 except (TypeError, ValueError):
                     hours = 24
-                key = url or path
+                malware = feed.get("malware") or preset_cfg.get("malware")
+                min_confidence = feed.get("min_confidence") or preset_cfg.get("min_confidence", 0)
+                threat_type = feed.get("threat_type") or preset_cfg.get("threat_type")
+                key = url or path or preset_key
                 if not key:
                     continue
                 if now - float(state.get(key, 0)) < hours * 3600:
@@ -1600,7 +1603,7 @@ async def _feed_loop() -> None:
                     added, skipped, parsed, truncated = \
                         await loop.run_in_executor(
                             None, _import_blocklist_text, text,
-                            kind, action, 5000)
+                            kind, action, 5000, malware, min_confidence, threat_type)
                     state[key] = now
                     changed = True
                     logger.info("ti feed %s: +%d rules (%d parsed%s)",
@@ -3047,30 +3050,49 @@ async def firewall_profile(body: ProfileBody) -> dict:
     return {"ok": True, "rules": rules, "lockdown": lockdown, **res}
 
 
+@app.get("/firewall/presets", dependencies=_AUTH)
+async def firewall_presets() -> dict:
+    """EN: Built-in threat intelligence feed presets (ThreatFox C2, etc.).
+    FR: Préréglages de flux de renseignement sur les menaces intégrés."""
+    return {"ok": True, "presets": blocklist.PRESETS}
+
+
 @app.post("/firewall/blocklist", dependencies=_AUTH)
 async def firewall_blocklist(body: BlocklistBody) -> dict:
-    """EN: Import a blocklist into `domain` rules. `path` reads a local
+    """EN: Import a blocklist into `domain` / `ip` rules. `path` reads a local
         file (purely local); `url` performs an OPT-IN outbound HTTPS
         fetch — surfaced as `remote_fetch: true` in the response so the
-        UI can show that Snitch emitted traffic. Entries deduplicated
+        UI can show that Snitch emitted traffic; `preset` loads a curated
+        public threat feed (e.g. "threatfox"). Entries deduplicated
         against existing rules and capped at `max_entries` (<= 5000).
-    FR: Importer une blocklist en règles `domain`. `path` lit un fichier
+    FR: Importer une blocklist en règles `domain` / `ip`. `path` lit un fichier
         local ; `url` effectue un fetch HTTPS sortant OPT-IN — signalé
-        par `remote_fetch: true` dans la réponse pour que l'UI montre
-        que Snitch a émis du trafic. Entrées dédupliquées et plafonnées
+        par `remote_fetch: true` dans la réponse ; `preset` charge un flux
+        sélectionné (ex. « threatfox »). Entrées dédupliquées et plafonnées
         à `max_entries` (<= 5000)."""
-    if bool(body.path) == bool(body.url):
-        raise HTTPException(400, "provide exactly one of path or url")
+    preset_key = str(body.preset or "").strip().lower()
+    preset_cfg = blocklist.PRESETS.get(preset_key, {})
+    url = body.url or str(preset_cfg.get("url") or "")
+    path = body.path
+    if bool(path) == bool(url):
+        raise HTTPException(400, "provide exactly one of path or url (or a valid preset)")
     if body.action not in ("block", "sinkhole"):
         raise HTTPException(400, "action must be block or sinkhole")
-    if body.kind not in ("domain", "ip"):
-        raise HTTPException(400, "kind must be domain or ip")
-    remote = bool(body.url)
+
+    # If client didn't override kind and preset provides one, use preset kind
+    kind = body.kind
+    if (kind == "domain" or not kind) and preset_cfg.get("kind"):
+        kind = str(preset_cfg["kind"])
+
+    valid_kinds = ("domain", "ip", "threatfox", "threatfox_ip", "threatfox_domain")
+    if kind not in valid_kinds:
+        raise HTTPException(400, f"kind must be one of {valid_kinds}")
+    remote = bool(url)
 
     def _load_text() -> str:
         if remote:
-            return blocklist.fetch_url(body.url)
-        p = Path(body.path).expanduser()
+            return blocklist.fetch_url(url)
+        p = Path(path).expanduser()
         if not p.is_file():
             raise ValueError("file not found")
         if p.stat().st_size > 4 * 1024 * 1024:
@@ -3082,23 +3104,27 @@ async def firewall_blocklist(body: BlocklistBody) -> dict:
         text = await loop.run_in_executor(None, _load_text)
     except (ValueError, OSError) as exc:
         raise HTTPException(400, str(exc))
-    # EN: `kind` picks the extractor — domains for hosts-style lists,
-    #     IPs for feed-style lists (private/reserved never imported).
-    # FR: `kind` choisit l'extracteur — domaines pour les listes façon
-    #     hosts, IP pour les flux (privées/réservées jamais importées).
+
     added, skipped, parsed, truncated = await loop.run_in_executor(
-        None, _import_blocklist_text, text, body.kind, body.action,
-        body.max_entries)
+        None, _import_blocklist_text, text, kind, body.action,
+        body.max_entries, body.malware, body.min_confidence, body.threat_type)
     rules, lockdown = fw.serialized()
     db.set_setting("firewall_rules", rules)
     await broadcast({"type": "firewall", "rules": rules, "lockdown": lockdown})
-    return {"ok": True, "remote_fetch": remote, "kind": body.kind,
+    return {"ok": True, "remote_fetch": remote, "kind": kind,
             "parsed": parsed,
             "added": added, "skipped": skipped, "truncated": truncated}
 
 
-def _import_blocklist_text(text: str, kind: str, action: str,
-                           max_entries: int) -> tuple[int, int, int, bool]:
+def _import_blocklist_text(
+    text: str,
+    kind: str,
+    action: str,
+    max_entries: int,
+    malware: str | list[str] | None = None,
+    min_confidence: int = 0,
+    threat_type: str | None = None,
+) -> tuple[int, int, int, bool]:
     """EN: Shared blocklist import — parse (kind), cap, dedupe against
     existing rules, apply to the firewall orchestrator. Blocking helper:
     callers run it in an executor. Returns (added, skipped, parsed,
@@ -3106,17 +3132,61 @@ def _import_blocklist_text(text: str, kind: str, action: str,
     déduplique contre les règles existantes, applique à l'orchestrateur.
     Bloquant : à lancer en executor. Renvoie (added, skipped, parsed,
     truncated)."""
-    parse = blocklist.parse_ips if kind == "ip" else blocklist.parse_domains
-    entries = parse(text)
     cap = blocklist.clamp_max(max_entries)
+    added = skipped = 0
+
+    if kind == "threatfox":
+        ips, domains = blocklist.parse_threatfox(
+            text, kind="both", malware=malware, min_confidence=min_confidence, threat_type=threat_type
+        )
+        total_parsed = len(ips) + len(domains)
+        truncated = total_parsed > cap
+        imported = 0
+        for ip in ips:
+            if imported >= cap:
+                break
+            if fw._find_rule("ip", ip, action):
+                skipped += 1
+            else:
+                fw.add_rule("ip", ip, action)
+                added += 1
+            imported += 1
+
+        for domain in domains:
+            if imported >= cap:
+                break
+            if fw._find_rule("domain", domain, action):
+                skipped += 1
+            else:
+                fw.add_rule("domain", domain, action)
+                added += 1
+            imported += 1
+        return added, skipped, min(total_parsed, cap), truncated
+
+    elif kind == "threatfox_ip":
+        entries = blocklist.parse_threatfox_ips(
+            text, malware=malware, min_confidence=min_confidence, threat_type=threat_type
+        )
+        rule_kind = "ip"
+    elif kind == "threatfox_domain":
+        entries = blocklist.parse_threatfox_domains(
+            text, malware=malware, min_confidence=min_confidence, threat_type=threat_type
+        )
+        rule_kind = "domain"
+    elif kind == "ip":
+        entries = blocklist.parse_ips(text)
+        rule_kind = "ip"
+    else:
+        entries = blocklist.parse_domains(text)
+        rule_kind = "domain"
+
     truncated = len(entries) > cap
     entries = entries[:cap]
-    added = skipped = 0
     for d in entries:
-        if fw._find_rule(kind, d, action):
+        if fw._find_rule(rule_kind, d, action):
             skipped += 1
             continue
-        fw.add_rule(kind, d, action)
+        fw.add_rule(rule_kind, d, action)
         added += 1
     return added, skipped, len(entries), truncated
 

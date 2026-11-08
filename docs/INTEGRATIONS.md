@@ -173,12 +173,18 @@ are stored, so a leaked settings dump can't replay credentials.
 
 ## 10. Threat-intel feeds (free)
 
-`POST /firewall/blocklist` imports both shapes:
+`POST /firewall/blocklist` imports multiple shapes:
 
 - `kind: "domain"` — hosts/domain lists (StevenBlack, EasyList…) →
   `domain` firewall rules;
 - `kind: "ip"` — IP feeds (Blocklist.de, URLhaus/Feodo exports) → `ip`
   rules; private/reserved/loopback addresses are never imported.
+- `kind: "threatfox"` (or `threatfox_ip`, `threatfox_domain`) — abuse.ch ThreatFox
+  C2 indicators (CSV/JSON, CC0 / Public Domain), parsed into `ip` and `domain` rules.
+  Supports malware family filtering (`malware: "cobalt_strike"`), confidence threshold
+  (`min_confidence: 75`), and threat type gating (`threat_type: "botnet_cc"`).
+- `preset: "threatfox"` — built-in preset with safe defaults. Discover all presets
+  via `GET /firewall/presets`.
 
 `path:` reads a local file (fully offline); `url:` is an explicit,
 audited opt-in fetch (`remote_fetch: true` in the response). Cap at
@@ -194,6 +200,8 @@ hot firewall reload. Configure it declaratively:
 
 ```toml
 ti_feeds = [
+  # Curated ThreatFox C2 export (abuse.ch, CC0)
+  { preset = "threatfox", action = "block", hours = 12, min_confidence = 75 },
   { url  = "https://lists.blocklist.de/lists/all.txt",
     kind = "ip", action = "block", hours = 24 },
   { path = "/etc/snitch/corp-domains.txt",
