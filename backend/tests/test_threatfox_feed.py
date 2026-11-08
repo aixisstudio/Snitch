@@ -6,12 +6,10 @@ FR: Tests unitaires pour le parseur de flux C2 ThreatFox, préréglages et inté
 from __future__ import annotations
 
 import json
-from unittest.mock import MagicMock, patch
 
-import pytest
 from fastapi.testclient import TestClient
 
-from api.main import _import_blocklist_text, app, fw
+from api.main import _import_blocklist_text, app
 from api.security import API_TOKEN
 from detection import blocklist
 
