@@ -119,6 +119,10 @@ class Packet:
     # FR: Métadonnées du cert feuille TLS (veille passive) — usage interne
     #     (contrôles d'anomalies), jamais persistées. None sinon.
     tls_cert: Optional[dict] = None
+    # EN: TLS ClientHello fingerprints (JA3 MD5 & JA4 hashes) when seen.
+    # FR: Empreintes ClientHello TLS (hachages JA3 MD5 et JA4) quand observées.
+    ja3: Optional[str] = None
+    ja4: Optional[str] = None
 
 
 def get_local_ips() -> set[str]:
@@ -442,6 +446,8 @@ class PacketSniffer:
             dhcp=parsed.dhcp,
             app_head=parsed.app_head,
             tls_cert=parsed.tls_cert,
+            ja3=parsed.ja3,
+            ja4=parsed.ja4,
         ))
         # EN: Forensic ring entry — raw frame + wire ts + attribution, so
         #     /forensics/pcap can export exactly what was on the wire.

@@ -215,7 +215,53 @@ fully offline, `url:` is the same audited opt-in. Last-fetch state
 persists across restarts (`ti_feeds_state`); ≤64 feeds, ≤5000 rules
 per refresh — giant feeds belong in a resolver, not here.
 
-## 11. Headless / daemon mode
+## 11. Passive TLS fingerprinting & C2 detection (JA3 / JA4)
+
+**EN:** Snitch parses TLS `ClientHello` packets passively in real time
+without injecting any active network probes or terminating TLS sessions.
+On every outbound TLS handshake observed by the sniffer:
+
+1. **JA3 Fingerprint**: computes the classic MD5 digest over
+   `SSLVersion,Cipher,SSLExtension,EllipticCurve,EllipticCurvePointFormat`
+   (excluding GREASE values per RFC 8701).
+2. **JA4 Fingerprint**: generates standard JA4 strings
+   (`t{version}{sni_flag}{num_ciphers}{num_exts}{alpn}_{ciphers_hash}_{exts_hash}`)
+   distinguishing TCP/QUIC, domain vs IP SNIs, and sorting ciphers/extensions.
+3. **C2 Lookup & Alerting**: matches observed fingerprints against a
+   local offline database (`backend/detection/c2_fingerprints.json`)
+   containing public indicators for Cobalt Strike, Sliver, Havoc, Mythic,
+   Metasploit, AsyncRAT, and other adversary simulation frameworks.
+   Matches immediately emit a `C2_SUSPECT` alert with process, PID, and
+   command-line context.
+4. **Custom Rules**: create alerting or kill-switch rules matching on
+   `field: "ja3"` or `field: "ja4"` via `POST /alerts/rules` or Sigma/YARA-L.
+5. **API Inspection**: inspect loaded fingerprints at runtime with
+   `GET /c2/fingerprints` or trigger an in-memory reload with
+   `POST /c2/fingerprints/reload`.
+
+**FR :** Snitch analyse passivement les paquets TLS `ClientHello` en temps
+réel sans injecter de sondes réseau actives ni interrompre le chiffrement TLS.
+Sur chaque négociation TLS sortante observée par le sniffer :
+
+1. **Empreinte JA3** : calcule l'empreinte MD5 canonique sur
+   `SSLVersion,Cipher,SSLExtension,EllipticCurve,EllipticCurvePointFormat`
+   (en filtrant les valeurs GREASE selon le RFC 8701).
+2. **Empreinte JA4** : génère les chaînes JA4 normalisées
+   (`t{version}{sni_flag}{num_ciphers}{num_exts}{alpn}_{ciphers_hash}_{exts_hash}`)
+   distinguant TCP/QUIC, SNI domaine vs IP, et triant suites et extensions.
+3. **Recherche C2 & Alertes** : compare les empreintes observées à une
+   base locale hors-ligne (`backend/detection/c2_fingerprints.json`)
+   contenant des indicateurs publics pour Cobalt Strike, Sliver, Havoc,
+   Mythic, Metasploit, AsyncRAT, etc. Les correspondances lèvent
+   instantanément une alerte `C2_SUSPECT` avec le contexte processus, PID et
+   ligne de commande.
+4. **Règles personnalisées** : créez des règles d'alerte ou de coupure
+   sur `field: "ja3"` ou `field: "ja4"` via `POST /alerts/rules` ou Sigma/YARA-L.
+5. **Inspection API** : consultez les empreintes chargées avec
+   `GET /c2/fingerprints` ou rechargez la base en mémoire via
+   `POST /c2/fingerprints/reload`.
+
+## 12. Headless / daemon mode
 
 The GUI is optional: the backend is the whole product. Run it bare
 (`uvicorn api.main:app`), under the shipped systemd unit, or in the

@@ -706,6 +706,20 @@ EXPLANATIONS: dict[str, dict] = {
     ["Inspecter le processus — les apps légitimes utilisent leurs ports",
      "Corréler avec HIGH_ENTROPY/DNS_TUNNEL sur le même hôte",
      "Bloquer le flux si le processus est inexplicable"]),
+
+"C2_SUSPECT": _e(
+    "Suspicious C2 TLS fingerprint match",
+    "Correspondance d'empreinte TLS C2 suspecte",
+    "Snitch observed an outbound TLS ClientHello matching a known Command and Control (C2) framework profile (JA3 / JA4).",
+    "Snitch a observé un ClientHello TLS sortant correspondant au profil d'un framework de Command & Control (C2) connu (JA3 / JA4).",
+    "Adversary simulation frameworks and remote access trojans (Cobalt Strike, Sliver, Havoc, Metasploit) exhibit characteristic TLS handshake signatures. While legitimate applications occasionally share cipher suites, matches warrant immediate investigation.",
+    "Les frameworks d'adversaire et chevaux de Troie d'accès distant (Cobalt Strike, Sliver, Havoc, Metasploit) présentent des signatures de négociation TLS caractéristiques. Bien que des applications légitimes puissent partager certaines suites de chiffrement, une concordance exige une analyse immédiate.",
+    ["Inspect the originating process, parent process, and command line",
+     "Block the destination IP/domain in the firewall if unauthorized",
+     "Isolate the host and perform memory and disk forensic checks"],
+    ["Inspecter le processus source, le processus parent et la ligne de commande",
+     "Bloquer l'IP/domaine de destination dans le pare-feu s'il n'est pas autorisé",
+     "Isoler l'hôte et effectuer une analyse mémoire et disque"]),
 }
 
 

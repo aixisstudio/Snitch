@@ -45,7 +45,8 @@ import uuid
 from typing import Optional
 
 _FIELDS = ("remote_ip", "host", "process_name", "cmdline", "parent_name",
-           "remote_port", "protocol", "direction", "size", "asn", "country")
+           "remote_port", "protocol", "direction", "size", "asn", "country",
+           "ja3", "ja4")
 _OPS = ("eq", "ne", "contains", "regex", "gt", "lt", "cidr")
 _SEVERITIES = ("info", "warning", "critical")
 # EN: "alert" (default) emits CUSTOM_RULE only; "block" additionally
@@ -348,6 +349,10 @@ class CustomRules:
         if field == "country":
             g = geo or {}
             return g.get("country") or g.get("country_code") or ""
+        if field == "ja3":
+            return getattr(pkt, "ja3", None) or ""
+        if field == "ja4":
+            return getattr(pkt, "ja4", None) or ""
         return None
 
     def _match_one(self, rule: dict, actual) -> bool:
