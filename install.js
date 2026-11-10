@@ -16,6 +16,13 @@ module.exports = {
       method: "shell.run",
       params: {
         venv: "env",
+        // EN: Pin the interpreter — websockets 17.x and the codebase's
+        //     `X | None` annotations require Python >= 3.11 (pyproject
+        //     requires-python); Pinokio's default may be older.
+        // FR: Épingle l'interpréteur — websockets 17.x et les annotations
+        //     `X | None` du code exigent Python >= 3.11 (requires-python
+        //     du pyproject) ; le défaut Pinokio peut être plus vieux.
+        python: "3.12",
         path: "backend",
         message: "uv pip install -r requirements.txt"
       }
