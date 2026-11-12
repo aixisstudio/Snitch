@@ -34,3 +34,4 @@ logs/
 *.log
 .env
 staging/
+.playwright-mcp/
