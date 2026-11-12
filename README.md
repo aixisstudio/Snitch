@@ -127,6 +127,7 @@ Or grab the latest release: **[github.com/aixisstudio/Snitch/releases](https://g
 - **Diagnostics** — `GET /diagnostics` returns a JSON snapshot of the runtime (capture state, geo DB status, interface, versions, paths) with no secrets; the Settings panel can export it or open the log directory (Electron).
 - **LAN devices** are discovered passively from the system ARP table — no active broadcast scanning. Device names are learned from what devices broadcast themselves: mDNS `*.local` (Apple/Linux), LLMNR & NetBIOS names (Windows), DHCP hostname options, plus the full offline IEEE OUI vendor table, and your gateway is auto-detected as the router.
 - See [docs/threat-model.md](docs/threat-model.md) for the full threat model and [docs/FIREWALL.md](docs/FIREWALL.md) for the security suite (firewall orchestration, lockdown, threat intel, webhooks, audit, forensics).
+- Comparing options? [docs/COMPARISON.md](docs/COMPARISON.md) is an honest Snitch vs Little Snitch vs GlassWire vs Portmaster vs LuLu breakdown — including where the others win.
 
 ### Docker (Linux)
 
@@ -388,6 +389,7 @@ Ou récupérez la dernière release : **[github.com/aixisstudio/Snitch/releases]
 - **Diagnostic** — `GET /diagnostics` renvoie un instantané JSON du runtime (état de capture, géo, interface, versions, chemins) sans secrets ; le panneau Réglages peut l'exporter ou ouvrir le dossier des logs (Electron).
 - **Appareils LAN** découverts passivement via la table ARP système — aucun scan broadcast actif. Les noms sont appris de ce que les appareils diffusent eux-mêmes : mDNS `*.local` (Apple/Linux), LLMNR et noms NetBIOS (Windows), option hostname DHCP, plus la table de fabricants IEEE OUI complète hors ligne ; votre passerelle est détectée automatiquement comme routeur.
 - Voir [docs/threat-model.md](docs/threat-model.md) pour le modèle de menace complet et [docs/FIREWALL.md](docs/FIREWALL.md) pour la suite sécurité (orchestration pare-feu, lockdown, threat intel, webhooks, audit, forensique).
+- Vous comparez ? [docs/COMPARISON.md](docs/COMPARISON.md) détaille honnêtement Snitch vs Little Snitch vs GlassWire vs Portmaster vs LuLu — y compris là où les autres gagnent.
 
 ### Docker (Linux)
 
