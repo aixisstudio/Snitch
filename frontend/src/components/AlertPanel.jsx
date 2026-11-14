@@ -74,17 +74,19 @@ const TYPE_ICONS = {
  *     inline buttons under the alert body. `block` creates a real OS
  *     firewall rule on the remote IP; `kill`/`suspend` act on the
  *     reported pid; ASK_VERDICT alerts get allow/deny that resolves the
- *     held NFQUEUE packet. Errors stay silent — the action is best-effort
- *     remediation, the alert itself is the durable record.
+ *     held NFQUEUE packet. Unapplied firewall rules surface as a warning —
+ *     other failures stay silent (best-effort remediation).
  * FR: Réponse à incident en un clic sur une alerte — vrais appels API.
  *     `block` crée une vraie règle pare-feu OS sur l'IP distante ;
  *     `kill`/`suspend` agissent sur le pid rapporté ; les alertes
  *     ASK_VERDICT ont autoriser/refuser qui résout le paquet NFQUEUE
- *     gelé. Échecs silencieux — remédiation au mieux.
+ *     gelé. Les règles non appliquées s'affichent en avertissement —
+ *     les autres échecs restent silencieux (remédiation au mieux).
  */
 function AlertActions({ alert }) {
   const { t } = useT()
   const [done, setDone] = useState('')
+  const [warn, setWarn] = useState('')
   const d = alert.details || {}
   const post = async (path, body, tag) => {
     try {
@@ -93,7 +95,15 @@ function AlertActions({ alert }) {
       const r = await fetch(`${base}${path}`, {
         method: 'POST', headers, body: JSON.stringify(body),
       })
-      if (r.ok) setDone(tag)
+      if (r.ok) {
+        // EN: /firewall/rules returns 200 even when the OS rule could not be
+        //     applied (missing privileges) — surface that instead of a false ✓.
+        // FR: /firewall/rules renvoie 200 même quand la règle OS n'a pas pu
+        //     être appliquée (privilèges) — l'afficher plutôt qu'un faux ✓.
+        const j = await r.json().catch(() => ({}))
+        if (j.rule && j.rule.applied === false) setWarn(j.rule.error || '')
+        else setDone(tag)
+      }
     } catch { /* best-effort remediation */ }
   }
   const btn = {
@@ -153,6 +163,11 @@ function AlertActions({ alert }) {
         </>
       )}
       {done && <span style={{ fontSize: 9, color: '#4ade80' }}>✓ {done}</span>}
+      {warn !== '' && (
+        <span style={{ fontSize: 9, color: '#f59e0b' }} title={warn}>
+          {t('fw_not_applied')}
+        </span>
+      )}
     </>
   )
 }

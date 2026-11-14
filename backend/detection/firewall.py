@@ -216,9 +216,15 @@ class FirewallManager:
             ipaddress.ip_network(value, strict=False)   # EN: raises if invalid / FR: lève si invalide
         if kind == "domain":
             rule["resolved"] = self._resolve_domain(value)
-        self._apply(rule)
         with self._lock:
+            # EN: Register BEFORE applying — the macOS pf backend regenerates
+            #     its anchor from self._rules, so the new rule must already
+            #     be listed or the loaded anchor silently misses it.
+            # FR: Enregistrer AVANT d'appliquer — le backend pf de macOS
+            #     régénère son ancre depuis self._rules, donc la nouvelle
+            #     règle doit déjà y figurer sinon l'ancre chargée l'omet.
             self._rules.append(rule)
+        self._apply(rule)
         return rule
 
     def remove_rule(self, rule_id: str) -> bool:

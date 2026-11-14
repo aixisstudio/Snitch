@@ -330,21 +330,29 @@ function NodeRow({ node }) {
 /**
  * EN: Incident-response actions — block a remote IP via /firewall/rules and
  *     kill/suspend a process via /processes/*. Both are authenticated POSTs;
- *     failures are ignored silently (the backend returns 400 with detail).
+ *     blockIp reports 'ok'/'pending' so the button can show real feedback.
  * FR: Actions de réponse à incident — bloquer une IP via /firewall/rules et
- *     tuer/suspendre un processus via /processes/*. POSTs authentifiés ; les
- *     échecs sont ignorés en silence (le backend renvoie 400 avec détail).
+ *     tuer/suspendre un processus via /processes/*. POSTs authentifiés ;
+ *     blockIp rapporte « ok »/« pending » pour un vrai retour visuel.
  */
-async function blockIp(ip) {
+async function blockIp(ip, onResult) {
   if (!ip) return
   const base = await apiBase()
   try {
-    await fetch(`${base}/firewall/rules`, {
+    const r = await fetch(`${base}/firewall/rules`, {
       method: 'POST',
       headers: await authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ kind: 'ip', value: ip }),
     })
-  } catch { /* best effort */ }
+    // EN: The endpoint returns 200 even when the OS rule failed to apply
+    //     (e.g. missing privileges) — read rule.applied so the UI can tell
+    //     "blocked" apart from "saved but inactive".
+    // FR: L'endpoint renvoie 200 même quand la règle OS n'a pas été
+    //     appliquée (privilèges manquants) — lire rule.applied pour que
+    //     l'UI distingue « bloqué » de « enregistré mais inactif ».
+    const j = r.ok ? await r.json().catch(() => ({})) : {}
+    onResult?.(j.rule && j.rule.applied === false ? 'pending' : 'ok')
+  } catch { onResult?.('pending') }
 }
 
 async function procAction(action, pid) {
@@ -390,6 +398,7 @@ async function deepInspect(pid, t) {
  *  FR: Champs du nœud sélectionné + top processus + actions whitelist/blocage. */
 function NodeDetail({ node, onWhitelist }) {
   const { t } = useT()
+  const [blockState, setBlockState] = useState('')
   const fields = [
     [t('field_ip'),       node.ip],
     [t('field_mac'),      node.mac],
@@ -500,7 +509,7 @@ function NodeDetail({ node, onWhitelist }) {
               {t('whitelist_action')}
             </button>
           )}
-          <button onClick={() => blockIp(node.ip || node.id)} style={{
+          <button onClick={() => blockIp(node.ip || node.id, setBlockState)} style={{
             flex: 1, display: 'flex', alignItems: 'center',
             justifyContent: 'center', gap: 6,
             background: 'none', border: '1px solid #ef4444', borderRadius: 6,
@@ -509,6 +518,18 @@ function NodeDetail({ node, onWhitelist }) {
             <Shield size={11} />
             {t('block_action')}
           </button>
+        </div>
+      )}
+      {/* EN: Block feedback — distinguish an applied OS rule from a
+          rule saved but not enforced (missing privileges / unreachable
+          backend). FR: Retour de blocage — distinguer règle OS appliquée
+          d'une règle enregistrée mais non appliquée (privilèges/backend). */}
+      {blockState && (
+        <div style={{
+          marginTop: 6, fontSize: 10,
+          color: blockState === 'ok' ? '#4ade80' : '#f59e0b',
+        }}>
+          {blockState === 'ok' ? `\u2713 ${t('block_action')}` : t('fw_not_applied')}
         </div>
       )}
     </div>
