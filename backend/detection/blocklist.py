@@ -492,6 +492,16 @@ def parse_threatfox_domains(
 
 THREATFOX_RECENT_CSV_URL = "https://threatfox.abuse.ch/export/csv/recent/"
 THREATFOX_RECENT_JSON_URL = "https://threatfox.abuse.ch/export/json/recent/"
+# EN: NetAPI honeypot feed, category A (malware: infection attempts and payload
+#     servers) seen in the last 48 h. Keyless, regenerated hourly, CC BY 4.0;
+#     the first line is a `#` comment that parse_ips() skips.
+# FR: Flux honeypot NetAPI, catégorie A (malware : tentatives d'infection et
+#     serveurs de charge utile) vus dans les 48 dernières heures. Sans clé,
+#     régénéré toutes les heures, CC BY 4.0 ; la première ligne est un
+#     commentaire `#` ignoré par parse_ips().
+NETAPI_COMPROMISED_IP_URL = (
+    "https://netapi.com/api2/?method=compromised&dataset_type=ip&category=A"
+)
 
 PRESETS: dict[str, dict[str, Any]] = {
     "threatfox": {
@@ -533,5 +543,14 @@ PRESETS: dict[str, dict[str, Any]] = {
         "format": "json",
         "license": "CC0",
         "description": "abuse.ch ThreatFox recent C2 indicators via JSON export (CC0)",
+    },
+    "netapi_compromised": {
+        "name": "NetAPI Compromised IPs",
+        "url": NETAPI_COMPROMISED_IP_URL,
+        "kind": "ip",
+        "action": "block",
+        "hours": 12,
+        "license": "CC BY 4.0",
+        "description": "NetAPI honeypot-derived compromised/infection-source IPs, last 48 h (CC BY 4.0)",
     },
 }

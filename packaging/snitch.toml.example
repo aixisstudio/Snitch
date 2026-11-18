@@ -26,12 +26,14 @@ upload_threshold_mb = 500
 
 # EN: Scheduled threat feeds — refreshed every `hours` per feed, hot-reloaded
 #     into the firewall. Remote urls are an explicit opt-in; path: feeds are
-#     fully offline. Built-in presets: "threatfox", "threatfox_ip", "threatfox_domain".
+#     fully offline. Built-in presets: "threatfox", "threatfox_ip", "threatfox_domain",
+#     "netapi_compromised".
 #     kind: "ip"|"domain"|"threatfox"|"threatfox_ip"|"threatfox_domain",
 #     action: "block"|"sinkhole". Optional filters: malware = "cobalt_strike", min_confidence = 75.
 # FR: Flux TI planifiés — rafraîchis toutes les `hours`, rechargés à chaud
 #     dans le pare-feu. Les url distantes = opt-in explicite ; `path:` reste
-#     hors-ligne. Préréglages intégrés : « threatfox », « threatfox_ip », « threatfox_domain ».
+#     hors-ligne. Préréglages intégrés : « threatfox », « threatfox_ip », « threatfox_domain »,
+#     « netapi_compromised ».
 #     kind : « ip »|« domain »|« threatfox »|« threatfox_ip »|« threatfox_domain »,
 #     action : « block »|« sinkhole ». Filtres optionnels : malware = « cobalt_strike », min_confidence = 75.
 # ti_feeds = [
@@ -40,6 +42,9 @@ upload_threshold_mb = 500
 #   # free abuse.ch Auth-Key or the preset imports nothing.
 #   { preset = "threatfox", action = "block", hours = 12, min_confidence = 75,
 #     auth_key = "<your abuse.ch Auth-Key>" },
+#   # NetAPI honeypot malware sources, last 48 h (CC BY 4.0), no key needed.
+#   # FR : sources de malware des honeypots NetAPI, 48 h (CC BY 4.0), sans clé.
+#   { preset = "netapi_compromised", action = "block", hours = 12 },
 #   { url = "https://lists.blocklist.de/lists/all.txt", kind = "ip",
 #     action = "block", hours = 24 },
 #   { path = "/etc/snitch/corp-domains.txt", kind = "domain",
