@@ -391,6 +391,9 @@ class BlocklistBody(BaseModel):
     malware: Optional[str] = None
     min_confidence: int = 0
     threat_type: Optional[str] = None
+    # EN: Optional abuse.ch-style Auth-Key sent as a header on remote fetches.
+    # FR: Clé Auth-Key optionnelle style abuse.ch envoyée en en-tête.
+    auth_key: str = ""
 
 
 class CustomRuleBody(BaseModel):
@@ -1615,6 +1618,8 @@ async def _feed_loop() -> None:
                 malware = feed.get("malware") or preset_cfg.get("malware")
                 min_confidence = feed.get("min_confidence") or preset_cfg.get("min_confidence", 0)
                 threat_type = feed.get("threat_type") or preset_cfg.get("threat_type")
+                auth_key = str(feed.get("auth_key") or
+                               preset_cfg.get("auth_key") or "").strip()
                 key = url or path or preset_key
                 if not key:
                     continue
@@ -1623,7 +1628,7 @@ async def _feed_loop() -> None:
                 try:
                     if url:
                         text = await loop.run_in_executor(
-                            None, blocklist.fetch_url, url)
+                            None, blocklist.fetch_url, url, auth_key)
                     else:
                         p = Path(path).expanduser()
                         if not p.is_file() or \
@@ -3122,7 +3127,8 @@ async def firewall_blocklist(body: BlocklistBody) -> dict:
 
     def _load_text() -> str:
         if remote:
-            return blocklist.fetch_url(url)
+            auth_key = body.auth_key or str(preset_cfg.get("auth_key") or "")
+            return blocklist.fetch_url(url, auth_key)
         p = Path(path).expanduser()
         if not p.is_file():
             raise ValueError("file not found")

@@ -228,7 +228,8 @@ def test_api_firewall_blocklist_preset_resolution(monkeypatch):
     client = TestClient(app)
 
     # Mock fetch_url to return our sample CSV without network access
-    monkeypatch.setattr(blocklist, "fetch_url", lambda url: SAMPLE_THREATFOX_CSV)
+    monkeypatch.setattr(blocklist, "fetch_url",
+                          lambda url, auth_key="": SAMPLE_THREATFOX_CSV)
 
     resp = client.post(
         "/firewall/blocklist",

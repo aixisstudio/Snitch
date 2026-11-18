@@ -177,12 +177,15 @@ are stored, so a leaked settings dump can't replay credentials.
 
 - `kind: "domain"` — hosts/domain lists (StevenBlack, EasyList…) →
   `domain` firewall rules;
-- `kind: "ip"` — IP feeds (Blocklist.de, URLhaus/Feodo exports) → `ip`
+- `kind: "ip"` — IP feeds (Blocklist.de, NetAPI compromised-IP…) → `ip`
   rules; private/reserved/loopback addresses are never imported.
 - `kind: "threatfox"` (or `threatfox_ip`, `threatfox_domain`) — abuse.ch ThreatFox
   C2 indicators (CSV/JSON, CC0 / Public Domain), parsed into `ip` and `domain` rules.
   Supports malware family filtering (`malware: "cobalt_strike"`), confidence threshold
   (`min_confidence: 75`), and threat type gating (`threat_type: "botnet_cc"`).
+  **Since 2026-10-21 abuse.ch retired the keyless exports (HTTP 410):** pass
+  `auth_key: "<your free abuse.ch Auth-Key>"` — sent as the `Auth-Key` header,
+  never logged. Without it the presets import nothing.
 - `preset: "threatfox"` — built-in preset with safe defaults. Discover all presets
   via `GET /firewall/presets`.
 
@@ -200,8 +203,10 @@ hot firewall reload. Configure it declaratively:
 
 ```toml
 ti_feeds = [
-  # Curated ThreatFox C2 export (abuse.ch, CC0)
-  { preset = "threatfox", action = "block", hours = 12, min_confidence = 75 },
+  # ThreatFox C2 export (abuse.ch, CC0) — needs a free abuse.ch Auth-Key
+  # since 2026-10-21; the key is sent as a header, never logged.
+  { preset = "threatfox", action = "block", hours = 12, min_confidence = 75,
+    auth_key = "<your abuse.ch Auth-Key>" },
   { url  = "https://lists.blocklist.de/lists/all.txt",
     kind = "ip", action = "block", hours = 24 },
   { path = "/etc/snitch/corp-domains.txt",

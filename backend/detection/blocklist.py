@@ -186,14 +186,23 @@ def _looks_like_ip(token: str) -> bool:
         return False
 
 
-def fetch_url(url: str) -> str:
+def fetch_url(url: str, auth_key: str = "") -> str:
     """EN: OPT-IN remote fetch — plain HTTPS GET, bounded. The caller is
     responsible for surfacing that this performs an outbound request.
+    `auth_key` (optional) is sent verbatim as the abuse.ch-style
+    `Auth-Key` header — needed since abuse.ch retired keyless exports
+    on 2026-10-21. Never logged.
     FR: Fetch distant OPT-IN — GET HTTPS simple, borné. L'appelant doit
-    rendre visible que ceci émet une requête sortante."""
+    rendre visible que ceci émet une requête sortante. `auth_key`
+    (optionnel) est envoyé verbatim en en-tête `Auth-Key` style
+    abuse.ch — requis depuis le retrait des exports sans clé le
+    2026-10-21. Jamais journalisé."""
     if not url.lower().startswith(("https://", "http://")):
         raise ValueError("url must be http(s)")
-    req = urllib.request.Request(url, headers={"User-Agent": "Snitch/1.3"})
+    headers = {"User-Agent": "Snitch/1.3"}
+    if auth_key.strip():
+        headers["Auth-Key"] = auth_key.strip()
+    req = urllib.request.Request(url, headers=headers)
     with urllib.request.urlopen(req, timeout=_FETCH_TIMEOUT) as r:
         data = r.read(_MAX_BYTES + 1)
     if len(data) > _MAX_BYTES:
