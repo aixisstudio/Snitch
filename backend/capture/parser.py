@@ -761,7 +761,12 @@ def parse_tls_client_hello(payload: bytes) -> tuple[Optional[str], Optional[str]
         curves_s = "-".join(str(c) for c in curves)
         pf_s = "-".join(str(p) for p in point_formats)
         ja3_raw = f"{client_version},{ciphers_s},{exts_s},{curves_s},{pf_s}"
-        ja3_hash = hashlib.md5(ja3_raw.encode("ascii")).hexdigest()
+        # EN: MD5 is mandated by the JA3 spec as an identifier — not a
+        #     security control; mark it so linters/FIPS builds agree.
+        # FR: MD5 est imposé par la spec JA3 comme identifiant — pas un
+        #     contrôle de sécurité ; on le déclare pour linters/builds FIPS.
+        ja3_hash = hashlib.md5(ja3_raw.encode("ascii"),
+                               usedforsecurity=False).hexdigest()
 
         # ── 2. JA4 (JA4_a_b_c) ──────────────────────────────────────────────
         v_eff = max(supported_versions) if supported_versions else client_version

@@ -143,8 +143,7 @@ def test_threatfox_parse_confidence_and_threat_type_filter():
     """EN: Test min_confidence and threat_type filtering."""
     # min_confidence = 75: bad-beacon.com (conf 50) is excluded
     _, domains_conf = blocklist.parse_threatfox(SAMPLE_THREATFOX_CSV, min_confidence=75)
-    assert "bad-beacon.com" not in domains_conf
-    assert "c2.sliver-command.org" in domains_conf
+    assert domains_conf == ["c2.sliver-command.org", "dl.malicious-stage.net"]
 
     # threat_type = "botnet_cc": payload_delivery URLs excluded
     ips_c2, domains_c2 = blocklist.parse_threatfox(SAMPLE_THREATFOX_CSV, threat_type="botnet_cc")
