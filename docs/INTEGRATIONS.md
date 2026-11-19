@@ -188,6 +188,10 @@ are stored, so a leaked settings dump can't replay credentials.
   never logged. Without it the presets import nothing.
 - `preset: "threatfox"` — built-in preset with safe defaults. Discover all presets
   via `GET /firewall/presets`.
+- `preset: "netapi_compromised"` — keyless `ip` preset: NetAPI honeypot
+  category A addresses (malware infection attempts and payload servers)
+  seen in the last 48 h, regenerated hourly, CC BY 4.0
+  (https://netapi.com/compromised-ips/).
 
 `path:` reads a local file (fully offline); `url:` is an explicit,
 audited opt-in fetch (`remote_fetch: true` in the response). Cap at
@@ -207,6 +211,8 @@ ti_feeds = [
   # since 2026-10-21; the key is sent as a header, never logged.
   { preset = "threatfox", action = "block", hours = 12, min_confidence = 75,
     auth_key = "<your abuse.ch Auth-Key>" },
+  # NetAPI honeypot malware sources (CC BY 4.0), keyless
+  { preset = "netapi_compromised", action = "block", hours = 12 },
   { url  = "https://lists.blocklist.de/lists/all.txt",
     kind = "ip", action = "block", hours = 24 },
   { path = "/etc/snitch/corp-domains.txt",
